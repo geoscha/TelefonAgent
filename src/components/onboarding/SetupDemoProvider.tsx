@@ -20,12 +20,17 @@ import {
 import { dispatchSetupDemoSkipped } from "@/lib/setup-demo-events";
 import type { SetupDemoStep } from "@/lib/setup-demo";
 
+const DEMO_STARTED_KEY = "cura-setup-demo-started";
+
 interface SetupDemoContextValue {
   active: boolean;
   step: SetupDemoStep | null;
   subStepId: string | null;
   loading: boolean;
+  demoStarted: boolean;
+  showWelcome: boolean;
   skip: () => Promise<void>;
+  startDemo: () => void;
   advance: () => void;
   goToSubStep: (subStepId: string) => void;
   completeAgentStep: () => Promise<void>;
@@ -55,6 +60,12 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState(false);
   const [step, setStep] = useState<SetupDemoStep | null>(null);
   const [subStepId, setSubStepId] = useState<string | null>(null);
+  const [demoStarted, setDemoStarted] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setDemoStarted(sessionStorage.getItem(DEMO_STARTED_KEY) === "1");
+  }, []);
 
   const applyPayload = useCallback(
     (data: {
@@ -124,9 +135,17 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
     const data = await res.json();
     if (res.ok && data.ok) {
       applyPayload(data);
+      sessionStorage.removeItem(DEMO_STARTED_KEY);
+      setDemoStarted(false);
       if (data.resetUi) dispatchSetupDemoSkipped(true);
     }
   }, [applyPayload]);
+
+  const startDemo = useCallback(() => {
+    sessionStorage.setItem(DEMO_STARTED_KEY, "1");
+    setDemoStarted(true);
+    router.push("/telefonagent");
+  }, [router]);
 
   const completeAgentStep = useCallback(async () => {
     const res = await fetch("/api/setup-demo", {
@@ -163,9 +182,14 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
         ...data,
         subStepId: getInitialSubStepId("agent"),
       });
+      sessionStorage.setItem(DEMO_STARTED_KEY, "1");
+      setDemoStarted(true);
       router.push("/telefonagent");
     }
   }, [applyPayload, router]);
+
+  const showWelcome =
+    active && step === "agent" && !demoStarted && !loading;
 
   const value = useMemo(
     () => ({
@@ -173,7 +197,10 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
       step,
       subStepId,
       loading,
+      demoStarted,
+      showWelcome,
       skip,
+      startDemo,
       advance,
       goToSubStep,
       completeAgentStep,
@@ -186,7 +213,10 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
       step,
       subStepId,
       loading,
+      demoStarted,
+      showWelcome,
       skip,
+      startDemo,
       advance,
       goToSubStep,
       completeAgentStep,

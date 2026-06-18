@@ -1,14 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { enforceTokenState, getTokenBalanceForUser } from "@/lib/billing/tokens";
+import { getTokenBalanceForUser } from "@/lib/billing/tokens";
 import { getProfile, updateProfile, type BillingPlan } from "@/lib/store";
 import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const userId = await requireUserId();
-  await enforceTokenState(userId);
+  const sync = req.nextUrl.searchParams.get("sync") === "1";
+  if (sync) {
+    const { enforceTokenState } = await import("@/lib/billing/tokens");
+    await enforceTokenState(userId);
+  }
   const [profile, tokenBalance] = await Promise.all([
     getProfile(),
     getTokenBalanceForUser(userId),

@@ -2,10 +2,14 @@
 
 import { CallVolumeChart } from "@/components/telefonagent/CallVolumeChart";
 
-export function AnrufeExtras() {
+export function AnrufeExtras({
+  onStatsRefresh,
+}: {
+  onStatsRefresh?: () => void;
+}) {
   return (
     <div className="mb-6">
-      <CallVolumeChart />
+      <CallVolumeChart onRefresh={onStatsRefresh} />
     </div>
   );
 }

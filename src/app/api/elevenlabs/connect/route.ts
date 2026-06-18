@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import {
   describeElevenLabsError,
@@ -14,11 +14,12 @@ import { requireUserId } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 /** Current connection status + which capabilities are configured server-side. */
-export async function GET() {
+export async function GET(req: NextRequest) {
   let settings = await getSettings();
+  const reconcile = req.nextUrl.searchParams.get("reconcile") === "1";
 
-  // Re-link phone → agent for onboarded users (fixes stale ElevenLabs assignments).
   if (
+    reconcile &&
     hasApiKey() &&
     settings.agentId &&
     settings.curaForwardingNumber &&

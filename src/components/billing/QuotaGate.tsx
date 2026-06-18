@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
 
 import { landingBtnPrimary } from "@/components/landing/landing-buttons";
 import {
@@ -11,32 +10,33 @@ import {
   userTitleClass,
 } from "@/components/user/user-styles";
 import type { TokenBalanceView } from "@/lib/billing/quota-display";
+import {
+  readStaleCache,
+  writeStaleCache,
+} from "@/lib/client/stale-cache";
 import { cn } from "@/lib/utils";
+
+const TOKEN_CACHE_KEY = "token-balance";
 
 export function QuotaGate({ children }: { children: React.ReactNode }) {
   const [tokenBalance, setTokenBalance] = useState<TokenBalanceView | null>(
-    null
+    () => readStaleCache<TokenBalanceView>(TOKEN_CACHE_KEY, 120_000)
   );
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => r.json())
       .then((p) => {
-        if (p.tokenBalance) setTokenBalance(p.tokenBalance as TokenBalanceView);
+        if (p.tokenBalance) {
+          const balance = p.tokenBalance as TokenBalanceView;
+          setTokenBalance(balance);
+          writeStaleCache(TOKEN_CACHE_KEY, balance);
+        }
       })
-      .finally(() => setLoading(false));
+      .catch(() => {});
   }, []);
 
   const exhausted = Boolean(tokenBalance?.exhausted);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24 text-[#525866]">
-        <Loader2 className="h-5 w-5 animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div className="relative min-h-[200px]">

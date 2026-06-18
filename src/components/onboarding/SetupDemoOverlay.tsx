@@ -370,6 +370,7 @@ export function SetupDemoOverlay() {
   if (
     !mounted ||
     !demo?.active ||
+    !demo.demoStarted ||
     !guideStep ||
     guideStep.hidden ||
     demo.loading
@@ -439,7 +440,7 @@ export function SetupDemoOverlay() {
             className={cn(landingBtnSecondary, "flex-1 text-[12px]")}
             onClick={() => void demo.skip()}
           >
-            Demo überspringen
+            Demo abbrechen
           </button>
         </div>
       </div>

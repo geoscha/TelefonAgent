@@ -8,6 +8,8 @@ import { UserSidebar } from "@/components/layout/UserSidebar";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { SetupDemoOverlay } from "@/components/onboarding/SetupDemoOverlay";
 import { SetupDemoProvider } from "@/components/onboarding/SetupDemoProvider";
+import { SetupDemoWelcomeModal } from "@/components/onboarding/SetupDemoWelcomeModal";
+import { useBackgroundSync } from "@/lib/hooks/useBackgroundSync";
 import { landingNavBtnSecondary } from "@/components/landing/landing-buttons";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -42,6 +44,8 @@ export function UserShell({ children }: { children: React.ReactNode }) {
   const displayName =
     profileName.trim().split(/\s+/)[0] || profileName || "Profil";
 
+  useBackgroundSync({ syncCalls: false });
+
   return (
     <SetupDemoProvider>
       <div className="user-app min-h-screen bg-white">
@@ -72,6 +76,7 @@ export function UserShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <CommandPalette />
+        <SetupDemoWelcomeModal />
         <SetupDemoOverlay />
       </div>
     </SetupDemoProvider>

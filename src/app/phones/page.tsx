@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { useWorkspace } from "@/lib/hooks/useWorkspace";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
 
 type ForwardingType = "alle" | "bedingt";
@@ -58,7 +59,9 @@ const CALENDAR_LABELS: Record<CalendarProviderId, string> = {
 
 export default function PhonesPage() {
   const setupDemo = useSetupDemoOptional();
-  const [statusLoading, setStatusLoading] = useState(true);
+  const { data: workspace, loading: workspaceLoading, revalidate: revalidateWorkspace } =
+    useWorkspace();
+  const statusLoading = workspaceLoading && workspace === null;
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("nummer_anfragen");
   const [forwardingType, setForwardingType] =
@@ -87,35 +90,34 @@ export default function PhonesPage() {
     if (s.appointmentProvider) setApptProvider(s.appointmentProvider);
   }, []);
 
-  const loadOnboarding = useCallback(async () => {
-    const res = await fetch("/api/phone/onboarding");
-    const data = await res.json();
-    if (res.ok && data.ok) {
+  const applyWorkspace = useCallback(
+    (data: NonNullable<typeof workspace>) => {
       applySettings(data.settings as Settings);
-      setOnboardingPhase(data.phase as OnboardingPhase);
-      setNumbers((data.numbers as UserPhoneNumberView[]) ?? []);
+      setOnboardingPhase(data.phase);
+      setNumbers(data.numbers);
       setPendingRequests(
-        ((data.pendingRequests as Array<{ id: string; createdAt: string }>) ?? []).map(
-          (r) => ({ id: r.id, createdAt: r.createdAt })
-        )
+        (data.pendingRequests ?? []).map((r) => ({
+          id: r.id,
+          createdAt: r.createdAt,
+        }))
       );
       const num =
-        data.capabilities?.forwardingNumber ??
-        data.settings?.curaForwardingNumber ??
+        data.capabilities.forwardingNumber ??
+        data.settings.curaForwardingNumber ??
         "";
       if (num) setCuraNumber(String(num));
-    }
-  }, [applySettings]);
+    },
+    [applySettings]
+  );
 
   useEffect(() => {
-    (async () => {
-      try {
-        await loadOnboarding();
-      } finally {
-        setStatusLoading(false);
-      }
-    })();
-  }, [loadOnboarding]);
+    if (!workspace) return;
+    applyWorkspace(workspace);
+  }, [workspace, applyWorkspace]);
+
+  const loadOnboarding = useCallback(async () => {
+    await revalidateWorkspace();
+  }, [revalidateWorkspace]);
 
   useEffect(() => {
     if (onboardingPhase !== "nummer_warte" && pendingRequests.length === 0) return;
@@ -131,7 +133,7 @@ export default function PhonesPage() {
     if (forwardingStatus === "aktiv") return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch("/api/elevenlabs/connect");
+        const res = await fetch("/api/elevenlabs/connect?reconcile=1");
         const data = await res.json();
         const s = data.settings as Settings;
         if (s.forwardingStatus === "aktiv") {

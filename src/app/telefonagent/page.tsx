@@ -14,6 +14,8 @@ import { QuotaGate } from "@/components/billing/QuotaGate";
 import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import { normalizeAgentLanguage } from "@/lib/elevenlabs/agent-config";
 import type { OnboardingPhase, StoredAgent } from "@/lib/onboarding-types";
+import { sessionThrottle, readStaleCache, writeStaleCache } from "@/lib/client/stale-cache";
+import { useWorkspace } from "@/lib/hooks/useWorkspace";
 import { mockAgentConfig } from "@/lib/mock/agent";
 
 type ForwardingType = "alle" | "bedingt";
@@ -78,7 +80,9 @@ export default function TelefonagentPage() {
     forwardingNumber: null,
     defaultSystemPrompt: "",
   });
-  const [statusLoading, setStatusLoading] = useState(true);
+  const { data: workspace, loading: workspaceLoading, revalidate: revalidateWorkspace } =
+    useWorkspace();
+  const statusLoading = workspaceLoading && workspace === null;
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("nummer_anfragen");
 
@@ -140,12 +144,22 @@ export default function TelefonagentPage() {
   }, []);
 
   const loadVoices = useCallback(async () => {
-    setVoicesLoading(true);
+    const cached = readStaleCache<Voice[]>("voices", 10 * 60_000);
+    if (cached?.length) {
+      setVoices(cached);
+      setVoiceId((prev) => {
+        if (prev && cached.some((v) => v.id === prev)) return prev;
+        return cached[0]?.id ?? "";
+      });
+    }
+
+    setVoicesLoading(!cached?.length);
     try {
       const res = await fetch("/api/elevenlabs/voices");
       const data = await res.json();
       if (res.ok && data.ok) {
         const loadedVoices = data.voices as Voice[];
+        writeStaleCache("voices", loadedVoices);
         const langs = (data.languages as LanguageOption[] | undefined)?.length
           ? (data.languages as LanguageOption[])
           : DEFAULT_LANGUAGES;
@@ -182,60 +196,45 @@ export default function TelefonagentPage() {
   }, [applySettings]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/phone/onboarding");
-        const data = await res.json();
-        if (res.ok && data.ok) {
-          const capabilities = data.capabilities as Capabilities;
-          const s = data.settings as Settings;
-          setCaps(capabilities);
-          applySettings(s);
-          setOnboardingPhase(data.phase as OnboardingPhase);
-          setSystemPrompt(s.systemPrompt || capabilities.defaultSystemPrompt);
-          setPhoneNumbers(
-            ((data.numbers as Array<{ id: string; phoneNumber: string; label?: string }>) ??
-              []
-            ).map((n) => ({
-              id: n.id,
-              phoneNumber: n.phoneNumber,
-              label: n.label,
-            }))
-          );
+    if (!workspace) return;
 
-          const connectRes = await fetch("/api/elevenlabs/connect");
-          const connectData = await connectRes.json();
-          if (connectRes.ok && connectData.ok) {
-            applySettings(connectData.settings as Settings);
-            if (connectData.settings.connected) loadVoices();
-          } else if (capabilities.hasApiKey && !s.connected) {
-            await autoConnect();
-          } else if (s.connected) {
-            loadVoices();
-          }
-        }
-      } finally {
-        setStatusLoading(false);
-      }
-    })();
-  }, [applySettings, autoConnect, loadVoices]);
+    const capabilities = workspace.capabilities;
+    const s = workspace.settings as Settings;
+    setCaps(capabilities);
+    applySettings(s);
+    setOnboardingPhase(workspace.phase);
+    setSystemPrompt(s.systemPrompt || capabilities.defaultSystemPrompt);
+    setPhoneNumbers(
+      workspace.numbers.map((n) => ({
+        id: n.id,
+        phoneNumber: n.phoneNumber,
+        label: n.label,
+      }))
+    );
+
+    if (s.connected) {
+      loadVoices();
+    } else if (capabilities.hasApiKey) {
+      void autoConnect();
+    }
+
+    if (sessionThrottle("connect-reconcile", 5 * 60_000)) {
+      void fetch("/api/elevenlabs/connect?reconcile=1")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.ok) applySettings(data.settings as Settings);
+        })
+        .catch(() => {});
+    }
+  }, [workspace, applySettings, autoConnect, loadVoices]);
 
   useEffect(() => {
     if (onboardingPhase !== "nummer_warte") return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch("/api/phone/onboarding");
-        const data = await res.json();
-        if (res.ok && data.ok) {
-          setOnboardingPhase(data.phase as OnboardingPhase);
-          applySettings(data.settings as Settings);
-        }
-      } catch {
-        /* keep polling */
-      }
+    const interval = setInterval(() => {
+      void revalidateWorkspace().catch(() => {});
     }, 15000);
     return () => clearInterval(interval);
-  }, [onboardingPhase, applySettings]);
+  }, [onboardingPhase, revalidateWorkspace]);
 
   useEffect(() => {
     if (

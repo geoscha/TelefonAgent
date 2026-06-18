@@ -57,6 +57,9 @@ export const TOKEN_PACKS = [
 /** Shown on billing UI — monthly cost per phone number. */
 export const PHONE_NUMBER_MONTHLY_TOKENS = 1_800;
 
+/** Start bonus for new accounts (welcome modal). */
+export const WELCOME_TOKEN_AMOUNT = 2_000;
+
 export function getTokenPack(packId: string) {
   return TOKEN_PACKS.find((p) => p.id === packId);
 }

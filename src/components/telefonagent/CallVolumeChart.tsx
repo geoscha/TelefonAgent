@@ -8,6 +8,7 @@ import {
   userPanelClass,
   userTitleClass,
 } from "@/components/user/user-styles";
+import { useStaleFetch } from "@/lib/hooks/useStaleFetch";
 
 type Range = "tag" | "woche" | "monat";
 
@@ -97,36 +98,47 @@ function smoothPath(pts: { x: number; y: number }[]): string {
   return d;
 }
 
-export function CallVolumeChart() {
+async function fetchStats(): Promise<Point[]> {
+  const res = await fetch("/api/stats");
+  const data = await res.json();
+  if (!res.ok || !data.ok) throw new Error("stats failed");
+  return data.calls as Point[];
+}
+
+export function CallVolumeChart({
+  onRefresh,
+}: {
+  onRefresh?: () => void;
+}) {
   const [range, setRange] = useState<Range>("woche");
-  const [calls, setCalls] = useState<Point[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: calls, loading, revalidate } = useStaleFetch(
+    "stats-chart",
+    fetchStats,
+    { ttlMs: 60_000 }
+  );
   const [width, setWidth] = useState(720);
   const [hover, setHover] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
-
-    async function load() {
-      try {
-        const res = await fetch("/api/stats");
-        const data = await res.json();
-        if (!cancelled && res.ok && data.ok) {
-          setCalls(data.calls as Point[]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    const interval = setInterval(load, 60_000);
+    const sync = () => {
+      fetch("/api/calls/sync", { method: "POST" })
+        .then(() => {
+          if (!cancelled) {
+            void revalidate();
+            onRefresh?.();
+          }
+        })
+        .catch(() => {});
+    };
+    sync();
+    const interval = setInterval(sync, 90_000);
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [revalidate, onRefresh]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -139,7 +151,10 @@ export function CallVolumeChart() {
     return () => ro.disconnect();
   }, []);
 
-  const buckets = useMemo(() => buildBuckets(calls, range), [calls, range]);
+  const buckets = useMemo(
+    () => buildBuckets(calls ?? [], range),
+    [calls, range]
+  );
 
   const H = 220;
   const padL = 10;
