@@ -4,11 +4,8 @@ import {
   getAdminCustomer,
   updateAdminCustomer,
 } from "@/lib/admin/customers";
-import { upgradeUserToPro } from "@/lib/billing/upgrade";
 import { requireAdminSession } from "@/lib/admin/guard";
 import type {
-  BillingInterval,
-  BillingPlan,
   ElevenLabsSettings,
   ForwardingStatus,
   ForwardingType,
@@ -58,15 +55,6 @@ export async function PATCH(
   const profilePatch: Partial<Profile> = {};
   if (typeof body.profile?.name === "string") profilePatch.name = body.profile.name.trim();
   if (typeof body.profile?.email === "string") profilePatch.email = body.profile.email.trim();
-  if (body.profile?.plan === "free" || body.profile?.plan === "pro") {
-    profilePatch.plan = body.profile.plan as BillingPlan;
-  }
-  if (
-    body.profile?.billingInterval === "monthly" ||
-    body.profile?.billingInterval === "yearly"
-  ) {
-    profilePatch.billingInterval = body.profile.billingInterval as BillingInterval;
-  }
 
   const settingsPatch: Partial<ElevenLabsSettings> = {};
   const s = body.settings ?? {};
@@ -92,18 +80,6 @@ export async function PATCH(
   if (typeof s.connected === "boolean") settingsPatch.connected = s.connected;
 
   try {
-    if (profilePatch.plan === "pro") {
-      const existing = await getAdminCustomer(params.id);
-      if (existing?.profile.plan !== "pro") {
-        await upgradeUserToPro(
-          params.id,
-          profilePatch.billingInterval ?? "monthly"
-        );
-        delete profilePatch.plan;
-        delete profilePatch.billingInterval;
-      }
-    }
-
     const customer = await updateAdminCustomer(params.id, {
       profile: profilePatch,
       settings: settingsPatch,

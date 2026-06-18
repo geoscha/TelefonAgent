@@ -1,0 +1,284 @@
+import "server-only";
+
+import type { TokenBalanceView } from "@/lib/billing/quota-display";
+import { pauseUserPhones, releaseStalePausedPhones, resumeUserPhones } from "@/lib/billing/phone-pause";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+/** Internal accounting — never expose to clients. */
+export const TOKENS_PER_CHF = 1000;
+export const CHF_PER_USD = 0.8;
+
+export const PHONE_NUMBER_COST_TOKENS = 1800;
+export const CALL_SECOND_COST_TOKENS = 10;
+
+export const TOKEN_RELEASE_DAYS = 7;
+
+interface ProfileTokenRow {
+  token_balance: number;
+  phone_paused_at: string | null;
+  last_token_topup_at: string | null;
+}
+
+export async function loadProfileTokenRow(
+  userId: string
+): Promise<ProfileTokenRow | null> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("token_balance, phone_paused_at, last_token_topup_at")
+    .eq("id", userId)
+    .maybeSingle();
+  return data as ProfileTokenRow | null;
+}
+
+export function buildTokenBalanceView(row: ProfileTokenRow | null): TokenBalanceView {
+  const balance = row?.token_balance ?? 0;
+  const phonePaused = Boolean(row?.phone_paused_at);
+  return {
+    balance,
+    exhausted: balance <= 0,
+    phonePaused,
+    phonePausedAt: row?.phone_paused_at ?? undefined,
+  };
+}
+
+export async function getTokenBalanceForUser(
+  userId: string
+): Promise<TokenBalanceView> {
+  const row = await loadProfileTokenRow(userId);
+  return buildTokenBalanceView(row);
+}
+
+export async function canAffordTokens(
+  userId: string,
+  amount: number
+): Promise<boolean> {
+  if (amount <= 0) return true;
+  const row = await loadProfileTokenRow(userId);
+  return (row?.token_balance ?? 0) >= amount;
+}
+
+interface TokenMutationResult {
+  ok: boolean;
+  balance: number;
+  duplicate?: boolean;
+}
+
+async function insertTransaction(
+  userId: string,
+  amount: number,
+  balanceAfter: number,
+  source: string,
+  referenceId?: string,
+  metadata?: Record<string, unknown>
+): Promise<{ duplicate: boolean }> {
+  const admin = createAdminClient();
+  const { error } = await admin.from("token_transactions").insert({
+    user_id: userId,
+    amount,
+    balance_after: balanceAfter,
+    source,
+    reference_id: referenceId ?? null,
+    metadata: metadata ?? {},
+  });
+
+  if (error?.code === "23505") {
+    return { duplicate: true };
+  }
+  if (error) {
+    throw error;
+  }
+  return { duplicate: false };
+}
+
+/** Credits tokens (top-up). Idempotent when referenceId is provided. */
+export async function creditTokens(
+  userId: string,
+  amount: number,
+  source: string,
+  referenceId: string,
+  metadata?: Record<string, unknown>
+): Promise<TokenMutationResult> {
+  if (amount <= 0) {
+    return { ok: false, balance: (await loadProfileTokenRow(userId))?.token_balance ?? 0 };
+  }
+
+  const admin = createAdminClient();
+  const row = await loadProfileTokenRow(userId);
+  const current = row?.token_balance ?? 0;
+  const newBalance = current + amount;
+  const now = new Date().toISOString();
+
+  const { duplicate } = await insertTransaction(
+    userId,
+    amount,
+    newBalance,
+    source,
+    referenceId,
+    metadata
+  );
+
+  if (duplicate) {
+    const fresh = await loadProfileTokenRow(userId);
+    return { ok: true, balance: fresh?.token_balance ?? current, duplicate: true };
+  }
+
+  await admin
+    .from("profiles")
+    .update({
+      token_balance: newBalance,
+      last_token_topup_at: now,
+      updated_at: now,
+    })
+    .eq("id", userId);
+
+  if (row?.phone_paused_at) {
+    try {
+      await resumeUserPhones(userId);
+    } catch (err) {
+      console.error("[tokens] resume after top-up failed:", err);
+    }
+  }
+
+  return { ok: true, balance: newBalance };
+}
+
+/** Debits tokens. Idempotent when referenceId is provided. Returns false if insufficient. */
+export async function debitTokens(
+  userId: string,
+  amount: number,
+  source: string,
+  referenceId?: string,
+  metadata?: Record<string, unknown>
+): Promise<TokenMutationResult> {
+  if (amount <= 0) {
+    const row = await loadProfileTokenRow(userId);
+    return { ok: true, balance: row?.token_balance ?? 0 };
+  }
+
+  const admin = createAdminClient();
+  const row = await loadProfileTokenRow(userId);
+  const current = row?.token_balance ?? 0;
+
+  if (current < amount) {
+    return { ok: false, balance: current };
+  }
+
+  const newBalance = current - amount;
+
+  if (referenceId) {
+    const { duplicate } = await insertTransaction(
+      userId,
+      -amount,
+      newBalance,
+      source,
+      referenceId,
+      metadata
+    );
+    if (duplicate) {
+      const fresh = await loadProfileTokenRow(userId);
+      return { ok: true, balance: fresh?.token_balance ?? current, duplicate: true };
+    }
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("profiles")
+    .update({ token_balance: newBalance, updated_at: new Date().toISOString() })
+    .eq("id", userId)
+    .gte("token_balance", amount)
+    .select("token_balance")
+    .maybeSingle();
+
+  if (updateError || !updated) {
+    if (referenceId) {
+      await admin
+        .from("token_transactions")
+        .delete()
+        .eq("user_id", userId)
+        .eq("source", source)
+        .eq("reference_id", referenceId);
+    }
+    return { ok: false, balance: current };
+  }
+
+  if (!referenceId) {
+    await insertTransaction(
+      userId,
+      -amount,
+      updated.token_balance,
+      source,
+      undefined,
+      metadata
+    );
+  }
+
+  if (updated.token_balance <= 0) {
+    try {
+      await pauseUserPhones(userId);
+    } catch (err) {
+      console.error("[tokens] pause after debit failed:", err);
+    }
+  }
+
+  return { ok: true, balance: updated.token_balance };
+}
+
+export async function chargeCallTokens(
+  userId: string,
+  callId: string,
+  durationSeconds: number
+): Promise<void> {
+  if (durationSeconds <= 0) return;
+
+  const row = await loadProfileTokenRow(userId);
+  if ((row?.token_balance ?? 0) <= 0 && row?.phone_paused_at) {
+    return;
+  }
+
+  const cost = Math.round(durationSeconds) * CALL_SECOND_COST_TOKENS;
+  const result = await debitTokens(userId, cost, "call", `call:${callId}`, {
+    durationSeconds,
+    cost,
+  });
+
+  if (!result.ok && !result.duplicate) {
+    try {
+      await pauseUserPhones(userId);
+    } catch (err) {
+      console.error("[tokens] pause after failed call charge:", err);
+    }
+  }
+}
+
+/** Runs stale release, due phone billing, and pause/resume sync. */
+export async function enforceTokenState(userId: string): Promise<void> {
+  try {
+    await releaseStalePausedPhones(userId);
+  } catch (err) {
+    console.error("[tokens] stale release failed:", err);
+  }
+
+  try {
+    const { processDuePhoneBilling } = await import("@/lib/billing/phone-billing");
+    await processDuePhoneBilling(userId);
+  } catch (err) {
+    console.error("[tokens] phone billing failed:", err);
+  }
+
+  const row = await loadProfileTokenRow(userId);
+  if (!row) return;
+
+  if (row.token_balance <= 0 && !row.phone_paused_at) {
+    try {
+      await pauseUserPhones(userId);
+    } catch (err) {
+      console.error("[tokens] enforce pause failed:", err);
+    }
+  } else if (row.token_balance > 0 && row.phone_paused_at) {
+    try {
+      await resumeUserPhones(userId);
+    } catch (err) {
+      console.error("[tokens] enforce resume failed:", err);
+    }
+  }
+}

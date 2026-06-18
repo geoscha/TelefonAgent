@@ -25,6 +25,11 @@ import {
   type ForwardingType,
 } from "@/lib/phone/forwarding-codes";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
+import {
+  formatBillingDateTime,
+  formatTokenCount,
+  PHONE_NUMBER_MONTHLY_TOKENS,
+} from "@/lib/billing/quota-display";
 
 type ForwardingStatus = "nicht_eingerichtet" | "anleitung" | "aktiv";
 
@@ -38,6 +43,9 @@ export interface UserPhoneNumberView {
   forwardingType?: ForwardingType;
   customerNumber?: string;
   validationStatus: "pending" | "valid" | "invalid";
+  assignedAt?: string;
+  nextBillingAt?: string;
+  pausedAt?: string;
 }
 
 export interface PendingPhoneRequestView {
@@ -196,6 +204,10 @@ export function PhoneNumberWizard({
         />
       )}
 
+      {flow === "connect" && activePhone && (
+        <PhoneBillingDetails phone={activePhone} />
+      )}
+
       {flow === "connect" && connectStep === "type" && (
         <ConnectTypeStep
           forwardingType={activeForwardingType}
@@ -233,6 +245,10 @@ export function PhoneNumberWizard({
         />
       )}
 
+      {flow === "disconnect" && activePhone && (
+        <PhoneBillingDetails phone={activePhone} />
+      )}
+
       {flow === "disconnect" && disconnectStep === "code" && activePhone && (
         <DisconnectCodeStep
           customerNumber={activePhone.customerNumber}
@@ -251,6 +267,30 @@ export function PhoneNumberWizard({
           onConfirm={() => onDisconnect(activePhoneId)}
           onDone={resetToOverview}
         />
+      )}
+    </div>
+  );
+}
+
+function PhoneBillingDetails({ phone }: { phone: UserPhoneNumberView }) {
+  if (!phone.nextBillingAt) return null;
+
+  return (
+    <div className="rounded border border-[#E1E4EA] bg-[#FAFAFA] px-4 py-3">
+      <p className="font-mono text-[14px] font-normal text-[#0E121B]">
+        {phone.phoneNumber}
+      </p>
+      <p className={`${userLabelClass} mt-2`}>
+        Gültig bis: {formatBillingDateTime(phone.nextBillingAt)}
+      </p>
+      <p className={userLabelClass}>
+        Nächste Abbuchung: {formatBillingDateTime(phone.nextBillingAt)} ·{" "}
+        {formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)} Tokens
+      </p>
+      {phone.pausedAt && (
+        <p className="mt-1 text-[13px] text-amber-700">
+          Pausiert — bitte Guthaben aufladen
+        </p>
       )}
     </div>
   );
@@ -348,6 +388,22 @@ function OverviewStep({
                     {isConnected ? " · Verbunden" : ""}
                     {num.customerNumber ? ` · von ${num.customerNumber}` : ""}
                   </p>
+                  {num.nextBillingAt && (
+                    <div className="mt-1 space-y-0.5">
+                      <p className="text-[11px] text-[#525866]">
+                        Gültig bis: {formatBillingDateTime(num.nextBillingAt)}
+                      </p>
+                      <p className="text-[11px] text-[#525866]">
+                        Nächste Abbuchung: {formatBillingDateTime(num.nextBillingAt)}{" "}
+                        · {formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)} Tokens
+                      </p>
+                      {num.pausedAt && (
+                        <p className="text-[11px] text-amber-700">
+                          Pausiert — bitte Guthaben aufladen
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   {!num.isPrimary && numbers.length > 1 && (

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { buildCallFromWebhook, type WebhookCallData } from "@/lib/calls/build-call";
 import { resolveUserIdForIncomingCall } from "@/lib/calls/resolve-user";
-import { addCallUsage } from "@/lib/billing/quota";
+import { chargeCallTokens } from "@/lib/billing/tokens";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 
 import {
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
 
     const call = await buildCallFromWebhook(data);
     await addCallForUser(userId, call);
-    await addCallUsage(userId, call.durationSeconds);
+    await chargeCallTokens(userId, call.id, call.durationSeconds);
 
     const settings = await getSettingsForUser(userId);
     if (settings.forwardingStatus !== "aktiv") {

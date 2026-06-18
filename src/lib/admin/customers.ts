@@ -6,7 +6,6 @@ import {
   getSettingsForUser,
   updateSettingsForUser,
   type BillingInterval,
-  type BillingPlan,
   type ElevenLabsSettings,
   type Profile,
 } from "@/lib/store";
@@ -15,8 +14,7 @@ export interface AdminCustomerSummary {
   id: string;
   name: string;
   email: string;
-  plan: BillingPlan;
-  billingInterval?: BillingInterval;
+  tokenBalance: number;
   createdAt: string;
   curaNumber?: string;
   onboardingPhase?: string;
@@ -55,6 +53,7 @@ export interface AdminCustomerDetail {
 function rowToProfile(row: Record<string, unknown>): Profile & {
   id: string;
   createdAt: string;
+  tokenBalance: number;
 } {
   return {
     id: row.id as string,
@@ -63,6 +62,7 @@ function rowToProfile(row: Record<string, unknown>): Profile & {
     plan: row.plan === "pro" ? "pro" : "free",
     billingInterval: (row.billing_interval as BillingInterval) ?? undefined,
     createdAt: row.created_at as string,
+    tokenBalance: (row.token_balance as number) ?? 0,
   };
 }
 
@@ -72,7 +72,7 @@ export async function listAdminCustomers(options?: {
   const admin = createAdminClient();
   const { data: profiles } = await admin
     .from("profiles")
-    .select("id, name, email, plan, billing_interval, created_at")
+    .select("id, name, email, token_balance, created_at")
     .order("created_at", { ascending: false });
 
   if (!profiles?.length) return [];
@@ -118,8 +118,7 @@ export async function listAdminCustomers(options?: {
       id,
       name: (p.name as string) ?? "",
       email: (p.email as string) ?? "",
-      plan: p.plan === "pro" ? "pro" : "free",
-      billingInterval: (p.billing_interval as BillingInterval) ?? undefined,
+      tokenBalance: (p.token_balance as number) ?? 0,
       createdAt: p.created_at as string,
       curaNumber: (settings?.cura_forwarding_number as string) ?? undefined,
       onboardingPhase: (settings?.onboarding_phase as string) ?? undefined,

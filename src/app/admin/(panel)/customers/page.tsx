@@ -7,12 +7,13 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { formatTokenCount } from "@/lib/billing/quota-display";
 
 interface Customer {
   id: string;
   name: string;
   email: string;
-  plan: "free" | "pro";
+  tokenBalance: number;
   createdAt: string;
   curaNumber?: string;
   onboardingPhase?: string;
@@ -75,7 +76,7 @@ export default function AdminCustomersPage() {
             <thead>
               <tr className="border-b border-stroke bg-bg/50 text-caption text-text-muted">
                 <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Plan</th>
+                <th className="px-4 py-3 font-medium">Tokens</th>
                 <th className="px-4 py-3 font-medium">Nummer</th>
                 <th className="px-4 py-3 font-medium">Anrufe</th>
                 <th className="px-4 py-3 font-medium">Support</th>
@@ -95,8 +96,8 @@ export default function AdminCustomersPage() {
                     <p className="text-caption text-text-muted">{c.email}</p>
                   </td>
                   <td className="px-4 py-3">
-                    <Badge variant={c.plan === "pro" ? "success" : "default"}>
-                      {c.plan === "pro" ? "Pro" : "Free"}
+                    <Badge variant={c.tokenBalance <= 0 ? "warning" : "default"}>
+                      {formatTokenCount(c.tokenBalance)}
                     </Badge>
                   </td>
                   <td className="px-4 py-3 font-mono text-caption">

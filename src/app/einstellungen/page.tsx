@@ -20,8 +20,8 @@ import {
   type ForwardingType,
 } from "@/lib/phone/forwarding-codes";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
-import type { CallQuotaView } from "@/lib/billing/quota-display";
-import { quotaRemainingHighlight } from "@/lib/billing/quota-display";
+import type { TokenBalanceView } from "@/lib/billing/quota-display";
+import { tokenBalanceHighlight } from "@/lib/billing/quota-display";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
 import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import { userPanelClass } from "@/components/user/user-styles";
@@ -32,7 +32,7 @@ interface Profile {
   name: string;
   email: string;
   plan: BillingPlan;
-  callQuota?: CallQuotaView;
+  tokenBalance?: TokenBalanceView;
 }
 
 export default function ProfilPage() {
@@ -279,9 +279,9 @@ export default function ProfilPage() {
     profile?.name ||
     name ||
     "…";
-  const quotaHighlight = profile?.callQuota
-    ? quotaRemainingHighlight(profile.callQuota)
-    : { value: "—", suffix: "Min. frei" };
+  const quotaHighlight = profile?.tokenBalance
+    ? tokenBalanceHighlight(profile.tokenBalance)
+    : { value: "—", suffix: "Tokens" };
 
   return (
     <div className="space-y-section pb-4">

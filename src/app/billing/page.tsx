@@ -1,220 +1,144 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
-import { QuotaGate } from "@/components/billing/QuotaGate";
-import {
-  landingBtnPrimary,
-} from "@/components/landing/landing-buttons";
+import { landingBtnPrimary } from "@/components/landing/landing-buttons";
 import {
   userLabelClass,
   userPanelClass,
   userTitleClass,
 } from "@/components/user/user-styles";
 import {
-  FREE_CALL_SECONDS_LIMIT,
-  quotaRemainingHighlight,
-  type CallQuotaView,
+  TOKEN_PACKS,
+  tokenBalanceHighlight,
+  type TokenBalanceView,
 } from "@/lib/billing/quota-display";
 import { cn } from "@/lib/utils";
 
-type BillingPlan = "free" | "pro";
-type BillingInterval = "monthly" | "yearly";
-
 interface Profile {
   name: string;
-  plan: BillingPlan;
-  billingInterval?: BillingInterval;
-  callQuota?: CallQuotaView;
+  tokenBalance?: TokenBalanceView;
 }
 
-const freeFeatures = [
-  `${FREE_CALL_SECONDS_LIMIT} Sekunden Telefonate (Gesamt)`,
-  "KI-Telefonagent",
-  "Anruf-Transkripte & Zusammenfassungen",
-];
-
-const proFeatures = [
-  "1 Stunde Telefonate pro Monat",
-  "Kalender-Integration & Terminbuchung",
-  "Erweiterte Auswertungen",
-  "Priorisierter Support",
-];
-
 export default function BillingPage() {
-  const router = useRouter();
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-24 text-[#525866]">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      }
+    >
+      <BillingPageContent />
+    </Suspense>
+  );
+}
+
+function BillingPageContent() {
+  const searchParams = useSearchParams();
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [interval, setInterval] = useState<BillingInterval>("monthly");
-  const [upgrading, setUpgrading] = useState(false);
+  const [loadingPack, setLoadingPack] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get("topup") === "success") {
+      toast.success("Guthaben erfolgreich aufgeladen.");
+    } else if (searchParams.get("topup") === "cancel") {
+      toast.message("Aufladung abgebrochen.");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => r.json())
-      .then((p: Profile) => {
-        setProfile(p);
-        if (p.billingInterval) setInterval(p.billingInterval);
-      })
+      .then((p: Profile) => setProfile(p))
       .catch(() => toast.error("Profil konnte nicht geladen werden."));
   }, []);
 
-  async function upgrade() {
-    setUpgrading(true);
+  async function buyPack(packId: string) {
+    setLoadingPack(packId);
     try {
-      const res = await fetch("/api/billing/upgrade", {
+      const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interval }),
+        body: JSON.stringify({ packId }),
       });
-      const data = (await res.json().catch(() => ({}))) as Profile & {
-        ok?: boolean;
+      const data = (await res.json().catch(() => ({}))) as {
+        url?: string;
         error?: string;
       };
-      if (res.ok && data.ok !== false) {
-        setProfile(data);
-        toast.success("Willkommen bei Cura Pro – Ihr Plan ist aktiv.");
-        router.refresh();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
         return;
       }
-      toast.error(data.error ?? "Upgrade fehlgeschlagen.");
+      toast.error(data.error ?? "Checkout konnte nicht gestartet werden.");
     } catch {
-      toast.error("Upgrade fehlgeschlagen.");
+      toast.error("Checkout konnte nicht gestartet werden.");
     } finally {
-      setUpgrading(false);
+      setLoadingPack(null);
     }
   }
 
-  const isPro = profile?.plan === "pro";
-  const proPrice = interval === "yearly" ? "CHF 1’000" : "CHF 50";
-  const proPer = interval === "yearly" ? "/ Jahr" : "/ Monat";
   const firstName = profile?.name.trim().split(/\s+/)[0] || "…";
-  const quotaHighlight = profile?.callQuota
-    ? quotaRemainingHighlight(profile.callQuota)
-    : { value: "—", suffix: "Min. frei" };
+  const balanceHighlight = profile?.tokenBalance
+    ? tokenBalanceHighlight(profile.tokenBalance)
+    : { value: "—", suffix: "Tokens" };
 
   return (
-    <QuotaGate>
-      <div className="mx-auto max-w-[900px] space-y-8 pb-4">
+    <div className="mx-auto max-w-[900px] space-y-8 pb-4">
         <WelcomeBanner
           name={firstName}
-          highlight={quotaHighlight.value}
-          highlightSuffix={quotaHighlight.suffix}
+          highlight={balanceHighlight.value}
+          highlightSuffix={balanceHighlight.suffix}
         />
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
-          <div className="inline-flex items-center rounded border border-[#E1E4EA] bg-white p-0.5 text-[13px] font-normal">
-            <button
-              type="button"
-              onClick={() => setInterval("monthly")}
-              className={cn(
-                "rounded px-4 py-1.5 transition-colors",
-                interval === "monthly"
-                  ? "bg-[#0E121B] text-white"
-                  : "text-[#525866] hover:text-[#0E121B]"
-              )}
-            >
-              Monatlich
-            </button>
-            <button
-              type="button"
-              onClick={() => setInterval("yearly")}
-              className={cn(
-                "rounded px-4 py-1.5 transition-colors",
-                interval === "yearly"
-                  ? "bg-[#0E121B] text-white"
-                  : "text-[#525866] hover:text-[#0E121B]"
-              )}
-            >
-              Jährlich
-              <span
-                className={cn(
-                  "ml-1.5 rounded px-1.5 py-0.5 text-[11px]",
-                  interval === "yearly"
-                    ? "bg-white/20 text-white"
-                    : "bg-[#EDEAE4] text-[#525866]"
-                )}
-              >
-                −17%
-              </span>
-            </button>
-          </div>
+        <div>
+          <p className={userTitleClass}>Guthaben aufladen</p>
+          <p className={`${userLabelClass} mt-1`}>
+            Wählen Sie ein Paket, um Tokens für Telefonate und Nummern zu kaufen.
+          </p>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-2">
-          <div
-            className={cn(
-              userPanelClass,
-              "relative flex flex-col p-7",
-              !isPro && "border-[#335cff]/30"
-            )}
-          >
-            {!isPro && (
-              <span className="absolute right-6 top-6 rounded bg-[#D4EDDA] px-2.5 py-1 text-[12px] font-normal text-[#1A3D2E]">
-                Aktueller Plan
-              </span>
-            )}
-            <p className={userTitleClass}>Gratis</p>
-            <div className="mt-5 flex items-baseline gap-1">
-              <span className="text-[32px] font-normal leading-none text-[#0E121B]">
-                CHF 0
-              </span>
-              <span className={userLabelClass}>/ Monat</span>
+        <div className="grid gap-5 lg:grid-cols-3">
+          {TOKEN_PACKS.map((pack) => (
+            <div key={pack.id} className={cn(userPanelClass, "flex flex-col p-6")}>
+              <p className={userTitleClass}>{pack.label}</p>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-[28px] font-normal leading-none text-[#0E121B]">
+                  CHF {pack.priceChf}
+                </span>
+              </div>
+              <div className="mt-auto pt-6">
+                <button
+                  type="button"
+                  onClick={() => buyPack(pack.id)}
+                  disabled={loadingPack === pack.id}
+                  className={cn(landingBtnPrimary, "w-full justify-center")}
+                >
+                  {loadingPack === pack.id && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  )}
+                  Jetzt kaufen
+                </button>
+              </div>
             </div>
-            <ul className="mt-6 space-y-2">
-              {freeFeatures.map((f) => (
-                <li key={f} className={userLabelClass}>
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-auto pt-7">
-              <button type="button" className={cn(landingBtnPrimary, "w-full justify-center opacity-50")} disabled>
-                {isPro ? "Auf Gratis wechseln" : "Aktueller Plan"}
-              </button>
-            </div>
-          </div>
-
-          <div
-            className={cn(
-              userPanelClass,
-              "relative flex flex-col p-7",
-              isPro && "border-[#335cff]/30"
-            )}
-          >
-            {isPro && (
-              <span className="absolute right-6 top-6 rounded bg-[#EBEEF4] px-2.5 py-1 text-[12px] font-normal text-[#335cff]">
-                Aktueller Plan
-              </span>
-            )}
-            <p className={userTitleClass}>Cura Pro</p>
-            <div className="mt-5 flex items-baseline gap-1">
-              <span className="text-[32px] font-normal leading-none text-[#0E121B]">{proPrice}</span>
-              <span className={userLabelClass}>{proPer}</span>
-            </div>
-            <ul className="mt-6 space-y-2">
-              {proFeatures.map((f) => (
-                <li key={f} className={userLabelClass}>
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-auto pt-7">
-              <button
-                type="button"
-                onClick={upgrade}
-                disabled={upgrading || isPro}
-                className={cn(landingBtnPrimary, "w-full justify-center")}
-              >
-                {upgrading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {isPro ? "Aktiv" : "Jetzt upgraden"}
-              </button>
-            </div>
-          </div>
+          ))}
         </div>
-      </div>
-    </QuotaGate>
+
+        {profile?.tokenBalance?.phonePaused && (
+          <div className={cn(userPanelClass, "border-amber-200 bg-amber-50/50 p-5")}>
+            <p className={userTitleClass}>Telefonnummer pausiert</p>
+            <p className={`${userLabelClass} mt-2`}>
+              Ihr Guthaben ist aufgebraucht. Laden Sie Tokens auf, um Ihre Nummer
+              wieder zu aktivieren. Wird innerhalb von 7 Tagen kein Guthaben
+              aufgeladen, wird die Nummer freigegeben — Ihre Agenten bleiben
+              erhalten.
+            </p>
+          </div>
+        )}
+    </div>
   );
 }

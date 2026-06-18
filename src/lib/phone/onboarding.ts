@@ -14,6 +14,11 @@ import { createUserRequest, listRequests, updateRequest } from "@/lib/admin/requ
 import { isPhoneNumberRequest } from "@/lib/admin/request-types";
 import type { RequestStatus, UserRequest } from "@/lib/admin/request-types";
 import { assignNumberFromPool, syncNumberPoolFromEnv } from "@/lib/store/number-pool";
+import {
+  canAffordTokens,
+  PHONE_NUMBER_COST_TOKENS,
+} from "@/lib/billing/tokens";
+import { setupPhoneBilling } from "@/lib/billing/phone-billing";
 import { requireUserId } from "@/lib/supabase/server";
 import {
   addPoolPhoneNumber,
@@ -112,6 +117,12 @@ export async function requestPhoneNumber(): Promise<
   }
 
   const result = await requestAdditionalPoolNumber();
+  if (result.insufficientTokens) {
+    throw new Error(
+      result.error ??
+        "Nicht genügend Tokens. Bitte laden Sie Ihr Guthaben auf."
+    );
+  }
   if (result.autoAssigned && result.phone) {
     await completePhoneAssignment(userId, result.phone.phoneNumber, {
       elevenLabsPhoneNumberId: result.phone.elevenLabsPhoneNumberId,
@@ -141,15 +152,37 @@ export async function requestPhoneNumber(): Promise<
 
 /** Assigns the next free pool number to a user and closes their open request. */
 export async function tryAutoAssignPhoneNumber(userId: string): Promise<boolean> {
+  if (!(await canAffordTokens(userId, PHONE_NUMBER_COST_TOKENS))) {
+    return false;
+  }
+
   try {
     await syncNumberPoolFromEnv();
     const pool = await assignNumberFromPool(userId, { allowExisting: false });
     await assignPhoneNumberToUser(userId, pool.phoneNumber, {
       elevenLabsPhoneNumberId: pool.elevenLabsPhoneNumberId,
     });
-    await addPoolPhoneNumber(userId, pool.phoneNumber, pool.elevenLabsPhoneNumberId, {
-      makePrimary: true,
-    });
+
+    const phones = await listUserPhoneNumbers(userId);
+    const phone = phones.find((p) => p.phoneNumber === pool.phoneNumber);
+    if (!phone) return false;
+
+    const charged = await setupPhoneBilling(userId, phone.id);
+    if (!charged.ok) {
+      const admin = createAdminClient();
+      await admin
+        .from("forwarding_number_pool")
+        .update({ assigned_user_id: null, assigned_at: null })
+        .eq("phone_number", pool.phoneNumber)
+        .eq("assigned_user_id", userId);
+      await admin
+        .from("user_phone_numbers")
+        .delete()
+        .eq("id", phone.id)
+        .eq("user_id", userId);
+      return false;
+    }
+
     await completePhoneAssignment(userId, pool.phoneNumber, {
       elevenLabsPhoneNumberId: pool.elevenLabsPhoneNumberId,
       autoAssigned: true,

@@ -8,6 +8,11 @@ import {
   validateSipTrunkForBotCalls,
 } from "@/lib/elevenlabs/phone";
 import { linkUserPhoneToAgent } from "@/lib/elevenlabs/sync-agent";
+import {
+  canAffordTokens,
+  PHONE_NUMBER_COST_TOKENS,
+} from "@/lib/billing/tokens";
+import { setupPhoneBilling } from "@/lib/billing/phone-billing";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient, requireUserId } from "@/lib/supabase/server";
 import { getSettingsForUser, updateSettingsForUser, type ElevenLabsSettings } from "@/lib/store";
@@ -33,6 +38,9 @@ export interface UserPhoneNumber {
   customerNumber?: string;
   validationStatus: PhoneValidationStatus;
   validationError?: string;
+  assignedAt?: string;
+  nextBillingAt?: string;
+  pausedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -69,6 +77,9 @@ function rowToUserPhone(row: Record<string, unknown>): UserPhoneNumber {
     customerNumber: (row.customer_number as string | null) ?? undefined,
     validationStatus: row.validation_status as PhoneValidationStatus,
     validationError: (row.validation_error as string | null) ?? undefined,
+    assignedAt: (row.assigned_at as string | null) ?? undefined,
+    nextBillingAt: (row.next_billing_at as string | null) ?? undefined,
+    pausedAt: (row.paused_at as string | null) ?? undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -230,8 +241,20 @@ export async function requestAdditionalPoolNumber(): Promise<{
   phone?: UserPhoneNumber;
   pending: boolean;
   autoAssigned: boolean;
+  insufficientTokens?: boolean;
+  error?: string;
 }> {
   const userId = await requireUserId();
+
+  if (!(await canAffordTokens(userId, PHONE_NUMBER_COST_TOKENS))) {
+    return {
+      pending: false,
+      autoAssigned: false,
+      insufficientTokens: true,
+      error:
+        "Nicht genügend Tokens. Bitte laden Sie Ihr Guthaben auf, um eine neue Nummer zu erstellen.",
+    };
+  }
 
   try {
     await syncNumberPoolFromEnv();
@@ -243,6 +266,27 @@ export async function requestAdditionalPoolNumber(): Promise<{
       pool.elevenLabsPhoneNumberId,
       { makePrimary: existing.length === 0 }
     );
+
+    const charged = await setupPhoneBilling(userId, phone.id);
+    if (!charged.ok) {
+      const admin = createAdminClient();
+      await admin
+        .from("forwarding_number_pool")
+        .update({ assigned_user_id: null, assigned_at: null })
+        .eq("phone_number", pool.phoneNumber)
+        .eq("assigned_user_id", userId);
+      await admin
+        .from("user_phone_numbers")
+        .delete()
+        .eq("id", phone.id)
+        .eq("user_id", userId);
+      return {
+        pending: false,
+        autoAssigned: false,
+        insufficientTokens: true,
+        error: charged.error,
+      };
+    }
 
     if (phone.elevenLabsPhoneNumberId) {
       await linkUserPhoneToAgent(userId).catch((err) =>
@@ -281,6 +325,14 @@ export async function addSipTrunkPhoneNumber(
   const existing = await listUserPhoneNumbers(userId);
   if (existing.some((p) => p.phoneNumber === normalized)) {
     return { ok: false, error: "Diese Nummer ist bereits hinterlegt." };
+  }
+
+  if (!(await canAffordTokens(userId, PHONE_NUMBER_COST_TOKENS))) {
+    return {
+      ok: false,
+      error:
+        "Nicht genügend Tokens. Bitte laden Sie Ihr Guthaben auf, um eine neue Nummer zu erstellen.",
+    };
   }
 
   const admin = createAdminClient();
@@ -348,6 +400,15 @@ export async function addSipTrunkPhoneNumber(
     }
 
     const phone = rowToUserPhone(data as Record<string, unknown>);
+
+    const charged = await setupPhoneBilling(userId, phone.id);
+    if (!charged.ok) {
+      await deletePhoneNumberFromElevenLabs(elevenLabsId).catch((err) =>
+        console.warn("[phone/sip] cleanup after token charge:", err)
+      );
+      await admin.from("user_phone_numbers").delete().eq("id", phone.id);
+      return { ok: false, error: charged.error };
+    }
 
     if (makePrimary) {
       await syncPrimaryToSettings(userId, phone);

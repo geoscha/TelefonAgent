@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { requestTypeLabel, STATUS_LABELS } from "@/lib/admin/request-types";
+import { formatTokenCount } from "@/lib/billing/quota-display";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
 
 interface CustomerDetail {
@@ -25,8 +26,7 @@ interface CustomerDetail {
     id: string;
     name: string;
     email: string;
-    plan: "free" | "pro";
-    billingInterval?: "monthly" | "yearly";
+    tokenBalance: number;
     createdAt: string;
   };
   settings: {
@@ -78,10 +78,6 @@ export default function AdminCustomerDetailPage() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [plan, setPlan] = useState<"free" | "pro">("free");
-  const [billingInterval, setBillingInterval] = useState<
-    "monthly" | "yearly" | ""
-  >("");
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("nummer_anfragen");
   const [curaNumber, setCuraNumber] = useState("");
@@ -101,8 +97,6 @@ export default function AdminCustomerDetailPage() {
         setCustomer(c);
         setName(c.profile.name);
         setEmail(c.profile.email);
-        setPlan(c.profile.plan);
-        setBillingInterval(c.profile.billingInterval ?? "");
         setOnboardingPhase(c.settings.onboardingPhase ?? "nummer_anfragen");
         setCuraNumber(c.settings.curaForwardingNumber ?? "");
         setForwardingStatus(c.settings.forwardingStatus ?? "");
@@ -132,8 +126,6 @@ export default function AdminCustomerDetailPage() {
           profile: {
             name,
             email,
-            plan,
-            billingInterval: billingInterval || undefined,
           },
           settings: {
             onboardingPhase,
@@ -218,36 +210,11 @@ export default function AdminCustomerDetailPage() {
           <Field label="E-Mail">
             <Input value={email} onChange={(e) => setEmail(e.target.value)} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Plan">
-              <Select value={plan} onValueChange={(v) => setPlan(v as "free" | "pro")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="free">Free</SelectItem>
-                  <SelectItem value="pro">Pro</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Abrechnung">
-              <Select
-                value={billingInterval || "none"}
-                onValueChange={(v) =>
-                  setBillingInterval(v === "none" ? "" : (v as "monthly" | "yearly"))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">—</SelectItem>
-                  <SelectItem value="monthly">Monatlich</SelectItem>
-                  <SelectItem value="yearly">Jährlich</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          </div>
+          <Field label="Token-Guthaben">
+            <p className="rounded-btn border border-stroke bg-bg px-3 py-2 text-body font-medium text-navy">
+              {formatTokenCount(customer.profile.tokenBalance)} Tokens
+            </p>
+          </Field>
           <p className="text-caption text-text-muted">
             Registriert {new Date(customer.profile.createdAt).toLocaleString("de-CH")}
           </p>

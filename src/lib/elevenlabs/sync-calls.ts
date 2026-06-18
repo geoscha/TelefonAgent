@@ -5,7 +5,7 @@ import {
 } from "@elevenlabs/elevenlabs-js/api/resources/conversationalAi/resources/conversations/types/ConversationsListRequestExcludeStatusesItem";
 
 import { buildCallFromConversation } from "@/lib/calls/build-call";
-import { addCallUsage } from "@/lib/billing/quota";
+import { chargeCallTokens } from "@/lib/billing/tokens";
 import { hasApiKey, getElevenLabsClient } from "@/lib/elevenlabs/client";
 import {
   addCallForUser,
@@ -66,7 +66,7 @@ export async function syncCallsForUser(userId: string): Promise<number> {
             const full = await client.conversationalAi.conversations.get(id);
             const call = await buildCallFromConversation(full);
             await addCallForUser(userId, call);
-            await addCallUsage(userId, call.durationSeconds);
+            await chargeCallTokens(userId, call.id, call.durationSeconds);
             existingIds.add(id);
             synced += 1;
           } catch (err) {
