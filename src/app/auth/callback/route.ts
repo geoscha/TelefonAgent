@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 import { syncOAuthProfile } from "@/lib/auth/sync-oauth-profile";
+import { grantWelcomeTokensIfNeeded } from "@/lib/billing/tokens";
 import { provisionCurrentUser } from "@/lib/provision";
 
 function safeNextPath(value: string | null): string {
@@ -70,6 +71,16 @@ export async function GET(request: Request) {
   await syncOAuthProfile(supabase).catch((err) =>
     console.warn("[auth/callback] profile sync skipped:", err)
   );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user?.id) {
+    await grantWelcomeTokensIfNeeded(user.id).catch((err) =>
+      console.error("[auth/callback] welcome tokens failed:", err)
+    );
+  }
+
   await provisionCurrentUser().catch((err) =>
     console.warn("[auth/callback] provision skipped:", err)
   );

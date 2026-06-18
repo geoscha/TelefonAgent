@@ -10,6 +10,7 @@ export const CHF_PER_USD = 0.8;
 
 export const PHONE_NUMBER_COST_TOKENS = 1800;
 export const CALL_SECOND_COST_TOKENS = 10;
+export const WELCOME_TOKEN_BONUS = 2000;
 
 export const TOKEN_RELEASE_DAYS = 7;
 
@@ -143,6 +144,27 @@ export async function creditTokens(
   return { ok: true, balance: newBalance };
 }
 
+/** One-time welcome bonus for new accounts (idempotent). */
+export async function grantWelcomeTokensIfNeeded(userId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: existing } = await admin
+    .from("token_transactions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("source", "welcome_bonus")
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) return;
+
+  await creditTokens(
+    userId,
+    WELCOME_TOKEN_BONUS,
+    "welcome_bonus",
+    `welcome:${userId}`
+  );
+}
+
 /** Debits tokens. Idempotent when referenceId is provided. Returns false if insufficient. */
 export async function debitTokens(
   userId: string,
@@ -250,8 +272,14 @@ export async function chargeCallTokens(
   }
 }
 
-/** Runs stale release, due phone billing, and pause/resume sync. */
+/** Runs welcome grant, stale release, due phone billing, and pause/resume sync. */
 export async function enforceTokenState(userId: string): Promise<void> {
+  try {
+    await grantWelcomeTokensIfNeeded(userId);
+  } catch (err) {
+    console.error("[tokens] welcome grant failed:", err);
+  }
+
   try {
     await releaseStalePausedPhones(userId);
   } catch (err) {
