@@ -4,13 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { TokenBalanceBadge } from "@/components/billing/TokenBalanceBadge";
 import { UserSidebar } from "@/components/layout/UserSidebar";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { SetupDemoOverlay } from "@/components/onboarding/SetupDemoOverlay";
 import { SetupDemoProvider } from "@/components/onboarding/SetupDemoProvider";
 import { SetupDemoWelcomeModal } from "@/components/onboarding/SetupDemoWelcomeModal";
 import { useBackgroundSync } from "@/lib/hooks/useBackgroundSync";
-import { landingNavBtnSecondary } from "@/components/landing/landing-buttons";
+import { useTokenBalance } from "@/lib/hooks/useTokenBalance";
+import { landingNavBtnPrimary, landingNavBtnSecondary } from "@/components/landing/landing-buttons";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -44,7 +46,15 @@ export function UserShell({ children }: { children: React.ReactNode }) {
   const displayName =
     profileName.trim().split(/\s+/)[0] || profileName || "Profil";
 
-  useBackgroundSync({ syncCalls: false });
+  const { tokenBalance, loading: tokenLoading, refresh: refreshTokenBalance } =
+    useTokenBalance();
+
+  useBackgroundSync({
+    syncCalls: false,
+    onBillingSynced: () => {
+      void refreshTokenBalance(true);
+    },
+  });
 
   return (
     <SetupDemoProvider>
@@ -54,12 +64,11 @@ export function UserShell({ children }: { children: React.ReactNode }) {
 
           <div className="flex min-w-0 flex-1 flex-col bg-white">
             <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-[#E1E4EA] bg-white px-4 sm:px-5">
-              <Link
-                href="/einstellungen"
-                className={cn(landingNavBtnSecondary, "max-w-[160px] truncate")}
-              >
-                {displayName}
-              </Link>
+              <TokenBalanceBadge
+                balance={tokenBalance?.balance ?? 0}
+                phonePaused={tokenBalance?.phonePaused}
+                loading={tokenLoading && !tokenBalance}
+              />
               <button
                 type="button"
                 onClick={() => void handleLogout()}
@@ -68,6 +77,12 @@ export function UserShell({ children }: { children: React.ReactNode }) {
               >
                 {loggingOut ? "Abmelden…" : "Abmelden"}
               </button>
+              <Link
+                href="/einstellungen"
+                className={cn(landingNavBtnPrimary, "max-w-[160px] truncate")}
+              >
+                {displayName}
+              </Link>
             </header>
 
             <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-white p-4 sm:p-5 lg:p-6">

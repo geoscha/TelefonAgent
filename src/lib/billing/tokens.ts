@@ -86,14 +86,17 @@ export async function repairTokenBalanceFromLedger(
   const current = row.token_balance ?? 0;
 
   if (ledgerBalance >= 0 && ledgerBalance !== current) {
-    await admin
-      .from("profiles")
-      .update({
-        token_balance: ledgerBalance,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", userId);
-    return ledgerBalance;
+    // Prefer profile balance when ledger is behind (e.g. default signup grant).
+    if (ledgerBalance > current || current === 0) {
+      await admin
+        .from("profiles")
+        .update({
+          token_balance: ledgerBalance,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+      return ledgerBalance;
+    }
   }
 
   return current;
@@ -157,6 +160,95 @@ export function formatInsufficientTokensMessage(
   return `Nicht genügend Tokens (vorhanden: ${balance.toLocaleString("de-CH")}, benötigt: ${required.toLocaleString("de-CH")} für den ersten Monat). Bitte laden Sie unter Abrechnung auf.`;
 }
 
+export function formatDebitFailedMessage(balance: number): string {
+  return `Die Token-Abbuchung ist fehlgeschlagen (Guthaben: ${balance.toLocaleString("de-CH")}). Bitte Seite neu laden und erneut versuchen.`;
+}
+
+export function formatBillingNotConfiguredMessage(): string {
+  return "Token-Abrechnung ist noch nicht eingerichtet. Bitte kontaktieren Sie den Support.";
+}
+
+interface DebitRpcRow {
+  success: boolean;
+  new_balance: number;
+  duplicate_charge: boolean;
+}
+
+interface CreditRpcRow {
+  success: boolean;
+  new_balance: number;
+  duplicate_credit: boolean;
+}
+
+function isMissingRpcError(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === "42883" ||
+    Boolean(error.message?.includes("debit_user_tokens")) ||
+    Boolean(error.message?.includes("credit_user_tokens")) ||
+    Boolean(error.message?.includes("grant_welcome_tokens"))
+  );
+}
+
+function firstRpcRow<T>(data: unknown): T | undefined {
+  if (Array.isArray(data)) return data[0] as T | undefined;
+  if (data && typeof data === "object") return data as T;
+  return undefined;
+}
+
+function parseDebitRpcRow(data: unknown): DebitRpcRow | undefined {
+  const row = firstRpcRow<Record<string, unknown>>(data);
+  if (!row) return undefined;
+  return {
+    success: Boolean(row.success),
+    new_balance: Number(row.new_balance ?? row.newBalance ?? 0),
+    duplicate_charge: Boolean(row.duplicate_charge ?? row.duplicateCharge),
+  };
+}
+
+function parseCreditRpcRow(data: unknown): CreditRpcRow | undefined {
+  const row = firstRpcRow<Record<string, unknown>>(data);
+  if (!row) return undefined;
+  return {
+    success: Boolean(row.success),
+    new_balance: Number(row.new_balance ?? row.newBalance ?? 0),
+    duplicate_credit: Boolean(row.duplicate_credit ?? row.duplicateCredit),
+  };
+}
+
+async function creditTokensViaRpc(
+  userId: string,
+  amount: number,
+  source: string,
+  referenceId: string,
+  metadata?: Record<string, unknown>,
+  touchTopup = false
+): Promise<TokenMutationResult | "missing" | "retry"> {
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("credit_user_tokens", {
+    p_user_id: userId,
+    p_amount: amount,
+    p_source: source,
+    p_reference_id: referenceId,
+    p_metadata: metadata ?? {},
+    p_touch_topup: touchTopup,
+  });
+
+  if (error) {
+    if (isMissingRpcError(error)) return "missing";
+    console.error("[tokens] credit_user_tokens rpc failed:", error);
+    return "retry";
+  }
+
+  const row = parseCreditRpcRow(data);
+  if (!row) return "retry";
+
+  return {
+    ok: row.success || row.duplicate_credit,
+    balance: row.new_balance,
+    duplicate: row.duplicate_credit,
+  };
+}
+
 export async function assertCanAffordPhoneNumber(
   userId: string
 ): Promise<{ ok: true; balance: number } | { ok: false; balance: number; error: string }> {
@@ -175,6 +267,115 @@ interface TokenMutationResult {
   ok: boolean;
   balance: number;
   duplicate?: boolean;
+  reason?: string;
+}
+
+async function debitTokensFallback(
+  userId: string,
+  amount: number,
+  source: string,
+  referenceId?: string,
+  metadata?: Record<string, unknown>
+): Promise<TokenMutationResult> {
+  const admin = createAdminClient();
+
+  if (referenceId) {
+    const { data: existingTx } = await admin
+      .from("token_transactions")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("source", source)
+      .eq("reference_id", referenceId)
+      .maybeSingle();
+
+    if (existingTx) {
+      const fresh = await loadProfileTokenRow(userId);
+      return {
+        ok: true,
+        balance: fresh?.token_balance ?? 0,
+        duplicate: true,
+      };
+    }
+  }
+
+  const row = await loadProfileTokenRow(userId);
+  const current = row?.token_balance ?? 0;
+  if (current < amount) {
+    return { ok: false, balance: current, reason: "insufficient" };
+  }
+
+  const newBalance = current - amount;
+  const now = new Date().toISOString();
+
+  const { data: updated, error: updateError } = await admin
+    .from("profiles")
+    .update({ token_balance: newBalance, updated_at: now })
+    .eq("id", userId)
+    .eq("token_balance", current)
+    .select("token_balance")
+    .maybeSingle();
+
+  if (updateError) {
+    console.error("[tokens] debit fallback update error:", updateError);
+    return { ok: false, balance: current, reason: updateError.message };
+  }
+
+  if (!updated) {
+    const fresh = await loadProfileTokenRow(userId);
+    const latest = fresh?.token_balance ?? current;
+    if (latest < amount) {
+      return { ok: false, balance: latest, reason: "insufficient_race" };
+    }
+    console.error("[tokens] debit fallback update matched no rows, balance:", latest);
+    return { ok: false, balance: latest, reason: "update_no_rows" };
+  }
+
+  try {
+    const { duplicate } = await insertTransaction(
+      userId,
+      -amount,
+      updated.token_balance,
+      source,
+      referenceId,
+      metadata
+    );
+    if (duplicate) {
+      await admin
+        .from("profiles")
+        .update({ token_balance: current, updated_at: now })
+        .eq("id", userId);
+      const fresh = await loadProfileTokenRow(userId);
+      return {
+        ok: true,
+        balance: fresh?.token_balance ?? current,
+        duplicate: true,
+      };
+    }
+  } catch (err) {
+    const e = err as { code?: string; message?: string };
+    console.error("[tokens] debit fallback ledger error:", e.code, e.message);
+    if (e.code !== "42P01") {
+      await admin
+        .from("profiles")
+        .update({ token_balance: current, updated_at: now })
+        .eq("id", userId);
+      return {
+        ok: false,
+        balance: current,
+        reason: e.message ?? "ledger_insert_failed",
+      };
+    }
+  }
+
+  if (updated.token_balance <= 0) {
+    try {
+      await pauseUserPhones(userId);
+    } catch (err) {
+      console.error("[tokens] pause after debit failed:", err);
+    }
+  }
+
+  return { ok: true, balance: updated.token_balance };
 }
 
 async function insertTransaction(
@@ -216,6 +417,30 @@ export async function creditTokens(
     return { ok: false, balance: (await loadProfileTokenRow(userId))?.token_balance ?? 0 };
   }
 
+  const touchTopup = source === "stripe_topup" || source === "admin_topup";
+  const rpcResult = await creditTokensViaRpc(
+    userId,
+    amount,
+    source,
+    referenceId,
+    metadata,
+    touchTopup
+  );
+
+  if (rpcResult !== "missing" && rpcResult !== "retry") {
+    if (rpcResult.ok && !rpcResult.duplicate) {
+      const row = await loadProfileTokenRow(userId);
+      if (row?.phone_paused_at) {
+        try {
+          await resumeUserPhones(userId);
+        } catch (err) {
+          console.error("[tokens] resume after top-up failed:", err);
+        }
+      }
+    }
+    return rpcResult;
+  }
+
   const admin = createAdminClient();
   const row = await loadProfileTokenRow(userId);
   const current = row?.token_balance ?? 0;
@@ -236,13 +461,17 @@ export async function creditTokens(
     return { ok: true, balance: fresh?.token_balance ?? current, duplicate: true };
   }
 
+  const updatePayload: Record<string, unknown> = {
+    token_balance: newBalance,
+    updated_at: now,
+  };
+  if (touchTopup) {
+    updatePayload.last_token_topup_at = now;
+  }
+
   const { error: updateError } = await admin
     .from("profiles")
-    .update({
-      token_balance: newBalance,
-      last_token_topup_at: now,
-      updated_at: now,
-    })
+    .update(updatePayload)
     .eq("id", userId);
 
   if (updateError) {
@@ -252,6 +481,7 @@ export async function creditTokens(
       .eq("user_id", userId)
       .eq("source", source)
       .eq("reference_id", referenceId);
+    console.error("[tokens] credit profile update failed:", updateError);
     return { ok: false, balance: current };
   }
 
@@ -270,6 +500,19 @@ export async function creditTokens(
 export async function grantWelcomeTokensIfNeeded(userId: string): Promise<void> {
   const admin = createAdminClient();
 
+  const { data: _rpcData, error: rpcError } = await admin.rpc("grant_welcome_tokens", {
+    p_user_id: userId,
+    p_amount: WELCOME_TOKEN_BONUS,
+  });
+
+  if (!rpcError) {
+    return;
+  }
+
+  if (!isMissingRpcError(rpcError)) {
+    console.warn("[tokens] grant_welcome_tokens rpc failed:", rpcError);
+  }
+
   let profile: { token_balance?: number } | null = null;
   for (let attempt = 0; attempt < 8; attempt++) {
     const { data, error } = await admin
@@ -280,7 +523,6 @@ export async function grantWelcomeTokensIfNeeded(userId: string): Promise<void> 
 
     if (error) {
       if (error.code === "42703") {
-        // token_balance column not migrated yet
         return;
       }
       throw error;
@@ -309,7 +551,6 @@ export async function grantWelcomeTokensIfNeeded(userId: string): Promise<void> 
 
   if (txError) {
     if (txError.code === "42P01") {
-      // token_transactions table not migrated yet
       if ((profile.token_balance ?? 0) < WELCOME_TOKEN_BONUS) {
         await admin
           .from("profiles")
@@ -343,12 +584,7 @@ export async function grantWelcomeTokensIfNeeded(userId: string): Promise<void> 
     return;
   }
 
-  await creditTokens(
-    userId,
-    WELCOME_TOKEN_BONUS,
-    "welcome_bonus",
-    `welcome:${userId}`
-  );
+  await creditTokens(userId, WELCOME_TOKEN_BONUS, "welcome_bonus", `welcome:${userId}`);
 }
 
 /** Debits tokens. Idempotent when referenceId is provided. Returns false if insufficient. */
@@ -365,76 +601,55 @@ export async function debitTokens(
   }
 
   const admin = createAdminClient();
-  const row = await loadProfileTokenRow(userId);
-  const current = row?.token_balance ?? 0;
+  const { data, error } = await admin.rpc("debit_user_tokens", {
+    p_user_id: userId,
+    p_amount: amount,
+    p_source: source,
+    p_reference_id: referenceId ?? null,
+    p_metadata: metadata ?? {},
+  });
 
-  if (current < amount) {
-    return { ok: false, balance: current };
-  }
+  if (!error) {
+    const row = parseDebitRpcRow(data);
+    if (row) {
+      const balance =
+        Number.isFinite(row.new_balance) && row.new_balance >= 0
+          ? row.new_balance
+          : ((await loadProfileTokenRow(userId))?.token_balance ?? 0);
 
-  const newBalance = current - amount;
+      const ok = row.success || row.duplicate_charge;
+      if (ok) {
+        if (balance <= 0) {
+          try {
+            await pauseUserPhones(userId);
+          } catch (err) {
+            console.error("[tokens] pause after debit failed:", err);
+          }
+        }
+        return { ok: true, balance, duplicate: row.duplicate_charge };
+      }
 
-  if (referenceId) {
-    const { data: existingTx } = await admin
-      .from("token_transactions")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("source", source)
-      .eq("reference_id", referenceId)
-      .maybeSingle();
+      if (balance < amount) {
+        return { ok: false, balance, reason: "insufficient" };
+      }
 
-    if (existingTx) {
-      const fresh = await loadProfileTokenRow(userId);
-      return {
-        ok: true,
-        balance: fresh?.token_balance ?? current,
-        duplicate: true,
-      };
+      console.warn("[tokens] debit RPC declined despite balance, trying fallback:", balance);
     }
+  } else if (!isMissingRpcError(error)) {
+    console.error("[tokens] debit_user_tokens rpc:", error.code, error.message);
   }
 
-  const { data: updated, error: updateError } = await admin
-    .from("profiles")
-    .update({ token_balance: newBalance, updated_at: new Date().toISOString() })
-    .eq("id", userId)
-    .gte("token_balance", amount)
-    .select("token_balance")
-    .maybeSingle();
-
-  if (updateError || !updated) {
-    return { ok: false, balance: current };
+  const fallback = await debitTokensFallback(
+    userId,
+    amount,
+    source,
+    referenceId,
+    metadata
+  );
+  if (!fallback.ok) {
+    console.error("[tokens] debit failed:", fallback.reason, { userId, amount, source, referenceId });
   }
-
-  try {
-    await insertTransaction(
-      userId,
-      -amount,
-      updated.token_balance,
-      source,
-      referenceId,
-      metadata
-    );
-  } catch (err) {
-    await admin
-      .from("profiles")
-      .update({
-        token_balance: current,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", userId);
-    console.error("[tokens] debit ledger insert failed:", err);
-    return { ok: false, balance: current };
-  }
-
-  if (updated.token_balance <= 0) {
-    try {
-      await pauseUserPhones(userId);
-    } catch (err) {
-      console.error("[tokens] pause after debit failed:", err);
-    }
-  }
-
-  return { ok: true, balance: updated.token_balance };
+  return fallback;
 }
 
 export async function chargeCallTokens(

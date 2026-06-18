@@ -6,6 +6,9 @@ import {
   PHONE_NUMBER_COST_TOKENS,
   prepareTokenBalanceForBilling,
   formatInsufficientTokensMessage,
+  formatDebitFailedMessage,
+  formatBillingNotConfiguredMessage,
+  loadProfileTokenRow,
 } from "@/lib/billing/tokens";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -62,16 +65,6 @@ export async function setupPhoneBilling(
     };
   }
 
-  await admin
-    .from("user_phone_numbers")
-    .update({
-      assigned_at: assignedIso,
-      next_billing_at: nextBilling,
-      updated_at: assignedIso,
-    })
-    .eq("id", phoneId)
-    .eq("user_id", userId);
-
   const result = await debitTokens(
     userId,
     PHONE_NUMBER_COST_TOKENS,
@@ -81,22 +74,30 @@ export async function setupPhoneBilling(
   );
 
   if (!result.ok) {
-    await admin
-      .from("user_phone_numbers")
-      .update({
-        assigned_at: null,
-        next_billing_at: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", phoneId)
-      .eq("user_id", userId);
-
-    const balance = await prepareTokenBalanceForBilling(userId);
+    const row = await loadProfileTokenRow(userId);
+    const balance = row?.token_balance ?? 0;
+    const reason = result.reason ?? "";
+    if (reason.includes("42P01") || reason === "ledger_insert_failed") {
+      return { ok: false, error: formatBillingNotConfiguredMessage() };
+    }
     return {
       ok: false,
-      error: formatInsufficientTokensMessage(balance, PHONE_NUMBER_COST_TOKENS),
+      error:
+        balance >= PHONE_NUMBER_COST_TOKENS
+          ? formatDebitFailedMessage(balance)
+          : formatInsufficientTokensMessage(balance, PHONE_NUMBER_COST_TOKENS),
     };
   }
+
+  await admin
+    .from("user_phone_numbers")
+    .update({
+      assigned_at: assignedIso,
+      next_billing_at: nextBilling,
+      updated_at: assignedIso,
+    })
+    .eq("id", phoneId)
+    .eq("user_id", userId);
 
   return { ok: true };
 }

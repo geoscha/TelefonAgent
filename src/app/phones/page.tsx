@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { invalidateStaleCache } from "@/lib/client/stale-cache";
+import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
 import { useWorkspace } from "@/lib/hooks/useWorkspace";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
 
@@ -182,8 +182,11 @@ export default function PhonesPage() {
             ? "Nummer zugewiesen"
             : "Anfrage gesendet — Nummer folgt sobald verfügbar"
         );
+        if (data.autoAssigned) {
+          notifyTokenBalanceChanged();
+        }
       } else {
-        invalidateStaleCache("token-balance");
+        notifyTokenBalanceChanged();
         toast.error("Anfrage fehlgeschlagen", {
           description: data.error ?? "Bitte versuchen Sie es erneut.",
         });
