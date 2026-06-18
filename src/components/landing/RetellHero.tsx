@@ -22,7 +22,7 @@ export function RetellHero() {
               #1 KI-Telefonagent-Plattform für automatisierte Anrufe
             </p>
               <h1 className={LANDING_DISPLAY_HEADLINE_CLASS}>
-              <span className="block">Ihrem KI-</span>
+              <span className="block">Ihr KI-</span>
               <span className="block">Callcenter</span>
               <span className="block">der</span>
               <span className="block">Zukunft.</span>
