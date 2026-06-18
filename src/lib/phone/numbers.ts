@@ -10,7 +10,7 @@ import {
 import { linkUserPhoneToAgent } from "@/lib/elevenlabs/sync-agent";
 import {
   canAffordTokens,
-  grantWelcomeTokensIfNeeded,
+  prepareTokenBalanceForBilling,
   PHONE_NUMBER_COST_TOKENS,
 } from "@/lib/billing/tokens";
 import { setupPhoneBilling } from "@/lib/billing/phone-billing";
@@ -246,7 +246,7 @@ export async function requestAdditionalPoolNumber(): Promise<{
   error?: string;
 }> {
   const userId = await requireUserId();
-  await grantWelcomeTokensIfNeeded(userId);
+  await prepareTokenBalanceForBilling(userId);
 
   if (!(await canAffordTokens(userId, PHONE_NUMBER_COST_TOKENS))) {
     return {

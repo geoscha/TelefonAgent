@@ -59,6 +59,54 @@ export async function canAffordTokens(
   return (row?.token_balance ?? 0) >= amount;
 }
 
+/** Sync profile balance from the token ledger when they diverge. */
+export async function repairTokenBalanceFromLedger(
+  userId: string
+): Promise<number> {
+  const admin = createAdminClient();
+  const row = await loadProfileTokenRow(userId);
+  if (!row) return 0;
+
+  const { data: txs, error } = await admin
+    .from("token_transactions")
+    .select("amount")
+    .eq("user_id", userId);
+
+  if (error) {
+    if (error.code === "42P01") return row.token_balance ?? 0;
+    throw error;
+  }
+
+  if (!txs?.length) return row.token_balance ?? 0;
+
+  const ledgerBalance = txs.reduce(
+    (sum, tx) => sum + Number(tx.amount ?? 0),
+    0
+  );
+  const current = row.token_balance ?? 0;
+
+  if (ledgerBalance >= 0 && ledgerBalance !== current) {
+    await admin
+      .from("profiles")
+      .update({
+        token_balance: ledgerBalance,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
+    return ledgerBalance;
+  }
+
+  return current;
+}
+
+/** Grant welcome bonus and reconcile balance before billing checks. */
+export async function prepareTokenBalanceForBilling(
+  userId: string
+): Promise<number> {
+  await grantWelcomeTokensIfNeeded(userId);
+  return repairTokenBalanceFromLedger(userId);
+}
+
 interface TokenMutationResult {
   ok: boolean;
   balance: number;
@@ -124,7 +172,7 @@ export async function creditTokens(
     return { ok: true, balance: fresh?.token_balance ?? current, duplicate: true };
   }
 
-  await admin
+  const { error: updateError } = await admin
     .from("profiles")
     .update({
       token_balance: newBalance,
@@ -132,6 +180,16 @@ export async function creditTokens(
       updated_at: now,
     })
     .eq("id", userId);
+
+  if (updateError) {
+    await admin
+      .from("token_transactions")
+      .delete()
+      .eq("user_id", userId)
+      .eq("source", source)
+      .eq("reference_id", referenceId);
+    return { ok: false, balance: current };
+  }
 
   if (row?.phone_paused_at) {
     try {
@@ -202,7 +260,10 @@ export async function grantWelcomeTokensIfNeeded(userId: string): Promise<void> 
     throw txError;
   }
 
-  if (existing) return;
+  if (existing) {
+    await repairTokenBalanceFromLedger(userId);
+    return;
+  }
 
   const current = profile.token_balance ?? 0;
   if (current >= WELCOME_TOKEN_BONUS) {
@@ -250,17 +311,21 @@ export async function debitTokens(
   const newBalance = current - amount;
 
   if (referenceId) {
-    const { duplicate } = await insertTransaction(
-      userId,
-      -amount,
-      newBalance,
-      source,
-      referenceId,
-      metadata
-    );
-    if (duplicate) {
+    const { data: existingTx } = await admin
+      .from("token_transactions")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("source", source)
+      .eq("reference_id", referenceId)
+      .maybeSingle();
+
+    if (existingTx) {
       const fresh = await loadProfileTokenRow(userId);
-      return { ok: true, balance: fresh?.token_balance ?? current, duplicate: true };
+      return {
+        ok: true,
+        balance: fresh?.token_balance ?? current,
+        duplicate: true,
+      };
     }
   }
 
@@ -273,26 +338,28 @@ export async function debitTokens(
     .maybeSingle();
 
   if (updateError || !updated) {
-    if (referenceId) {
-      await admin
-        .from("token_transactions")
-        .delete()
-        .eq("user_id", userId)
-        .eq("source", source)
-        .eq("reference_id", referenceId);
-    }
     return { ok: false, balance: current };
   }
 
-  if (!referenceId) {
+  try {
     await insertTransaction(
       userId,
       -amount,
       updated.token_balance,
       source,
-      undefined,
+      referenceId,
       metadata
     );
+  } catch (err) {
+    await admin
+      .from("profiles")
+      .update({
+        token_balance: current,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
+    console.error("[tokens] debit ledger insert failed:", err);
+    return { ok: false, balance: current };
   }
 
   if (updated.token_balance <= 0) {

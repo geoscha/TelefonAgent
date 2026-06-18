@@ -4,6 +4,7 @@ import {
   debitTokens,
   canAffordTokens,
   PHONE_NUMBER_COST_TOKENS,
+  prepareTokenBalanceForBilling,
 } from "@/lib/billing/tokens";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -23,6 +24,34 @@ export async function setupPhoneBilling(
   phoneId: string,
   assignedAt: Date = new Date()
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  await prepareTokenBalanceForBilling(userId);
+
+  const admin = createAdminClient();
+  const { data: priorCharge } = await admin
+    .from("token_transactions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("source", "phone_monthly")
+    .like("reference_id", `phone_monthly:${phoneId}:%`)
+    .limit(1)
+    .maybeSingle();
+
+  const assignedIso = assignedAt.toISOString();
+  const nextBilling = addOneMonth(assignedAt).toISOString();
+
+  if (priorCharge) {
+    await admin
+      .from("user_phone_numbers")
+      .update({
+        assigned_at: assignedIso,
+        next_billing_at: nextBilling,
+        updated_at: assignedIso,
+      })
+      .eq("id", phoneId)
+      .eq("user_id", userId);
+    return { ok: true };
+  }
+
   const affordable = await canAffordTokens(userId, PHONE_NUMBER_COST_TOKENS);
   if (!affordable) {
     return {
@@ -31,10 +60,6 @@ export async function setupPhoneBilling(
         "Nicht genügend Tokens. Bitte laden Sie Ihr Guthaben auf, um eine neue Nummer zu aktivieren.",
     };
   }
-
-  const assignedIso = assignedAt.toISOString();
-  const nextBilling = addOneMonth(assignedAt).toISOString();
-  const admin = createAdminClient();
 
   await admin
     .from("user_phone_numbers")

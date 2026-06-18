@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { grantWelcomeTokensIfNeeded } from "@/lib/billing/tokens";
+import { prepareTokenBalanceForBilling } from "@/lib/billing/tokens";
 import { requestPhoneNumber } from "@/lib/phone/onboarding";
 import { requireUserId } from "@/lib/supabase/server";
 
@@ -13,7 +13,7 @@ function isInsufficientTokensMessage(message: string): boolean {
 export async function POST() {
   try {
     const userId = await requireUserId();
-    await grantWelcomeTokensIfNeeded(userId);
+    await prepareTokenBalanceForBilling(userId);
     const state = await requestPhoneNumber();
     return NextResponse.json({
       ok: true,
