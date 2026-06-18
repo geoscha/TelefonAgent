@@ -28,7 +28,6 @@ interface PhoneNumberWizardProps {
   curaNumber: string;
   forwardingType: ForwardingType;
   forwardingStatus: ForwardingStatus;
-  forwardingInstructions?: string;
   requesting: boolean;
   confirming: boolean;
   disconnecting: boolean;
@@ -43,7 +42,6 @@ export function PhoneNumberWizard({
   curaNumber,
   forwardingType,
   forwardingStatus,
-  forwardingInstructions,
   requesting,
   confirming,
   disconnecting,
@@ -288,7 +286,6 @@ function ConnectCodeStep({
 }: {
   curaNumber: string;
   activateCode: string;
-  forwardingInstructions?: string;
   onBack: () => void;
   onNext: () => void;
 }) {

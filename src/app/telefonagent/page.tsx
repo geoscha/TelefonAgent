@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -113,8 +112,6 @@ export default function TelefonagentPage() {
     useState<OnboardingPhase>("nummer_anfragen");
 
   const [voices, setVoices] = useState<Voice[]>([]);
-  const [languageOptions, setLanguageOptions] =
-    useState<LanguageOption[]>(DEFAULT_LANGUAGES);
   const [voicesLoading, setVoicesLoading] = useState(false);
 
   const [name, setName] = useState(mockAgentConfig.name);
@@ -128,7 +125,6 @@ export default function TelefonagentPage() {
     useState<ForwardingType>("bedingt");
   const [forwardingStatus, setForwardingStatus] =
     useState<ForwardingStatus>("nicht_eingerichtet");
-  const [forwardingInstructions, setForwardingInstructions] = useState("");
   const [storedAgents, setStoredAgents] = useState<StoredAgent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [createNewAgent, setCreateNewAgent] = useState(false);
@@ -156,8 +152,6 @@ export default function TelefonagentPage() {
     if (s.systemPrompt) setSystemPrompt(s.systemPrompt);
     if (s.forwardingType) setForwardingType(s.forwardingType);
     if (s.forwardingStatus) setForwardingStatus(s.forwardingStatus);
-    if (s.forwardingInstructions)
-      setForwardingInstructions(s.forwardingInstructions);
     if (s.agents?.length) {
       setStoredAgents(s.agents);
       if (s.agentId) setSelectedAgentId(s.agentId);
@@ -182,16 +176,6 @@ export default function TelefonagentPage() {
     if (s.appointmentProvider) setApptProvider(s.appointmentProvider);
   }, []);
 
-  const loadAgentIntoForm = useCallback((agent: StoredAgent) => {
-    setSelectedAgentId(agent.id);
-    setCreateNewAgent(false);
-    setName(agent.name);
-    setVoiceId(agent.voiceId);
-    setLanguage(normalizeAgentLanguage(agent.language));
-    setGreeting(agent.greeting);
-    setSystemPrompt(agent.systemPrompt);
-  }, []);
-
   const loadVoices = useCallback(async () => {
     setVoicesLoading(true);
     try {
@@ -203,7 +187,6 @@ export default function TelefonagentPage() {
           ? (data.languages as LanguageOption[])
           : DEFAULT_LANGUAGES;
         setVoices(loadedVoices);
-        setLanguageOptions(langs);
         setVoiceId((prev) => {
           if (prev && loadedVoices.some((v) => v.id === prev)) return prev;
           return loadedVoices[0]?.id ?? "";
@@ -751,7 +734,6 @@ export default function TelefonagentPage() {
               <PhoneNumberWizard
                 phase={onboardingPhase}
                 curaNumber={curaNumber}
-                forwardingInstructions={forwardingInstructions}
                 forwardingType={forwardingType}
                 forwardingStatus={forwardingStatus}
                 requesting={requestingNumber}
