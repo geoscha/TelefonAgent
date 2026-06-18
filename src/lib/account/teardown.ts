@@ -74,7 +74,11 @@ export async function teardownUserResources(userId: string): Promise<void> {
 
   await admin
     .from("forwarding_number_pool")
-    .update({ assigned_user_id: null, assigned_at: null })
+    .update({
+      assigned_user_id: null,
+      assigned_at: null,
+      last_released_at: new Date().toISOString(),
+    })
     .eq("assigned_user_id", userId);
 
   const { data: userPhones } = await admin

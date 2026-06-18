@@ -6,11 +6,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export interface AdminPoolNumber {
   phoneNumber: string;
   elevenLabsPhoneNumberId: string;
-  status: "frei" | "belegt";
+  status: "frei" | "belegt" | "zurückgegeben";
   assignedUserId?: string;
   assignedUserName?: string;
   assignedUserEmail?: string;
   assignedAt?: string;
+  timesAssigned: number;
+  lastReleasedAt?: string;
   inDatabase: boolean;
 }
 
@@ -47,14 +49,21 @@ export async function listAdminPoolNumbers(): Promise<AdminPoolNumber[]> {
     const phone = normalizePhoneNumber(row.phone_number as string);
     const userId = row.assigned_user_id as string | null;
     const profile = userId ? profiles.get(userId) : undefined;
+    const timesAssigned = Number(row.times_assigned ?? 0);
     byPhone.set(phone, {
       phoneNumber: phone,
       elevenLabsPhoneNumberId: row.elevenlabs_phone_number_id as string,
-      status: userId ? "belegt" : "frei",
+      status: userId
+        ? "belegt"
+        : timesAssigned > 0
+          ? "zurückgegeben"
+          : "frei",
       assignedUserId: userId ?? undefined,
       assignedUserName: profile?.name,
       assignedUserEmail: profile?.email,
       assignedAt: (row.assigned_at as string | null) ?? undefined,
+      timesAssigned,
+      lastReleasedAt: (row.last_released_at as string | null) ?? undefined,
       inDatabase: true,
     });
   }
@@ -65,13 +74,15 @@ export async function listAdminPoolNumbers(): Promise<AdminPoolNumber[]> {
         phoneNumber: num,
         elevenLabsPhoneNumberId: "",
         status: "frei",
+        timesAssigned: 0,
         inDatabase: false,
       });
     }
   }
 
   return Array.from(byPhone.values()).sort((a, b) => {
-    if (a.status !== b.status) return a.status === "frei" ? -1 : 1;
+    const order = { frei: 0, zurückgegeben: 1, belegt: 2 };
+    if (a.status !== b.status) return order[a.status] - order[b.status];
     return a.phoneNumber.localeCompare(b.phoneNumber);
   });
 }
@@ -80,7 +91,11 @@ export async function releaseNumberForUser(userId: string): Promise<void> {
   const admin = createAdminClient();
   await admin
     .from("forwarding_number_pool")
-    .update({ assigned_user_id: null, assigned_at: null })
+    .update({
+      assigned_user_id: null,
+      assigned_at: null,
+      last_released_at: new Date().toISOString(),
+    })
     .eq("assigned_user_id", userId);
 }
 

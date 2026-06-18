@@ -357,12 +357,19 @@ export async function assignPhoneNumberToUser(
     defaultForwardingInstructions(normalized);
 
   const admin = createAdminClient();
+  const { data: existingPool } = await admin
+    .from("forwarding_number_pool")
+    .select("times_assigned")
+    .eq("phone_number", normalized)
+    .maybeSingle();
+
   await admin.from("forwarding_number_pool").upsert(
     {
       phone_number: normalized,
       elevenlabs_phone_number_id: elevenLabsId ?? normalized,
       assigned_user_id: userId,
       assigned_at: new Date().toISOString(),
+      times_assigned: Number(existingPool?.times_assigned ?? 0) + 1,
     },
     { onConflict: "phone_number" }
   );

@@ -107,11 +107,8 @@ export async function releaseStalePausedPhones(userId: string): Promise<boolean>
     if (phone.elevenLabsPhoneNumberId) {
       await unlinkPhoneFromAgent(phone.elevenLabsPhoneNumberId);
     }
-    await admin
-      .from("forwarding_number_pool")
-      .update({ assigned_user_id: null, assigned_at: null })
-      .eq("phone_number", phone.phoneNumber)
-      .eq("assigned_user_id", userId);
+    const { releasePoolNumberAssignment } = await import("@/lib/billing/phone-billing");
+    await releasePoolNumberAssignment(phone.phoneNumber, userId);
 
     await admin
       .from("user_phone_numbers")

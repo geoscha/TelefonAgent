@@ -99,6 +99,7 @@ export async function assignNumberFromPool(
     .update({
       assigned_user_id: userId,
       assigned_at: new Date().toISOString(),
+      times_assigned: Number(free.times_assigned ?? 0) + 1,
     })
     .eq("phone_number", free.phone_number)
     .is("assigned_user_id", null)

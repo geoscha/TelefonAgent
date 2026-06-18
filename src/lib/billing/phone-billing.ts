@@ -24,6 +24,32 @@ function subtractOneMonth(from: Date): Date {
   return d;
 }
 
+/** Release one day before the current billing period ends. */
+export function calculatePhoneReleaseAt(
+  nextBillingAt: string | undefined,
+  assignedAt: string | undefined,
+  createdAt: string,
+  now: Date = new Date()
+): string {
+  const periodEnd = nextBillingAt
+    ? new Date(nextBillingAt)
+    : assignedAt
+      ? addOneMonth(new Date(assignedAt))
+      : addOneMonth(new Date(createdAt));
+
+  const releaseAt = new Date(periodEnd);
+  releaseAt.setDate(releaseAt.getDate() - 1);
+
+  if (releaseAt.getTime() <= now.getTime()) {
+    const fallback = new Date(now);
+    fallback.setDate(fallback.getDate() + 1);
+    fallback.setHours(3, 0, 0, 0);
+    return fallback.toISOString();
+  }
+
+  return releaseAt.toISOString();
+}
+
 const MS_PER_DAY = 86_400_000;
 
 function ceilDaysBetween(start: Date, end: Date): number {
@@ -218,9 +244,10 @@ export async function processDuePhoneBilling(userId: string): Promise<void> {
 
   const { data: phones } = await admin
     .from("user_phone_numbers")
-    .select("id, next_billing_at")
+    .select("id, next_billing_at, release_at")
     .eq("user_id", userId)
     .not("next_billing_at", "is", null)
+    .is("release_at", null)
     .order("next_billing_at", { ascending: true });
 
   for (const row of phones ?? []) {
@@ -262,6 +289,46 @@ export async function processDuePhoneBilling(userId: string): Promise<void> {
         })
         .eq("id", phoneId)
         .eq("user_id", userId);
+    }
+  }
+}
+
+export async function releasePoolNumberAssignment(
+  phoneNumber: string,
+  userId: string
+): Promise<void> {
+  const admin = createAdminClient();
+  await admin
+    .from("forwarding_number_pool")
+    .update({
+      assigned_user_id: null,
+      assigned_at: null,
+      last_released_at: new Date().toISOString(),
+    })
+    .eq("phone_number", phoneNumber)
+    .eq("assigned_user_id", userId);
+}
+
+/** Executes scheduled phone removals whose release_at has passed. */
+export async function processPendingPhoneReleases(userId: string): Promise<void> {
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+
+  const { data: rows } = await admin
+    .from("user_phone_numbers")
+    .select("*")
+    .eq("user_id", userId)
+    .not("release_at", "is", null)
+    .lte("release_at", now);
+
+  if (!rows?.length) return;
+
+  const { finalizeUserPhoneRemoval } = await import("@/lib/phone/numbers");
+  for (const row of rows) {
+    try {
+      await finalizeUserPhoneRemoval(userId, row.id as string);
+    } catch (err) {
+      console.error("[phone-billing] pending release failed:", row.id, err);
     }
   }
 }

@@ -225,6 +225,13 @@ async function debitViaAdminClient(
     return { ok: false, balance: current, error: insertError.message };
   }
 
+  try {
+    const { incrementPlatformTokensSpent } = await import("@/lib/billing/platform-metrics");
+    await incrementPlatformTokensSpent(amount);
+  } catch (err) {
+    console.error("[tokens] platform spend increment:", err);
+  }
+
   return { ok: true, balance: newBalance };
 }
 
@@ -485,6 +492,13 @@ export async function enforceTokenState(userId: string): Promise<void> {
     await processDuePhoneBilling(userId);
   } catch (err) {
     console.error("[tokens] phone billing:", err);
+  }
+
+  try {
+    const { processPendingPhoneReleases } = await import("@/lib/billing/phone-billing");
+    await processPendingPhoneReleases(userId);
+  } catch (err) {
+    console.error("[tokens] phone release:", err);
   }
 
   const row = await loadProfileTokenRow(userId);

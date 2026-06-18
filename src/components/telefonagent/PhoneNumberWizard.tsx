@@ -56,6 +56,7 @@ export interface UserPhoneNumberView {
   validationStatus: "pending" | "valid" | "invalid";
   assignedAt?: string;
   nextBillingAt?: string;
+  releaseAt?: string;
   pausedAt?: string;
 }
 
@@ -81,6 +82,9 @@ function phoneListSubtitle(num: UserPhoneNumberView, isConnected: boolean): stri
     label !== num.phoneNumber
   ) {
     parts.push(label);
+  }
+  if (num.releaseAt) {
+    parts.push(`Endet ${formatBillingDateTime(num.releaseAt)}`);
   }
   if (isConnected) parts.push("Gekoppelt");
   if (num.customerNumber) parts.push(`von ${num.customerNumber}`);
@@ -155,6 +159,14 @@ function PhoneNumberInfoDialog({
             <p className="text-[13px] text-amber-700">
               Pausiert — bitte Guthaben aufladen
             </p>
+          )}
+          {phone.releaseAt && (
+            <div>
+              <dt className="text-[11px] text-[#525866]">Geplante Entfernung</dt>
+              <dd className="mt-0.5 text-[#0E121B]">
+                {formatBillingDateTime(phone.releaseAt)}
+              </dd>
+            </div>
           )}
         </dl>
       </DialogContent>
@@ -396,6 +408,11 @@ function PhoneBillingDetails({ phone }: { phone: UserPhoneNumberView }) {
           Pausiert — bitte Guthaben aufladen
         </p>
       )}
+      {phone.releaseAt && (
+        <p className="mt-1 text-[13px] text-amber-700">
+          Kündigung aktiv — Entfernung am {formatBillingDateTime(phone.releaseAt)}
+        </p>
+      )}
     </div>
   );
 }
@@ -551,7 +568,7 @@ function OverviewStep({
                       Aktivieren
                     </button>
                   )}
-                  {showCoupling && !isConnected && (
+                  {showCoupling && !isConnected && !num.releaseAt && (
                     <button
                       type="button"
                       className={landingBtnGhost}
@@ -564,7 +581,7 @@ function OverviewStep({
                           setRemovingId(null);
                         }
                       }}
-                      aria-label="Nummer entfernen"
+                      aria-label="Nummer kündigen"
                     >
                       {removingId === num.id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />

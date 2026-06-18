@@ -65,12 +65,8 @@ interface FinanceData {
     costPerCallMinuteMonthChf: number | null;
     tokenSpend: {
       totalTokensSpent: number;
-      tokensSpent12m: number;
-      tokensSpentThisMonth: number;
-      bySource: Record<string, number>;
     };
     costPerToken12mChf: number | null;
-    costPerTokenMonthChf: number | null;
     revenuePerToken12mChf: number | null;
     twilio: ProviderStatus;
     elevenLabs: ProviderStatus;
@@ -216,25 +212,6 @@ function sourceLabel(source: ProviderStatus["source"]): string {
   if (source === "api") return "API";
   if (source === "estimate") return "Schätzung";
   return "—";
-}
-
-const TOKEN_SOURCE_LABELS: Record<string, string> = {
-  call: "Anrufe",
-  phone_purchase: "Nummern (Kauf)",
-  phone_monthly: "Nummern (Monat)",
-  phone_refund: "Nummern (Rückerstattung)",
-};
-
-function tokenSpendBreakdown(bySource: Record<string, number>): string | undefined {
-  const entries = Object.entries(bySource).sort((a, b) => b[1] - a[1]);
-  if (entries.length === 0) return undefined;
-  return entries
-    .slice(0, 4)
-    .map(
-      ([source, amount]) =>
-        `${TOKEN_SOURCE_LABELS[source] ?? source}: ${formatTokenCount(amount)}`
-    )
-    .join(" · ");
 }
 
 export default function AdminFinancesPage() {
@@ -451,18 +428,10 @@ export default function AdminFinancesPage() {
             <Stat
               label="Token-Verbrauch (gesamt)"
               value={formatTokenCount(k.tokenSpend.totalTokensSpent)}
-              hint={tokenSpendBreakdown(k.tokenSpend.bySource)}
+              hint="Kumulativ, plattformweit gespeichert"
             />
             <Stat
-              label="Token-Verbrauch (12M)"
-              value={formatTokenCount(k.tokenSpend.tokensSpent12m)}
-            />
-            <Stat
-              label="Token-Verbrauch (Monat)"
-              value={formatTokenCount(k.tokenSpend.tokensSpentThisMonth)}
-            />
-            <Stat
-              label="Plattformkosten/Token (12M)"
+              label="Plattformkosten/Token"
               value={
                 k.costPerToken12mChf != null
                   ? chf(k.costPerToken12mChf, 4)
@@ -470,25 +439,12 @@ export default function AdminFinancesPage() {
               }
               hint={
                 k.costPerToken12mChf != null
-                  ? "Kosten 12M ÷ Token-Verbrauch 12M"
+                  ? "Kosten 12M ÷ Token-Verbrauch gesamt"
                   : "Noch kein Verbrauch"
               }
             />
             <Stat
-              label="Plattformkosten/Token (Monat)"
-              value={
-                k.costPerTokenMonthChf != null
-                  ? chf(k.costPerTokenMonthChf, 4)
-                  : "—"
-              }
-              hint={
-                k.costPerTokenMonthChf != null
-                  ? "Kosten Monat ÷ Token-Verbrauch Monat"
-                  : undefined
-              }
-            />
-            <Stat
-              label="Umsatz/Token (12M)"
+              label="Umsatz/Token"
               value={
                 k.revenuePerToken12mChf != null
                   ? chf(k.revenuePerToken12mChf, 4)
@@ -496,7 +452,7 @@ export default function AdminFinancesPage() {
               }
               hint={
                 k.revenuePerToken12mChf != null
-                  ? "Umsatz 12M ÷ Token-Verbrauch 12M"
+                  ? "Umsatz 12M ÷ Token-Verbrauch gesamt"
                   : k.stripe.source === "unconfigured"
                     ? "Stripe nicht verbunden"
                     : undefined

@@ -39,6 +39,7 @@ export interface UserPhoneNumber {
   validationError?: string;
   assignedAt?: string;
   nextBillingAt?: string;
+  releaseAt?: string;
   pausedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -78,6 +79,7 @@ function rowToUserPhone(row: Record<string, unknown>): UserPhoneNumber {
     validationError: (row.validation_error as string | null) ?? undefined,
     assignedAt: (row.assigned_at as string | null) ?? undefined,
     nextBillingAt: (row.next_billing_at as string | null) ?? undefined,
+    releaseAt: (row.release_at as string | null) ?? undefined,
     pausedAt: (row.paused_at as string | null) ?? undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -281,11 +283,8 @@ export async function requestAdditionalPoolNumber(): Promise<{
     const charged = await setupPhoneBilling(userId, phone.id);
     if (!charged.ok) {
       const admin = createAdminClient();
-      await admin
-        .from("forwarding_number_pool")
-        .update({ assigned_user_id: null, assigned_at: null })
-        .eq("phone_number", pool.phoneNumber)
-        .eq("assigned_user_id", userId);
+      const { releasePoolNumberAssignment } = await import("@/lib/billing/phone-billing");
+      await releasePoolNumberAssignment(pool.phoneNumber, userId);
       await admin
         .from("user_phone_numbers")
         .delete()
@@ -497,10 +496,10 @@ export async function updatePhoneForwarding(
   return phone;
 }
 
-export async function removeUserPhoneNumber(
+export async function finalizeUserPhoneRemoval(
+  userId: string,
   phoneId: string
-): Promise<{ numbers: UserPhoneNumber[]; refundTokens: number }> {
-  const userId = await requireUserId();
+): Promise<number> {
   const admin = createAdminClient();
 
   const { data: row } = await admin
@@ -510,14 +509,14 @@ export async function removeUserPhoneNumber(
     .eq("user_id", userId)
     .maybeSingle();
 
-  if (!row) {
-    throw new Error("Nummer nicht gefunden.");
-  }
+  if (!row) return 0;
 
   const phone = rowToUserPhone(row as Record<string, unknown>);
   const wasPrimary = phone.isPrimary;
 
-  const { refundPhoneNumberOnRemoval } = await import("@/lib/billing/phone-billing");
+  const { refundPhoneNumberOnRemoval, releasePoolNumberAssignment } = await import(
+    "@/lib/billing/phone-billing"
+  );
   const refundTokens = await refundPhoneNumberOnRemoval(userId, {
     id: phone.id,
     assignedAt: phone.assignedAt,
@@ -531,11 +530,7 @@ export async function removeUserPhoneNumber(
   }
 
   if (phone.source === "pool") {
-    await admin
-      .from("forwarding_number_pool")
-      .update({ assigned_user_id: null, assigned_at: null })
-      .eq("phone_number", phone.phoneNumber)
-      .eq("assigned_user_id", userId);
+    await releasePoolNumberAssignment(phone.phoneNumber, userId);
   }
 
   await admin
@@ -556,7 +551,74 @@ export async function removeUserPhoneNumber(
     }
   }
 
-  return { numbers: listUserPhoneNumbers(userId), refundTokens };
+  return refundTokens;
+}
+
+export async function scheduleUserPhoneNumberRelease(
+  phoneId: string
+): Promise<{ numbers: UserPhoneNumber[]; releaseAt: string; scheduled: true }> {
+  const userId = await requireUserId();
+  const admin = createAdminClient();
+
+  const { data: row } = await admin
+    .from("user_phone_numbers")
+    .select("*")
+    .eq("id", phoneId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!row) {
+    throw new Error("Nummer nicht gefunden.");
+  }
+
+  const phone = rowToUserPhone(row as Record<string, unknown>);
+
+  if (phone.releaseAt) {
+    return {
+      numbers: await listUserPhoneNumbers(userId),
+      releaseAt: phone.releaseAt,
+      scheduled: true,
+    };
+  }
+
+  const { calculatePhoneReleaseAt } = await import("@/lib/billing/phone-billing");
+  const releaseAt = calculatePhoneReleaseAt(
+    phone.nextBillingAt,
+    phone.assignedAt,
+    phone.createdAt
+  );
+
+  const { error } = await admin
+    .from("user_phone_numbers")
+    .update({
+      release_at: releaseAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", phoneId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error("Kündigung konnte nicht gespeichert werden.");
+  }
+
+  return {
+    numbers: await listUserPhoneNumbers(userId),
+    releaseAt,
+    scheduled: true,
+  };
+}
+
+/** @deprecated Use scheduleUserPhoneNumberRelease — immediate removal is no longer allowed. */
+export async function removeUserPhoneNumber(
+  phoneId: string
+): Promise<{ numbers: UserPhoneNumber[]; refundTokens: number; releaseAt?: string; scheduled?: boolean }> {
+  const scheduled = await scheduleUserPhoneNumberRelease(phoneId);
+  return {
+    numbers: scheduled.numbers,
+    refundTokens: 0,
+    releaseAt: scheduled.releaseAt,
+    scheduled: true,
+  };
 }
 
 export async function disconnectPhoneForwarding(

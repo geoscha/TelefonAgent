@@ -11,17 +11,36 @@ import { Label } from "@/components/ui/label";
 interface AdminPoolNumber {
   phoneNumber: string;
   elevenLabsPhoneNumberId: string;
-  status: "frei" | "belegt";
+  status: "frei" | "belegt" | "zurückgegeben";
   assignedUserName?: string;
   assignedUserEmail?: string;
   assignedAt?: string;
+  timesAssigned: number;
+  lastReleasedAt?: string;
   inDatabase: boolean;
 }
+
+const STATUS_LABEL: Record<AdminPoolNumber["status"], string> = {
+  frei: "Frei",
+  belegt: "Belegt",
+  zurückgegeben: "Zurückgegeben",
+};
+
+const STATUS_VARIANT: Record<
+  AdminPoolNumber["status"],
+  "success" | "default" | "warning"
+> = {
+  frei: "success",
+  belegt: "default",
+  zurückgegeben: "warning",
+};
 
 export default function AdminNumbersPage() {
   const [numbers, setNumbers] = useState<AdminPoolNumber[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"all" | "frei" | "belegt">("all");
+  const [filter, setFilter] = useState<
+    "all" | "frei" | "belegt" | "zurückgegeben"
+  >("all");
   const [copied, setCopied] = useState<string | null>(null);
   const [newNumbers, setNewNumbers] = useState("");
   const [adding, setAdding] = useState(false);
@@ -110,9 +129,7 @@ export default function AdminNumbersPage() {
         toast.error(data.error ?? "Hinzufügen fehlgeschlagen.");
         if (data.skipped?.length) {
           const skipped = data.skipped as { phone: string; reason: string }[];
-          toast.warning(
-            skipped.map((s) => s.phone).join(", ")
-          );
+          toast.warning(skipped.map((s) => s.phone).join(", "));
         }
       }
     } finally {
@@ -123,6 +140,7 @@ export default function AdminNumbersPage() {
   const filtered = numbers.filter((n) => filter === "all" || n.status === filter);
   const freeCount = numbers.filter((n) => n.status === "frei").length;
   const usedCount = numbers.filter((n) => n.status === "belegt").length;
+  const returnedCount = numbers.filter((n) => n.status === "zurückgegeben").length;
 
   return (
     <div className="space-y-6">
@@ -156,11 +174,12 @@ export default function AdminNumbersPage() {
       <div className="flex flex-wrap gap-2">
         <Stat label="Gesamt" value={numbers.length} />
         <Stat label="Frei" value={freeCount} accent />
+        <Stat label="Zurückgegeben" value={returnedCount} />
         <Stat label="Belegt" value={usedCount} />
       </div>
 
-      <div className="flex gap-2">
-        {(["all", "frei", "belegt"] as const).map((f) => (
+      <div className="flex flex-wrap gap-2">
+        {(["all", "frei", "zurückgegeben", "belegt"] as const).map((f) => (
           <button
             key={f}
             type="button"
@@ -171,7 +190,13 @@ export default function AdminNumbersPage() {
                 : "border border-stroke bg-bg text-text-muted hover:text-navy"
             }`}
           >
-            {f === "all" ? "Alle" : f === "frei" ? "Frei" : "Belegt"}
+            {f === "all"
+              ? "Alle"
+              : f === "frei"
+                ? "Frei"
+                : f === "belegt"
+                  ? "Belegt"
+                  : "Zurückgegeben"}
           </button>
         ))}
       </div>
@@ -194,6 +219,7 @@ export default function AdminNumbersPage() {
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">User</th>
                 <th className="px-4 py-3 font-medium">Zugewiesen</th>
+                <th className="px-4 py-3 font-medium">Zurückgegeben</th>
                 <th className="px-4 py-3 font-medium">Kopieren</th>
               </tr>
             </thead>
@@ -204,9 +230,14 @@ export default function AdminNumbersPage() {
                     {n.phoneNumber}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge variant={n.status === "frei" ? "success" : "default"}>
-                      {n.status === "frei" ? "Frei" : "Belegt"}
+                    <Badge variant={STATUS_VARIANT[n.status]}>
+                      {STATUS_LABEL[n.status]}
                     </Badge>
+                    {n.timesAssigned > 1 && (
+                      <p className="mt-1 text-caption text-text-muted">
+                        {n.timesAssigned}× vergeben
+                      </p>
+                    )}
                     {!n.inDatabase && (
                       <p className="mt-1 text-caption text-text-muted">
                         Nur in Env
@@ -230,6 +261,11 @@ export default function AdminNumbersPage() {
                   <td className="px-4 py-3 text-caption text-text-muted">
                     {n.assignedAt
                       ? new Date(n.assignedAt).toLocaleString("de-CH")
+                      : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-caption text-text-muted">
+                    {n.lastReleasedAt
+                      ? new Date(n.lastReleasedAt).toLocaleString("de-CH")
                       : "—"}
                   </td>
                   <td className="px-4 py-3">

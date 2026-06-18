@@ -31,7 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { notifyTokenBalanceChanged, useTokenBalance } from "@/lib/hooks/useTokenBalance";
 import { useWorkspace } from "@/lib/hooks/useWorkspace";
-import { PHONE_NUMBER_MONTHLY_TOKENS } from "@/lib/billing/quota-display";
+import { formatBillingDateTime, PHONE_NUMBER_MONTHLY_TOKENS } from "@/lib/billing/quota-display";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
 
 type ForwardingType = "alle" | "bedingt";
@@ -342,17 +342,15 @@ export default function PhonesPage() {
       if (res.ok && data.ok) {
         setNumbers((data.numbers as UserPhoneNumberView[]) ?? []);
         await loadOnboarding();
-        notifyTokenBalanceChanged();
-        const refunded = Number(data.refundTokens ?? 0);
-        if (refunded > 0) {
-          toast.success("Nummer entfernt", {
-            description: `${refunded.toLocaleString("de-CH")} Tokens zurückerstattet.`,
+        if (data.scheduled && data.releaseAt) {
+          toast.success("Nummer gekündigt", {
+            description: `Wird am ${formatBillingDateTime(data.releaseAt as string)} entfernt.`,
           });
         } else {
-          toast.success("Nummer entfernt");
+          toast.success("Nummer gekündigt");
         }
       } else {
-        toast.error("Entfernen fehlgeschlagen");
+        toast.error(data.error ?? "Kündigung fehlgeschlagen");
       }
     } catch {
       toast.error("Netzwerkfehler");
