@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { invalidateStaleCache } from "@/lib/client/stale-cache";
 import { useWorkspace } from "@/lib/hooks/useWorkspace";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
 
@@ -182,7 +183,13 @@ export default function PhonesPage() {
             : "Anfrage gesendet — Nummer folgt sobald verfügbar"
         );
       } else {
-        toast.error("Anfrage fehlgeschlagen");
+        invalidateStaleCache("token-balance");
+        toast.error(data.error ?? "Anfrage fehlgeschlagen", {
+          description:
+            data.code === "insufficient_tokens"
+              ? "Bitte laden Sie unter Abrechnung Tokens auf."
+              : undefined,
+        });
       }
     } catch {
       toast.error("Netzwerkfehler");

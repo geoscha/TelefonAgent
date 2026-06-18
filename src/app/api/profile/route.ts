@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { getTokenBalanceForUser } from "@/lib/billing/tokens";
+import {
+  getTokenBalanceForUser,
+  grantWelcomeTokensIfNeeded,
+} from "@/lib/billing/tokens";
 import { getProfile, updateProfile, type BillingPlan } from "@/lib/store";
 import { requireUserId } from "@/lib/supabase/server";
 
@@ -12,6 +15,8 @@ export async function GET(req: NextRequest) {
   if (sync) {
     const { enforceTokenState } = await import("@/lib/billing/tokens");
     await enforceTokenState(userId);
+  } else {
+    await grantWelcomeTokensIfNeeded(userId);
   }
   const [profile, tokenBalance] = await Promise.all([
     getProfile(),

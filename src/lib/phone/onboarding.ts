@@ -16,6 +16,7 @@ import type { RequestStatus, UserRequest } from "@/lib/admin/request-types";
 import { assignNumberFromPool, syncNumberPoolFromEnv } from "@/lib/store/number-pool";
 import {
   canAffordTokens,
+  grantWelcomeTokensIfNeeded,
   PHONE_NUMBER_COST_TOKENS,
 } from "@/lib/billing/tokens";
 import { setupPhoneBilling } from "@/lib/billing/phone-billing";
@@ -106,6 +107,7 @@ export async function requestPhoneNumber(): Promise<
   PhoneOnboardingState & { autoAssigned?: boolean; phone?: { phoneNumber: string } }
 > {
   const userId = await requireUserId();
+  await grantWelcomeTokensIfNeeded(userId);
   const current = await getPhoneOnboardingState(userId);
   const phones = await listUserPhoneNumbers(userId);
 

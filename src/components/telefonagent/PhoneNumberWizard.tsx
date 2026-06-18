@@ -485,7 +485,8 @@ function OverviewStep({
           ) : (
             <Plus className="h-4 w-4" />
           )}
-          Nummer beantragen
+          Nummer beantragen · {formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)}{" "}
+          Tokens/Monat
         </button>
         <button
           type="button"

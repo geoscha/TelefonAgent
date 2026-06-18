@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 
+import { grantWelcomeTokensIfNeeded } from "@/lib/billing/tokens";
 import { requestPhoneNumber } from "@/lib/phone/onboarding";
+import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+function isInsufficientTokensMessage(message: string): boolean {
+  return /token|guthaben/i.test(message);
+}
+
 export async function POST() {
   try {
+    const userId = await requireUserId();
+    await grantWelcomeTokensIfNeeded(userId);
     const state = await requestPhoneNumber();
     return NextResponse.json({
       ok: true,
@@ -16,9 +24,18 @@ export async function POST() {
     });
   } catch (error) {
     console.error("[phone/request]", error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Anfrage konnte nicht gesendet werden.";
+    const insufficient = isInsufficientTokensMessage(message);
     return NextResponse.json(
-      { ok: false, error: "Anfrage konnte nicht gesendet werden." },
-      { status: 500 }
+      {
+        ok: false,
+        error: message,
+        code: insufficient ? "insufficient_tokens" : "request_failed",
+      },
+      { status: insufficient ? 402 : 500 }
     );
   }
 }
