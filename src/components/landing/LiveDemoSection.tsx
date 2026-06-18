@@ -94,9 +94,10 @@ export function LiveDemoSection() {
       className="scroll-mt-20 pt-2.5 sm:scroll-mt-24 sm:pt-3"
     >
       <div className={LANDING_CONTENT_CLASS}>
-        <div className="pb-2 pt-6 sm:pt-8">
-          <h2 className="font-retell-display text-center text-[clamp(32px,3.5vw,44px)] font-normal leading-[1.05] tracking-[-0.02em] text-[#0E121B]">
-            Testen Sie unsere Live-Demo
+        <div className="pb-4 pt-6 sm:pb-6 sm:pt-8">
+          <h2 className="font-retell-display text-center text-[clamp(44px,5vw,72px)] font-normal leading-[0.95] tracking-[-0.02em] text-[#0E121B]">
+            <span className="block">Testen Sie Ihr</span>
+            <span className="block">KI Callcenter</span>
           </h2>
         </div>
 

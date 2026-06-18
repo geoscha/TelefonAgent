@@ -40,7 +40,7 @@ export const DEMO_USE_CASES: DemoUseCase[] = [
   {
     id: "service",
     label: "Kundenservice",
-    voice: "male-ch",
+    voice: "female-de",
     scenario:
       "Sie beantworten Mieteranfragen zu Miete, Nebenkosten und Hausordnung — klar, geduldig und lösungsorientiert.",
   },
@@ -54,7 +54,7 @@ export const DEMO_USE_CASES: DemoUseCase[] = [
   {
     id: "survey",
     label: "Umfrage",
-    voice: "male-ch",
+    voice: "female-de",
     scenario:
       "Sie führen eine kurze Zufriedenheitsumfrage zu Service und Reaktionszeit — freundlich und prägnant.",
   },
@@ -66,5 +66,5 @@ export function getDemoUseCase(id: string): DemoUseCase {
 
 export function buildDemoOutboundGreeting(name: string, useCase: DemoUseCase): string {
   const salutation = name.trim() ? `Guten Tag ${name.trim()}` : "Guten Tag";
-  return `${salutation}, hier ist Cura — Ihr KI-Telefonagent. Sie haben eine Live-Demo im Bereich «${useCase.label}» angefordert. Haben Sie kurz Zeit? Ich zeige Ihnen, wie natürlich unsere Gespräche klingen.`;
+  return `${salutation}, hier ist Lea von Cura. Schön, dass Sie unsere Live-Demo ausprobieren — Sie haben «${useCase.label}» gewählt. Haben Sie kurz Zeit? Ich zeige Ihnen, wie angenehm unsere Gespräche klingen.`;
 }

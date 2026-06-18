@@ -1,7 +1,9 @@
 "use client";
 
-import { G2RatingBadge } from "@/components/landing/G2RatingBadge";
-import { LIVE_DEMO_SECTION_ID } from "@/components/landing/landing-layout";
+import {
+  LANDING_DISPLAY_HEADLINE_CLASS,
+  LIVE_DEMO_SECTION_ID,
+} from "@/components/landing/landing-layout";
 
 function scrollToLiveDemo() {
   document.getElementById(LIVE_DEMO_SECTION_ID)?.scrollIntoView({
@@ -19,7 +21,7 @@ export function RetellHero() {
             <p className="landing-hero-eyebrow mb-[60px] text-white">
               #1 KI-Telefonagent-Plattform für automatisierte Anrufe
             </p>
-            <h1 className="font-retell-display w-full text-[clamp(54px,6.25vw,120px)] font-normal leading-[0.88] tracking-[-0.02em] text-white">
+              <h1 className={LANDING_DISPLAY_HEADLINE_CLASS}>
               <span className="block">Ihrem KI-</span>
               <span className="block">Callcenter</span>
               <span className="block">der</span>
@@ -28,8 +30,7 @@ export function RetellHero() {
           </div>
 
           <div className="flex flex-col items-start justify-between gap-8 lg:flex-row lg:items-end">
-            <div className="flex max-w-[340px] flex-col gap-3">
-              <G2RatingBadge />
+            <div className="max-w-[340px]">
               <p className="landing-hero-body text-white/90">
                 Erstellen, einsetzen und verwalten Sie KI-Telefonagenten der
                 nächsten Generation — natürlich klingend, aufgabenorientiert

@@ -1,3 +1,5 @@
+import { LandingFooter } from "@/components/landing/LandingFooter";
+import { LandingSiteFooter } from "@/components/landing/LandingSiteFooter";
 import { LiveDemoSection } from "@/components/landing/LiveDemoSection";
 import { RetellHero } from "@/components/landing/RetellHero";
 import { RetellNav } from "@/components/landing/RetellNav";
@@ -15,6 +17,8 @@ export function RetellLanding() {
           <RetellHero />
           <WasIstCura />
           <LiveDemoSection />
+          <LandingFooter />
+          <LandingSiteFooter />
         </main>
       </div>
     </div>

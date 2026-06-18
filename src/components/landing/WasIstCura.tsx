@@ -20,8 +20,7 @@ export function WasIstCura() {
   return (
     <section className="pt-2.5 sm:pt-3">
       <div className={LANDING_CONTENT_CLASS}>
-        <div className="landing-panel px-5 py-10 sm:px-8 sm:py-12 lg:px-10 lg:py-14">
-        <div className="mb-8 lg:mb-10">
+        <div className="pb-2 pt-6 sm:pt-8">
           <p className="landing-eyebrow">Überblick</p>
           <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-10">
             <h2 className="landing-title">Was ist Cura?</h2>
@@ -33,7 +32,7 @@ export function WasIstCura() {
         </div>
 
         <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-3">
-          <article className="landing-card flex min-h-[300px] flex-col p-5 sm:min-h-[320px]">
+          <article className="landing-card flex min-h-[300px] flex-col p-6 sm:min-h-[320px] sm:p-8">
             <p className="landing-card-label text-[#0E121B]">Andere Lösung</p>
             <h3 className="landing-card-title mt-5 text-[#0E121B]">
               Klassisches IVR
@@ -44,7 +43,7 @@ export function WasIstCura() {
             </p>
           </article>
 
-          <article className="landing-card flex min-h-[300px] flex-col p-5 sm:min-h-[320px]">
+          <article className="landing-card flex min-h-[300px] flex-col p-6 sm:min-h-[320px] sm:p-8">
             <p className="landing-card-label text-[#0E121B]">Andere Lösung</p>
             <h3 className="landing-card-title mt-5 text-[#0E121B]">
               Basis-Sprachbot
@@ -60,7 +59,7 @@ export function WasIstCura() {
             </ul>
           </article>
 
-          <article className="landing-card-dark flex min-h-[300px] flex-col p-5 sm:col-span-2 sm:min-h-[320px] lg:col-span-1">
+          <article className="landing-card-dark flex min-h-[300px] flex-col p-6 sm:col-span-2 sm:min-h-[320px] sm:p-8 lg:col-span-1">
             <p className="landing-card-label text-white">Unsere Lösung</p>
             <h3 className="landing-card-title mt-5 text-white">
               Cura KI-Telefonagent
@@ -77,7 +76,6 @@ export function WasIstCura() {
               ))}
             </ul>
           </article>
-        </div>
         </div>
       </div>
     </section>

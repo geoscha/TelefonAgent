@@ -1,22 +1,21 @@
 import "server-only";
 
-import { buildDemoSystemPrompt } from "@/lib/demo/responses";
+import {
+  buildDemoOutboundSystemPrompt,
+} from "@/lib/demo/demo-agent-config";
+import { ensureDemoCallTarget } from "@/lib/demo/ensure-demo-agent";
 import {
   buildDemoOutboundGreeting,
   getDemoUseCase,
   type DemoUseCaseId,
 } from "@/lib/demo/use-cases";
-import { getDemoVoicePreset, type DemoVoicePresetId } from "@/lib/demo/voices";
-import { resolveDemoVoiceId } from "@/lib/demo/voices-server";
+import { resolvePleasantDemoVoiceId } from "@/lib/demo/pleasant-voice";
+import type { DemoVoicePresetId } from "@/lib/demo/voices";
 import {
   describeElevenLabsError,
   hasApiKey,
 } from "@/lib/elevenlabs/client";
-import {
-  configuredPoolNumbers,
-  listWorkspacePhones,
-  normalizePhoneNumber,
-} from "@/lib/elevenlabs/phone";
+import { normalizePhoneNumber } from "@/lib/elevenlabs/phone";
 
 export interface DemoCallbackInput {
   name: string;
@@ -29,43 +28,6 @@ export interface DemoCallbackResult {
   ok: boolean;
   message: string;
   conversationId?: string | null;
-}
-
-async function resolveDemoCallTarget(): Promise<{
-  agentId: string;
-  agentPhoneNumberId: string;
-}> {
-  const agentId = process.env.DEMO_AGENT_ID?.trim();
-  const agentPhoneNumberId = process.env.DEMO_AGENT_PHONE_NUMBER_ID?.trim();
-
-  if (agentId && agentPhoneNumberId) {
-    return { agentId, agentPhoneNumberId };
-  }
-
-  const phones = await listWorkspacePhones();
-  const pool = configuredPoolNumbers();
-
-  const match =
-    phones.find((p) => pool.includes(p.phoneNumber) && p.assignedAgentId) ??
-    phones.find((p) => p.assignedAgentId);
-
-  if (match?.assignedAgentId) {
-    return {
-      agentId: match.assignedAgentId,
-      agentPhoneNumberId: match.phoneNumberId,
-    };
-  }
-
-  if (agentId) {
-    const phone = phones[0];
-    if (phone) {
-      return { agentId, agentPhoneNumberId: phone.phoneNumberId };
-    }
-  }
-
-  throw new Error(
-    "Demo-Anruf nicht konfiguriert. Bitte DEMO_AGENT_ID und DEMO_AGENT_PHONE_NUMBER_ID in .env.local setzen."
-  );
 }
 
 export async function initiateDemoCallback(
@@ -82,7 +44,6 @@ export async function initiateDemoCallback(
   const name = input.name.trim();
   const toNumber = normalizePhoneNumber(input.phone.trim());
   const useCase = getDemoUseCase(input.useCaseId);
-  const voicePreset = getDemoVoicePreset(input.voice ?? useCase.voice);
 
   if (!name) {
     return { ok: false, message: "Bitte geben Sie Ihren Namen ein." };
@@ -96,14 +57,13 @@ export async function initiateDemoCallback(
   }
 
   try {
-    const { agentId, agentPhoneNumberId } = await resolveDemoCallTarget();
-    const voiceId = await resolveDemoVoiceId(voicePreset.id, process.env.ELEVENLABS_API_KEY!);
+    const { agentId, agentPhoneNumberId } = await ensureDemoCallTarget();
+    const voiceId = await resolvePleasantDemoVoiceId();
     const greeting = buildDemoOutboundGreeting(name, useCase);
-    const systemPrompt = `${buildDemoSystemPrompt(voicePreset.language)}
-
-# Demo-Szenario
-${useCase.scenario}
-Der Anrufer heisst ${name}. Bleiben Sie in 1–3 Sätzen pro Antwort. Beenden Sie höflich nach ca. 2 Minuten und laden Sie zum kostenlosen Test ein.`;
+    const systemPrompt = buildDemoOutboundSystemPrompt({
+      name,
+      scenario: useCase.scenario,
+    });
 
     const apiKey = process.env.ELEVENLABS_API_KEY!;
     const res = await fetch(
@@ -122,12 +82,16 @@ Der Anrufer heisst ${name}. Bleiben Sie in 1–3 Sätzen pro Antwort. Beenden Si
             conversation_config_override: {
               agent: {
                 first_message: greeting,
+                language: "de",
                 prompt: {
                   prompt: systemPrompt,
                 },
               },
               tts: {
                 voice_id: voiceId,
+                speed: 0.95,
+                stability: 0.55,
+                similarity_boost: 0.75,
               },
             },
           },
@@ -149,24 +113,26 @@ Der Anrufer heisst ${name}. Bleiben Sie in 1–3 Sätzen pro Antwort. Beenden Si
       const detail =
         typeof data?.detail === "string"
           ? data.detail
-          : typeof data?.message === "string"
-            ? data.message
-            : null;
+          : Array.isArray(data?.detail)
+            ? String((data.detail as { msg?: string }[])[0]?.msg ?? "")
+            : typeof data?.message === "string"
+              ? data.message
+              : null;
       return {
         ok: false,
         message:
-          detail ??
+          detail ||
           "Der Anruf konnte nicht gestartet werden. Bitte Nummer prüfen und erneut versuchen.",
       };
     }
 
     return {
       ok: true,
-      message: "Anruf wird verbunden — bitte nehmen Sie Ihr Telefon entgegen.",
+      message: "Lea ruft Sie gleich an — bitte nehmen Sie Ihr Telefon entgegen.",
       conversationId: data.conversation_id,
     };
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Demo-Anruf nicht konfiguriert")) {
+    if (error instanceof Error) {
       return { ok: false, message: error.message };
     }
 
