@@ -22,7 +22,7 @@ export function openCommandPalette() {
 }
 
 const navItems = [
-  { href: "/", label: "Anrufe", icon: Phone },
+  { href: "/anrufe", label: "Anrufe", icon: Phone },
   { href: "/telefonagent", label: "Telefonagent", icon: Bot },
   { href: "/einstellungen", label: "Profil", icon: Settings },
 ];

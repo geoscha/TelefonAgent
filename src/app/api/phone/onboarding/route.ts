@@ -19,7 +19,7 @@ export async function GET() {
     settings: state.settings,
     capabilities: {
       hasApiKey: hasApiKey(),
-      enrichmentEnabled: isEnrichmentEnabled(),
+      enrichmentEnabled: await isEnrichmentEnabled(),
       forwardingNumber: settings.curaForwardingNumber ?? null,
       defaultSystemPrompt: buildSystemPrompt(
         settings.agentName || "Cura Telefonagent"

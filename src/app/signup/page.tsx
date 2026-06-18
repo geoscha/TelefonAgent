@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { BrandGradient } from "@/components/brand/BrandGradient";
-import { CuraLogo } from "@/components/brand/CuraLogo";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  AuthField,
+  AuthFrame,
+  authButtonClass,
+  authInputClass,
+  authLinkClass,
+} from "@/components/landing/AuthFrame";
 import { createClient } from "@/lib/supabase/client";
 
 export default function SignupPage() {
@@ -22,7 +24,7 @@ export default function SignupPage() {
     e.preventDefault();
     setError(null);
     if (password.length < 6) {
-      setError("Das Passwort muss mindestens 6 Zeichen lang sein.");
+      setError("Passwort mindestens 6 Zeichen.");
       return;
     }
     setLoading(true);
@@ -35,7 +37,7 @@ export default function SignupPage() {
       const data = (await res.json()) as { ok?: boolean; error?: string };
 
       if (!res.ok || !data.ok) {
-        setError(data.error ?? "Registrierung fehlgeschlagen. Bitte erneut versuchen.");
+        setError(data.error ?? "Registrierung fehlgeschlagen.");
         return;
       }
 
@@ -45,9 +47,7 @@ export default function SignupPage() {
         password,
       });
       if (signInError) {
-        setError(
-          "Konto erstellt, Anmeldung fehlgeschlagen. Bitte melden Sie sich unter «Anmelden» an."
-        );
+        setError("Konto erstellt. Bitte anmelden.");
         return;
       }
 
@@ -55,83 +55,66 @@ export default function SignupPage() {
       await fetch("/api/provision", { method: "POST" }).catch(() => {});
       window.location.assign("/telefonagent");
     } catch {
-      setError("Registrierung fehlgeschlagen. Bitte erneut versuchen.");
+      setError("Registrierung fehlgeschlagen.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-6 py-12">
-      <BrandGradient variant="warm" blur="medium" className="opacity-90" />
-
-      <div className="relative z-10 w-full max-w-[420px]">
-        <div className="mb-12 flex flex-col items-center text-center">
-          <CuraLogo mode="contextual" theme="light" size="lg" showMark />
-          <p className="mt-4 max-w-xs text-body text-white/80">
-            KI-Telefonagent für Schweizer Immobilienverwaltungen
+    <AuthFrame
+      title="Registrieren"
+      footer={
+        <p className="text-center text-[13px] text-white/60">
+          Bereits ein Konto?{" "}
+          <Link href="/login" className={authLinkClass}>
+            Anmelden
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <AuthField label="Name">
+          <input
+            id="name"
+            autoComplete="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={authInputClass}
+            required
+          />
+        </AuthField>
+        <AuthField label="E-Mail">
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={authInputClass}
+            required
+          />
+        </AuthField>
+        <AuthField label="Passwort">
+          <input
+            id="password"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={authInputClass}
+            required
+          />
+        </AuthField>
+        {error && (
+          <p className="text-[13px] text-red-200" role="alert">
+            {error}
           </p>
-        </div>
-
-        <div className="rounded-card border border-white/25 bg-surface/95 p-8 backdrop-blur-sm">
-          <h1 className="font-sans font-semibold text-[28px] text-navy">
-            Konto erstellen
-          </h1>
-          <p className="mt-2 text-body text-text-muted">
-            Registrieren Sie sich, um Ihren Telefonagenten einzurichten.
-          </p>
-
-          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                placeholder="Vor- und Nachname"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">E-Mail</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="verwaltung@firma.ch"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Passwort</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Mindestens 6 Zeichen"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            {error && (
-              <p className="text-caption text-red-600" role="alert">
-                {error}
-              </p>
-            )}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Konto wird erstellt…" : "Registrieren"}
-            </Button>
-          </form>
-
-          <p className="mt-6 text-center text-caption text-text-muted">
-            Bereits ein Konto?{" "}
-            <Link href="/login" className="text-accent hover:underline">
-              Anmelden
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
+        )}
+        <button type="submit" disabled={loading} className={authButtonClass}>
+          {loading ? "Erstellen…" : "Konto erstellen"}
+        </button>
+      </form>
+    </AuthFrame>
   );
 }

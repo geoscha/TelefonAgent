@@ -2,10 +2,6 @@
 
 import { Toaster } from "sonner";
 
-/**
- * Brand-styled toaster. Uses Cura tokens via CSS vars so success/error/info
- * toasts read as part of the product, not default sonner chrome.
- */
 export function BrandToaster() {
   return (
     <Toaster

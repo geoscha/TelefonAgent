@@ -58,6 +58,7 @@ interface CustomerDetail {
     type: string;
     status: string;
     createdAt: string;
+    payload?: Record<string, unknown>;
   }[];
 }
 
@@ -367,13 +368,23 @@ export default function AdminCustomerDetailPage() {
             {customer.requests.map((r) => (
               <div
                 key={r.id}
-                className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0"
+                className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between"
               >
-                <p className="text-body">{requestTypeLabel(r.type)}</p>
-                <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-body font-medium text-navy">
+                    {requestTypeLabel(r.type)}
+                  </p>
+                  {r.type === "support" &&
+                    typeof r.payload?.message === "string" && (
+                      <p className="mt-1 text-body text-text-muted">
+                        {r.payload.message}
+                      </p>
+                    )}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
                   <Badge>{STATUS_LABELS[r.status as keyof typeof STATUS_LABELS] ?? r.status}</Badge>
                   <span className="text-caption text-text-muted">
-                    {new Date(r.createdAt).toLocaleDateString("de-CH")}
+                    {new Date(r.createdAt).toLocaleString("de-CH")}
                   </span>
                 </div>
               </div>

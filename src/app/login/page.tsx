@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { BrandGradient } from "@/components/brand/BrandGradient";
-import { CuraLogo } from "@/components/brand/CuraLogo";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  AuthField,
+  AuthFrame,
+  authButtonClass,
+  authButtonOutlineClass,
+  authInputClass,
+  authLinkClass,
+} from "@/components/landing/AuthFrame";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -37,10 +40,10 @@ export default function LoginPage() {
         return;
       }
       await fetch("/api/provision", { method: "POST" }).catch(() => {});
-      router.push("/");
+      router.push("/anrufe");
       router.refresh();
     } catch {
-      setError("Anmeldung fehlgeschlagen. Bitte erneut versuchen.");
+      setError("Anmeldung fehlgeschlagen.");
     } finally {
       setLoading(false);
     }
@@ -71,119 +74,101 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-6 py-12">
-      <BrandGradient variant="warm" blur="medium" className="opacity-90" />
-
-      <div className="relative z-10 w-full max-w-[420px]">
-        <div className="mb-12 flex flex-col items-center text-center">
-          {/* Contextual light variant on gradient — not difference (cleaner on warm mesh) */}
-          <CuraLogo mode="contextual" theme="light" size="lg" showMark />
-          <p className="mt-4 max-w-xs text-body text-white/80">
-            KI-Telefonagent für Schweizer Immobilienverwaltungen
+    <AuthFrame
+      title="Anmelden"
+      footer={
+        <p className="text-center text-[13px] text-white/60">
+          Noch kein Konto?{" "}
+          <Link href="/signup" className={authLinkClass}>
+            Registrieren
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <AuthField label="E-Mail">
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={authInputClass}
+            required
+          />
+        </AuthField>
+        <AuthField
+          label="Passwort"
+          action={
+            <Link href="/passwort-vergessen" className={authLinkClass}>
+              Vergessen?
+            </Link>
+          }
+        >
+          <input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={authInputClass}
+            required
+          />
+        </AuthField>
+        {error && (
+          <p className="text-[13px] text-red-200" role="alert">
+            {error}
           </p>
-        </div>
+        )}
+        <button type="submit" disabled={loading} className={authButtonClass}>
+          {loading ? "Anmelden…" : "Anmelden"}
+        </button>
+      </form>
 
-        <div className="rounded-card border border-white/25 bg-surface/95 p-8 backdrop-blur-sm">
-          <h1 className="font-sans font-semibold text-[28px] text-navy">Anmelden</h1>
-          <p className="mt-2 text-body text-text-muted">
-            Melden Sie sich an, um Ihren Telefonagenten zu verwalten.
-          </p>
-
-          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="email">E-Mail</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="verwaltung@firma.ch"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
+      <div className="mt-6 border-t border-white/15 pt-5">
+        <button
+          type="button"
+          onClick={() => setShowAdmin((v) => !v)}
+          className="w-full text-center text-[13px] text-white/55 hover:text-white/80"
+        >
+          {showAdmin ? "Admin ausblenden" : "Admin"}
+        </button>
+        {showAdmin && (
+          <form onSubmit={handleAdminSubmit} className="mt-4 space-y-3">
+            <AuthField label="Benutzername">
+              <input
+                id="admin-user"
+                autoComplete="username"
+                value={adminUser}
+                onChange={(e) => setAdminUser(e.target.value)}
+                className={authInputClass}
               />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Passwort</Label>
-                <Link
-                  href="/passwort-vergessen"
-                  className="text-caption text-accent hover:underline"
-                >
-                  Passwort vergessen?
-                </Link>
-              </div>
-              <Input
-                id="password"
+            </AuthField>
+            <AuthField label="Code">
+              <input
+                id="admin-code"
                 type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
+                autoComplete="current-password"
+                value={adminCode}
+                onChange={(e) => setAdminCode(e.target.value)}
+                className={authInputClass}
               />
-            </div>
-            {error && (
-              <p className="text-caption text-red-600" role="alert">
-                {error}
+            </AuthField>
+            {adminError && (
+              <p className="text-[13px] text-red-200" role="alert">
+                {adminError}
               </p>
             )}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Anmelden…" : "Anmelden"}
-            </Button>
-          </form>
-
-          <p className="mt-6 text-center text-caption text-text-muted">
-            Noch kein Konto?{" "}
-            <Link href="/signup" className="text-accent hover:underline">
-              Jetzt registrieren
-            </Link>
-          </p>
-
-          <div className="mt-8 border-t border-stroke pt-6">
             <button
-              type="button"
-              onClick={() => setShowAdmin((v) => !v)}
-              className="w-full text-center text-caption text-text-muted hover:text-text"
+              type="submit"
+              disabled={adminLoading}
+              className={authButtonOutlineClass}
             >
-              {showAdmin ? "Admin-Zugang ausblenden" : "Admin-Zugang"}
+              {adminLoading ? "Anmelden…" : "Admin anmelden"}
             </button>
-            {showAdmin && (
-              <form onSubmit={handleAdminSubmit} className="mt-4 space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="admin-user">Benutzername</Label>
-                  <Input
-                    id="admin-user"
-                    autoComplete="username"
-                    value={adminUser}
-                    onChange={(e) => setAdminUser(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="admin-code">Code</Label>
-                  <Input
-                    id="admin-code"
-                    type="password"
-                    autoComplete="current-password"
-                    value={adminCode}
-                    onChange={(e) => setAdminCode(e.target.value)}
-                  />
-                </div>
-                {adminError && (
-                  <p className="text-caption text-red-600" role="alert">
-                    {adminError}
-                  </p>
-                )}
-                <Button
-                  type="submit"
-                  variant="outline"
-                  className="w-full"
-                  disabled={adminLoading}
-                >
-                  {adminLoading ? "Anmelden…" : "Als Admin anmelden"}
-                </Button>
-              </form>
-            )}
-          </div>
-        </div>
+          </form>
+        )}
       </div>
-    </div>
+    </AuthFrame>
   );
 }

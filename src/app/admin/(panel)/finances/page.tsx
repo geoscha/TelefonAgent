@@ -16,6 +16,7 @@ interface FinanceTimePoint {
   profitChf: number;
   twilioCostChf: number;
   elevenLabsCostChf: number;
+  openAiCostChf: number;
   calls: number;
   newSignups: number;
   totalSignups: number;
@@ -33,6 +34,8 @@ interface FinanceData {
   integrations: {
     twilioConfigured: boolean;
     elevenLabsConfigured: boolean;
+    stripeConfigured: boolean;
+    openAiConfigured: boolean;
   };
   kpis: {
     mrrChf: number;
@@ -43,6 +46,7 @@ interface FinanceData {
     totalLoss12mChf: number;
     twilioCostChf: number;
     elevenLabsCostChf: number;
+    openAiCostChf: number;
     totalSignups: number;
     totalCustomersEver: number;
     deletedCustomers: number;
@@ -60,6 +64,8 @@ interface FinanceData {
     costPerCallMinuteMonthChf: number | null;
     twilio: ProviderStatus;
     elevenLabs: ProviderStatus;
+    openAi: ProviderStatus;
+    stripe: ProviderStatus;
     balances: {
       twilioBalanceChf?: number;
       twilioBalanceUsd?: number;
@@ -72,6 +78,10 @@ interface FinanceData {
       elevenLabsTier?: string;
       elevenLabsSource: ProviderStatus["source"];
       elevenLabsError?: string;
+      openAiSpendUsd?: number;
+      openAiSpendChf?: number;
+      openAiSource: ProviderStatus["source"];
+      openAiError?: string;
     };
   };
   series: FinanceTimePoint[];
@@ -176,6 +186,22 @@ function elevenLabsCreditsLabel(k: FinanceData["kpis"]): { value: string; hint?:
   };
 }
 
+function openAiSpendLabel(k: FinanceData["kpis"]): { value: string; hint?: string } {
+  const b = k.balances;
+  if (b.openAiSource === "unconfigured") {
+    return { value: "—", hint: "KI-Key in Einstellungen" };
+  }
+  if (b.openAiError) return { value: "—", hint: b.openAiError };
+  const usd =
+    b.openAiSpendUsd != null
+      ? `$${b.openAiSpendUsd.toLocaleString("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : null;
+  return {
+    value: chf(b.openAiSpendChf ?? 0, 2),
+    hint: usd ? `${usd} · Monat` : "Monat",
+  };
+}
+
 function sourceLabel(source: ProviderStatus["source"]): string {
   if (source === "api") return "API";
   if (source === "estimate") return "Schätzung";
@@ -272,6 +298,12 @@ export default function AdminFinancesPage() {
             values: s.map((p) => p.elevenLabsCostChf),
           },
           {
+            key: "openai",
+            label: "OpenAI",
+            color: "#10b981",
+            values: s.map((p) => p.openAiCostChf),
+          },
+          {
             key: "total",
             label: "Gesamt",
             color: "var(--accent)",
@@ -300,6 +332,7 @@ export default function AdminFinancesPage() {
     : null;
   const twilioBal = k ? twilioBalanceLabel(k) : null;
   const elCredits = k ? elevenLabsCreditsLabel(k) : null;
+  const openAiSpend = k ? openAiSpendLabel(k) : null;
 
   return (
     <div className="space-y-6">
@@ -307,7 +340,9 @@ export default function AdminFinancesPage() {
         <h1>Finanzen</h1>
         {data &&
           (!data.integrations.twilioConfigured ||
-            !data.integrations.elevenLabsConfigured) && (
+            !data.integrations.elevenLabsConfigured ||
+            !data.integrations.stripeConfigured ||
+            !data.integrations.openAiConfigured) && (
             <Button asChild variant="outline" size="sm">
               <Link href="/admin/settings">APIs verbinden</Link>
             </Button>
@@ -331,8 +366,8 @@ export default function AdminFinancesPage() {
                     onClick={() => setChartView(v.id)}
                     className={`rounded-full px-3 py-1 text-caption font-medium transition-colors ${
                       chartView === v.id
-                        ? "bg-surface text-navy shadow-sm"
-                        : "text-text-muted hover:text-text"
+                        ? "bg-accent text-white"
+                        : "text-text-muted hover:text-navy"
                     }`}
                   >
                     {v.label}
@@ -363,10 +398,22 @@ export default function AdminFinancesPage() {
           </KpiSection>
 
           <KpiSection title="Gewinn">
-            <Stat label="MRR" value={chf(k.mrrChf)} />
+            <Stat
+              label="MRR"
+              value={chf(k.mrrChf)}
+              hint={sourceLabel(k.stripe.source)}
+            />
             <Stat label="Gewinn (Monat)" value={chf(k.monthlyProfitChf)} />
             <Stat label="Gewinn (12M)" value={chf(k.totalProfit12mChf)} />
-            <Stat label="Umsatz (12M)" value={chf(k.totalRevenue12mChf)} />
+            <Stat
+              label="Umsatz (12M)"
+              value={chf(k.totalRevenue12mChf)}
+              hint={
+                k.stripe.source === "unconfigured"
+                  ? "Stripe nicht verbunden"
+                  : sourceLabel(k.stripe.source)
+              }
+            />
             <Stat label="User Value" value={ratio(k.userValueRatio)} />
             <Stat label="Umsatz/Kunde" value={chf(k.userValueChf, 2)} />
           </KpiSection>
@@ -391,6 +438,11 @@ export default function AdminFinancesPage() {
               hint={elCredits?.hint}
             />
             <Stat
+              label="OpenAI Spend"
+              value={openAiSpend?.value ?? "—"}
+              hint={openAiSpend?.hint}
+            />
+            <Stat
               label="Twilio (Monat)"
               value={chf(k.twilioCostChf, 2)}
               hint={sourceLabel(k.twilio.source)}
@@ -399,6 +451,11 @@ export default function AdminFinancesPage() {
               label="ElevenLabs (Monat)"
               value={chf(k.elevenLabsCostChf, 2)}
               hint={sourceLabel(k.elevenLabs.source)}
+            />
+            <Stat
+              label="OpenAI (Monat)"
+              value={chf(k.openAiCostChf, 2)}
+              hint={sourceLabel(k.openAi.source)}
             />
             <Stat label="Nummern" value={String(k.totalNumbers)} />
             <Stat label="Frei" value={String(k.unusedNumbers)} />

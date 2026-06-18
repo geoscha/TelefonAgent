@@ -27,6 +27,7 @@ yarn-error.log*
 
 # local env files
 .env*.local
+vercel.env
 
 # Cura local file-backed store (settings + call feed)
 /.data

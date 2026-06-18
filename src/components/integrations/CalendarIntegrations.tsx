@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
-  Calendar,
   ExternalLink,
   Loader2,
 } from "lucide-react";
@@ -35,21 +34,18 @@ interface CalStatus {
 
 const META: Record<
   Provider,
-  { name: string; initials: string; description: string }
+  { name: string; description: string }
 > = {
   google: {
     name: "Google Kalender",
-    initials: "G",
     description: "Termine und Besichtigungen direkt in Google Calendar eintragen.",
   },
   microsoft: {
     name: "Microsoft Outlook",
-    initials: "O",
     description: "Termine in Outlook / Microsoft 365 über Microsoft Graph anlegen.",
   },
   apple: {
     name: "Apple Kalender (iCloud)",
-    initials: "A",
     description: "iCloud-Kalender mit einem App-Passwort in Sekunden verbinden.",
   },
 };
@@ -169,49 +165,37 @@ function ProviderCard({
   return (
     <Card>
       <CardContent className="p-5">
-        <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-card bg-navy text-[16px] font-semibold text-white">
-            {meta.initials}
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h3 className="text-h3 text-navy">{meta.name}</h3>
+            <p className="mt-1 text-body text-text-muted">{meta.description}</p>
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="text-h3 text-navy">{meta.name}</h3>
-                <p className="mt-1 text-body text-text-muted">
-                  {meta.description}
-                </p>
-              </div>
-              <StatusBadge connected={status.connected} />
-            </div>
+          <StatusBadge connected={status.connected} />
+        </div>
 
-            {status.connected && status.accountLabel && (
-              <p className="mt-2 text-caption text-text-muted">
-                Verbunden als{" "}
-                <span className="font-medium text-text">
-                  {status.accountLabel}
-                </span>
-              </p>
-            )}
+        {status.connected && status.accountLabel && (
+          <p className="mt-2 text-caption text-text-muted">
+            Verbunden als{" "}
+            <span className="font-medium text-text">{status.accountLabel}</span>
+          </p>
+        )}
 
-            <div className="mt-3">
-              {status.connected ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={onDisconnect}
-                  disabled={busy}
-                >
-                  {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Trennen
-                </Button>
-              ) : (
-                <Button size="sm" onClick={onConnect}>
-                  <Calendar className="mr-2 h-4 w-4 stroke-[1.5]" />
-                  Verbinden
-                </Button>
-              )}
-            </div>
-          </div>
+        <div className="mt-3">
+          {status.connected ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onDisconnect}
+              disabled={busy}
+            >
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Trennen
+            </Button>
+          ) : (
+            <Button size="sm" onClick={onConnect}>
+              Verbinden
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -236,11 +220,8 @@ function StatusBadge({ connected }: { connected: boolean }) {
 /** A compact numbered step row used inside the connect dialog. */
 function GuideStep({ n, children }: { n: number; children: React.ReactNode }) {
   return (
-    <li className="flex gap-3">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-caption font-semibold text-accent">
-        {n}
-      </span>
-      <span className="pt-0.5 text-body text-text">{children}</span>
+    <li className="text-body text-text">
+      <span className="font-medium text-navy">{n}.</span> {children}
     </li>
   );
 }

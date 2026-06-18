@@ -30,9 +30,11 @@ export async function PATCH(req: NextRequest) {
     twilioAccountSid?: string;
     twilioAuthToken?: string;
     elevenLabsApiKey?: string;
+    stripeSecretKey?: string;
     usdToChfRate?: number;
     clearTwilio?: boolean;
     clearElevenLabs?: boolean;
+    clearStripe?: boolean;
   };
   try {
     body = await req.json();

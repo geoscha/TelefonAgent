@@ -165,10 +165,10 @@ export default function AdminNumbersPage() {
             key={f}
             type="button"
             onClick={() => setFilter(f)}
-            className={`rounded-full px-3 py-1.5 text-caption font-medium ${
+            className={`rounded-full px-3 py-1.5 text-caption font-medium transition-colors ${
               filter === f
                 ? "bg-accent text-white"
-                : "bg-surface text-text-muted"
+                : "border border-stroke bg-bg text-text-muted hover:text-navy"
             }`}
           >
             {f === "all" ? "Alle" : f === "frei" ? "Frei" : "Belegt"}

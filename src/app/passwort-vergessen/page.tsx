@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { BrandGradient } from "@/components/brand/BrandGradient";
-import { CuraLogo } from "@/components/brand/CuraLogo";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  AuthField,
+  AuthFrame,
+  authButtonClass,
+  authButtonOutlineClass,
+  authInputClass,
+  authLinkClass,
+} from "@/components/landing/AuthFrame";
 import { getSiteUrl } from "@/lib/auth/site-url";
 import { createClient } from "@/lib/supabase/client";
 
@@ -27,76 +30,60 @@ export default function PasswortVergessenPage() {
         redirectTo,
       });
       if (error) {
-        setError("Link konnte nicht gesendet werden. Bitte erneut versuchen.");
+        setError("Link konnte nicht gesendet werden.");
         return;
       }
       setSent(true);
     } catch {
-      setError("Link konnte nicht gesendet werden. Bitte erneut versuchen.");
+      setError("Link konnte nicht gesendet werden.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-6 py-12">
-      <BrandGradient variant="warm" blur="medium" className="opacity-90" />
-
-      <div className="relative z-10 w-full max-w-[420px]">
-        <div className="mb-12 flex flex-col items-center text-center">
-          <CuraLogo mode="contextual" theme="light" size="lg" showMark />
-        </div>
-
-        <div className="rounded-card border border-white/25 bg-surface/95 p-8 backdrop-blur-sm">
-          <h1 className="font-sans font-semibold text-[28px] text-navy">
-            Passwort vergessen
-          </h1>
-          <p className="mt-2 text-body text-text-muted">
-            Wir senden Ihnen einen Link zum Zurücksetzen Ihres Passworts.
+    <AuthFrame
+      title="Passwort vergessen"
+      footer={
+        <p className="text-center text-[13px] text-white/60">
+          <Link href="/login" className={authLinkClass}>
+            Zur Anmeldung
+          </Link>
+        </p>
+      }
+    >
+      {sent ? (
+        <div className="space-y-4">
+          <p className="text-[14px] leading-relaxed text-white/80" role="status">
+            Falls ein Konto mit {email} existiert, erhalten Sie eine E-Mail.
           </p>
-
-          {sent ? (
-            <div className="mt-8 space-y-4">
-              <p className="text-body text-text" role="status">
-                Falls ein Konto mit{" "}
-                <span className="font-medium">{email}</span> existiert, haben
-                wir Ihnen eine E-Mail mit weiteren Schritten gesendet.
-              </p>
-              <Button asChild variant="outline" className="w-full">
-                <Link href="/login">Zurück zur Anmeldung</Link>
-              </Button>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="email">E-Mail</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="verwaltung@firma.ch"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-              {error && (
-                <p className="text-caption text-red-600" role="alert">
-                  {error}
-                </p>
-              )}
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Wird gesendet…" : "Link senden"}
-              </Button>
-            </form>
+          <Link href="/login" className={authButtonOutlineClass}>
+            Zur Anmeldung
+          </Link>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <AuthField label="E-Mail">
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={authInputClass}
+              required
+            />
+          </AuthField>
+          {error && (
+            <p className="text-[13px] text-red-200" role="alert">
+              {error}
+            </p>
           )}
-
-          <p className="mt-6 text-center text-caption text-text-muted">
-            <Link href="/login" className="text-accent hover:underline">
-              Zurück zur Anmeldung
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
+          <button type="submit" disabled={loading} className={authButtonClass}>
+            {loading ? "Senden…" : "Link senden"}
+          </button>
+        </form>
+      )}
+    </AuthFrame>
   );
 }

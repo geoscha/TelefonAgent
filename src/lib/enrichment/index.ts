@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getEnrichmentConfig } from "@/lib/admin/enrichment-config";
 import type {
   CallCategory,
   SuggestedAction,
@@ -39,8 +40,9 @@ const SUGGESTION_TYPES: SuggestionType[] = [
   "Eskalation",
 ];
 
-export function isEnrichmentEnabled(): boolean {
-  return Boolean(process.env.ENRICHMENT_API_KEY);
+export async function isEnrichmentEnabled(): Promise<boolean> {
+  const config = await getEnrichmentConfig();
+  return Boolean(config.apiKey);
 }
 
 /**
@@ -51,7 +53,7 @@ export function isEnrichmentEnabled(): boolean {
 export async function enrichCall(
   input: EnrichmentInput
 ): Promise<EnrichmentResult> {
-  if (isEnrichmentEnabled()) {
+  if (await isEnrichmentEnabled()) {
     try {
       return await runLlmEnrichment(input);
     } catch (error) {
@@ -64,10 +66,13 @@ export async function enrichCall(
 async function runLlmEnrichment(
   input: EnrichmentInput
 ): Promise<EnrichmentResult> {
-  const baseUrl = (
-    process.env.ENRICHMENT_BASE_URL ?? "https://api.openai.com/v1"
-  ).replace(/\/$/, "");
-  const model = process.env.ENRICHMENT_MODEL ?? "gpt-4o-mini";
+  const config = await getEnrichmentConfig();
+  if (!config.apiKey) {
+    throw new Error("Enrichment API key missing");
+  }
+
+  const baseUrl = config.baseUrl;
+  const model = config.model;
 
   const system = `Du bist ein Analyse-Assistent für eine Schweizer Liegenschaftsverwaltung. Lies das Telefon-Transkript und gib AUSSCHLIESSLICH gültiges JSON zurück. ALLE Textfelder müssen auf DEUTSCH sein, niemals Englisch.
 {
@@ -86,7 +91,7 @@ Notfälle (Feuer, Gas, grosser Wasseraustritt, Personengefährdung) sind immer "
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.ENRICHMENT_API_KEY}`,
+      Authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify({
       model,

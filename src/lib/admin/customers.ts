@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { loadOpenSupportByUserIds } from "@/lib/support/messages";
 import {
   getSettingsForUser,
   updateSettingsForUser,
@@ -21,6 +22,8 @@ export interface AdminCustomerSummary {
   onboardingPhase?: string;
   callCount: number;
   lastCallAt?: string;
+  openSupportCount?: number;
+  lastSupportPreview?: string;
 }
 
 export interface AdminCustomerDetail {
@@ -88,6 +91,8 @@ export async function listAdminCustomers(options?: {
     (settingsRows ?? []).map((r) => [r.user_id as string, r])
   );
 
+  const supportByUser = await loadOpenSupportByUserIds(ids);
+
   const callsByUser = new Map<
     string,
     { count: number; lastCallAt?: string; minutes: number }
@@ -108,6 +113,7 @@ export async function listAdminCustomers(options?: {
     const id = p.id as string;
     const settings = settingsByUser.get(id);
     const calls = callsByUser.get(id);
+    const support = supportByUser.get(id);
     return {
       id,
       name: (p.name as string) ?? "",
@@ -119,6 +125,8 @@ export async function listAdminCustomers(options?: {
       onboardingPhase: (settings?.onboarding_phase as string) ?? undefined,
       callCount: calls?.count ?? 0,
       lastCallAt: calls?.lastCallAt,
+      openSupportCount: support?.count ?? 0,
+      lastSupportPreview: support?.preview,
     };
   });
 

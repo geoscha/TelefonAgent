@@ -21,3 +21,21 @@ export interface CallQuotaView {
   periodLabel: string;
   resetsAt?: string;
 }
+
+/** Big stat for welcome / profile banner (minutes or seconds remaining). */
+export function quotaRemainingHighlight(quota: CallQuotaView): {
+  value: string;
+  suffix: string;
+} {
+  const { remainingSeconds } = quota;
+  if (remainingSeconds <= 0) {
+    return { value: "0", suffix: "Min. frei" };
+  }
+  if (remainingSeconds < 60) {
+    return { value: String(remainingSeconds), suffix: "Sek. frei" };
+  }
+  return {
+    value: String(Math.floor(remainingSeconds / 60)),
+    suffix: "Min. frei",
+  };
+}

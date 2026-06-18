@@ -40,6 +40,7 @@ async function twilioGet(
   return fetch(`${TWILIO_BASE}/Accounts/${config.twilioAccountSid}${path}`, {
     headers: { Authorization: `Basic ${twilioAuth(config)}` },
     cache: "no-store",
+    signal: AbortSignal.timeout(6_000),
   });
 }
 

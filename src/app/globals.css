@@ -4,19 +4,19 @@
 
 @layer base {
   :root {
-    --bg: #fbfaf7;
+    --bg: #f3f7fb;
     --surface: #ffffff;
     --text: #14242e;
-    --text-muted: #6a7a82;
-    --accent: #ff6b1a;
+    --text-muted: #5c6d78;
+    --accent: #1a527a;
     --navy: #16323f;
-    --blue-tint: #c9d6dd;
-    --baby-blue: #e8f0f3;
-    --light-blue: #e3ebf3;
+    --blue-tint: #c5d4df;
+    --baby-blue: #e8f0f6;
+    --light-blue: #dfe9f2;
     --steel-blue: #4d7496;
-    --divider: #e6e4de;
-    --stroke: #dcdad3;
-    --ring: #ff6b1a;
+    --divider: #e1e9f0;
+    --stroke: #cfd9e3;
+    --ring: #1a527a;
     --cream: #ffe9d6;
     --gradient-warm: radial-gradient(
         ellipse 85% 70% at 15% 25%,
@@ -48,6 +48,17 @@
         rgba(232, 240, 243, 0.95) 0%,
         transparent 60%
       );
+    --gradient-landing: radial-gradient(
+        120% 120% at 88% 8%,
+        #b9d4ea 0%,
+        rgba(185, 212, 234, 0) 42%
+      ),
+      radial-gradient(
+        90% 90% at 12% 92%,
+        #1a3b5d 0%,
+        rgba(26, 59, 93, 0) 55%
+      ),
+      linear-gradient(135deg, #1a3b5d 0%, #4a7394 48%, #8eb4d4 78%, #c5ddf0 100%);
   }
 
   body {
@@ -120,6 +131,71 @@
     background: var(--gradient-cool);
   }
 
+  .landing-gradient {
+    background: var(--gradient-landing);
+  }
+
+  @keyframes agent-radio-select {
+    0% {
+      transform: scale(0.7);
+    }
+    70% {
+      transform: scale(1.15);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  .animate-agent-radio-select {
+    animation: agent-radio-select 0.2s ease-out;
+  }
+
+  .landing-glass {
+    background: rgba(255, 255, 255, 0.14);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow:
+      0 24px 64px -24px rgba(10, 30, 50, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+
+  .landing-pill {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow:
+      0 8px 32px -12px rgba(10, 30, 50, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    --text: #14242e;
+    --text-muted: #6a7a82;
+    --navy: #16323f;
+    --stroke: rgba(20, 36, 46, 0.1);
+  }
+
+  /* Signed-in app + admin — glass UI on blue gradient */
+  .app-theme {
+    --text: rgba(255, 255, 255, 0.95);
+    --text-muted: rgba(255, 255, 255, 0.62);
+    --surface: rgba(255, 255, 255, 0.12);
+    --stroke: rgba(255, 255, 255, 0.22);
+    --navy: #ffffff;
+    --divider: rgba(255, 255, 255, 0.14);
+    --bg: transparent;
+    --baby-blue: rgba(255, 255, 255, 0.08);
+    --accent: #ffffff;
+    --ring: rgba(255, 255, 255, 0.35);
+    color: var(--text);
+  }
+
+  .app-theme h1,
+  .app-theme h2,
+  .app-theme h3 {
+    color: #ffffff;
+  }
+
   @keyframes pulse-ring {
     0% {
       transform: scale(1);
@@ -136,7 +212,7 @@
   }
 
   .glass-nav {
-    background: rgba(251, 250, 247, 0.72);
+    background: rgba(255, 255, 255, 0.78);
     backdrop-filter: blur(14px) saturate(140%);
     -webkit-backdrop-filter: blur(14px) saturate(140%);
     border-bottom: 1px solid rgba(20, 36, 46, 0.06);
@@ -145,12 +221,12 @@
 
   /* Floating pill navigation — frosted glass with full rounded border */
   .glass-pill {
-    background: rgba(251, 250, 247, 0.7);
+    background: rgba(255, 255, 255, 0.82);
     backdrop-filter: blur(16px) saturate(140%);
     -webkit-backdrop-filter: blur(16px) saturate(140%);
-    border: 1px solid rgba(20, 36, 46, 0.08);
+    border: 1px solid rgba(20, 36, 46, 0.07);
     box-shadow:
-      0 8px 28px -10px rgba(20, 36, 46, 0.16),
+      0 8px 28px -10px rgba(20, 36, 46, 0.12),
       0 1px 2px rgba(20, 36, 46, 0.04);
   }
 

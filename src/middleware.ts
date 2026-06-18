@@ -18,6 +18,7 @@ const PUBLIC_PREFIXES = [
   "/api/agent-tools",
   "/api/admin/login",
   "/api/auth/signup",
+  "/api/demo",
 ];
 
 function isPublic(pathname: string): boolean {
@@ -68,7 +69,13 @@ export async function middleware(req: NextRequest) {
 
   const { response, isAuthed } = await updateSession(req);
 
-  if (isAuthed || isPublic(path)) {
+  if (isAuthed && path === "/") {
+    const dashboardUrl = req.nextUrl.clone();
+    dashboardUrl.pathname = "/anrufe";
+    return NextResponse.redirect(dashboardUrl);
+  }
+
+  if (isAuthed || isPublic(path) || path === "/") {
     return response;
   }
 

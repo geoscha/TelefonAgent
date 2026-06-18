@@ -1,31 +1,30 @@
 interface WelcomeBannerProps {
   name: string;
-  callsToday: number;
+  highlight: string | number;
+  highlightSuffix?: string;
 }
 
-export function WelcomeBanner({ name, callsToday }: WelcomeBannerProps) {
+export function WelcomeBanner({
+  name,
+  highlight,
+  highlightSuffix,
+}: WelcomeBannerProps) {
   return (
-    <section className="relative h-[200px] overflow-hidden rounded-card">
-      {/* Animated replica of brand "Gradient 1" — two drifting layers */}
-      <div aria-hidden className="welcome-gradient absolute inset-0" />
-      <div aria-hidden className="welcome-gradient-overlay absolute inset-0" />
-      {/* Dark scrim (left) for legible white text over the light blue-grey corner */}
-      <div
-        aria-hidden
-        className="absolute inset-0 bg-gradient-to-r from-navy/50 via-navy/15 to-transparent"
-      />
-
-      <div className="relative z-10 flex h-full items-center justify-between px-8 lg:px-10">
-        <p className="font-sans text-[32px] font-normal leading-tight text-white drop-shadow-[0_1px_8px_rgba(20,36,46,0.4)] lg:text-[40px]">
+    <section className="relative h-[160px] overflow-hidden rounded-card">
+      <div aria-hidden className="landing-gradient absolute inset-0" />
+      <div className="relative z-10 flex h-full items-center justify-between gap-6 px-8 lg:px-10">
+        <p className="font-sans text-[28px] font-medium leading-tight text-white lg:text-[34px]">
           Guten Tag, {name}
         </p>
-        <div className="hidden text-right sm:block">
-          <p className="label-caps text-white/80 drop-shadow-[0_1px_4px_rgba(20,36,46,0.35)]">
-            Anrufe heute
+        <div className="shrink-0 text-right">
+          <p className="font-sans text-[48px] font-medium leading-none text-white lg:text-[56px]">
+            {highlight}
           </p>
-          <p className="mt-1 font-sans text-[48px] font-normal leading-none text-white drop-shadow-[0_1px_8px_rgba(20,36,46,0.4)] lg:text-[56px]">
-            {callsToday}
-          </p>
+          {highlightSuffix && (
+            <p className="mt-1 text-[13px] font-medium text-white/75">
+              {highlightSuffix}
+            </p>
+          )}
         </div>
       </div>
     </section>

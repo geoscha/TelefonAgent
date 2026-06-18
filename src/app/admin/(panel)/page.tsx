@@ -147,13 +147,9 @@ export default function AdminDashboardPage() {
     <div className="space-y-6">
       <div>
         <h1>Anfragen</h1>
-        <p className="mt-1 text-text-muted">
-          Freie Nummern werden automatisch vorgeschlagen (älteste Anfrage zuerst).
-          Einfach bestätigen — oder Nummer anpassen.
-        </p>
         {freeCount > 0 && pendingPhoneCount > 0 && (
-          <p className="mt-2 flex items-center gap-1.5 text-caption text-accent">
-            <Sparkles className="h-3.5 w-3.5" />
+          <p className="mt-2 flex items-center gap-1.5 text-caption text-text-muted">
+            <Sparkles className="h-3.5 w-3.5 text-accent" />
             {Math.min(freeCount, pendingPhoneCount)} von {pendingPhoneCount}{" "}
             Anfragen mit freier Nummer belegbar ({freeCount} frei)
           </p>
@@ -232,7 +228,15 @@ export default function AdminDashboardPage() {
                         {r.userEmail || r.userId}
                       </p>
                     </td>
-                    <td className="px-4 py-3">{requestTypeLabel(r.type)}</td>
+                    <td className="px-4 py-3">
+                      <p>{requestTypeLabel(r.type)}</p>
+                      {r.type === "support" &&
+                        typeof r.payload.message === "string" && (
+                          <p className="mt-1 line-clamp-2 text-caption text-text-muted">
+                            {r.payload.message}
+                          </p>
+                        )}
+                    </td>
                     <td className="px-4 py-3">
                       <Badge variant={statusBadgeVariant(r.status)}>
                         {STATUS_LABELS[r.status]}

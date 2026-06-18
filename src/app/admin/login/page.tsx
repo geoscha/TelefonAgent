@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { BrandGradient } from "@/components/brand/BrandGradient";
-import { CuraLogo } from "@/components/brand/CuraLogo";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  AuthField,
+  AuthFrame,
+  authButtonClass,
+  authInputClass,
+  authLinkClass,
+} from "@/components/landing/AuthFrame";
 
 function AdminLoginForm() {
   const router = useRouter();
@@ -44,65 +46,59 @@ function AdminLoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-      <div className="space-y-2">
-        <Label htmlFor="admin-user">Benutzername</Label>
-        <Input
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <AuthField label="Benutzername">
+        <input
           id="admin-user"
           autoComplete="username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
+          className={authInputClass}
           required
         />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="admin-code">Code</Label>
-        <Input
+      </AuthField>
+      <AuthField label="Code">
+        <input
           id="admin-code"
           type="password"
           autoComplete="current-password"
           value={code}
           onChange={(e) => setCode(e.target.value)}
+          className={authInputClass}
           required
         />
-      </div>
+      </AuthField>
       {error && (
-        <p className="text-caption text-red-600" role="alert">
+        <p className="text-[13px] text-red-200" role="alert">
           {error}
         </p>
       )}
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Anmelden…" : "Admin anmelden"}
-      </Button>
+      <button type="submit" disabled={loading} className={authButtonClass}>
+        {loading ? "Anmelden…" : "Anmelden"}
+      </button>
     </form>
   );
 }
 
 export default function AdminLoginPage() {
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-6 py-12">
-      <BrandGradient variant="warm" blur="medium" className="opacity-90" />
-      <div className="relative z-10 w-full max-w-[420px]">
-        <div className="mb-12 flex flex-col items-center text-center">
-          <CuraLogo mode="contextual" theme="light" size="lg" showMark />
-        </div>
-        <div className="rounded-card border border-white/25 bg-surface/95 p-8 backdrop-blur-sm">
-          <h1 className="font-sans font-semibold text-[28px] text-navy">
-            Admin
-          </h1>
-          <p className="mt-2 text-body text-text-muted">
-            Interner Zugang zur Anfragenverwaltung.
-          </p>
-          <Suspense fallback={<p className="mt-8 text-body text-text-muted">Laden…</p>}>
-            <AdminLoginForm />
-          </Suspense>
-          <p className="mt-6 text-center text-caption text-text-muted">
-            <Link href="/login" className="text-accent hover:underline">
-              Zur normalen Anmeldung
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
+    <AuthFrame
+      title="Admin"
+      footer={
+        <p className="text-center text-[13px] text-white/60">
+          <Link href="/login" className={authLinkClass}>
+            Zur Anmeldung
+          </Link>
+        </p>
+      }
+    >
+      <Suspense
+        fallback={
+          <p className="text-[14px] text-white/60">Laden…</p>
+        }
+      >
+        <AdminLoginForm />
+      </Suspense>
+    </AuthFrame>
   );
 }

@@ -11,10 +11,20 @@ import { Label } from "@/components/ui/label";
 interface IntegrationsPublic {
   twilioConfigured: boolean;
   elevenLabsConfigured: boolean;
+  stripeConfigured: boolean;
   twilioAccountSidMasked: string;
   elevenLabsKeyMasked: string;
+  stripeKeyMasked: string;
   usdToChfRate: number;
   elevenLabsFromEnv: boolean;
+}
+
+interface EnrichmentPublic {
+  configured: boolean;
+  apiKeyMasked: string;
+  baseUrl: string;
+  model: string;
+  fromEnv: boolean;
 }
 
 export default function AdminSettingsPage() {
@@ -23,25 +33,40 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingFinance, setSavingFinance] = useState(false);
+  const [savingEnrichment, setSavingEnrichment] = useState(false);
 
   const [integrations, setIntegrations] = useState<IntegrationsPublic | null>(
     null
   );
+  const [enrichment, setEnrichment] = useState<EnrichmentPublic | null>(null);
   const [twilioSid, setTwilioSid] = useState("");
   const [twilioToken, setTwilioToken] = useState("");
   const [elevenLabsKey, setElevenLabsKey] = useState("");
+  const [stripeKey, setStripeKey] = useState("");
   const [usdToChf, setUsdToChf] = useState("0.88");
+  const [enrichmentKey, setEnrichmentKey] = useState("");
+  const [enrichmentBaseUrl, setEnrichmentBaseUrl] = useState(
+    "https://api.openai.com/v1"
+  );
+  const [enrichmentModel, setEnrichmentModel] = useState("gpt-4o-mini");
 
   useEffect(() => {
     Promise.all([
       fetch("/api/admin/config").then((r) => r.json()),
       fetch("/api/admin/finance-integrations").then((r) => r.json()),
+      fetch("/api/admin/enrichment-config").then((r) => r.json()),
     ])
-      .then(([config, finance]) => {
+      .then(([config, finance, enrich]) => {
         if (config.ok && config.username) setUsername(config.username);
         if (finance.ok && finance.integrations) {
           setIntegrations(finance.integrations as IntegrationsPublic);
           setUsdToChf(String(finance.integrations.usdToChfRate ?? 0.88));
+        }
+        if (enrich.ok && enrich.config) {
+          const c = enrich.config as EnrichmentPublic;
+          setEnrichment(c);
+          setEnrichmentBaseUrl(c.baseUrl || "https://api.openai.com/v1");
+          setEnrichmentModel(c.model || "gpt-4o-mini");
         }
       })
       .finally(() => setLoading(false));
@@ -78,6 +103,7 @@ export default function AdminSettingsPage() {
       if (twilioSid.trim()) body.twilioAccountSid = twilioSid.trim();
       if (twilioToken.trim()) body.twilioAuthToken = twilioToken.trim();
       if (elevenLabsKey.trim()) body.elevenLabsApiKey = elevenLabsKey.trim();
+      if (stripeKey.trim()) body.stripeSecretKey = stripeKey.trim();
 
       const res = await fetch("/api/admin/finance-integrations", {
         method: "PATCH",
@@ -90,12 +116,41 @@ export default function AdminSettingsPage() {
         setTwilioSid("");
         setTwilioToken("");
         setElevenLabsKey("");
+        setStripeKey("");
         toast.success("Finanz-APIs gespeichert.");
       } else {
         toast.error(data.error ?? "Speichern fehlgeschlagen.");
       }
     } finally {
       setSavingFinance(false);
+    }
+  }
+
+  async function saveEnrichment(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingEnrichment(true);
+    try {
+      const body: Record<string, unknown> = {
+        baseUrl: enrichmentBaseUrl.trim(),
+        model: enrichmentModel.trim(),
+      };
+      if (enrichmentKey.trim()) body.apiKey = enrichmentKey.trim();
+
+      const res = await fetch("/api/admin/enrichment-config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setEnrichment(data.config as EnrichmentPublic);
+        setEnrichmentKey("");
+        toast.success("KI-Einstellungen gespeichert.");
+      } else {
+        toast.error(data.error ?? "Speichern fehlgeschlagen.");
+      }
+    } finally {
+      setSavingEnrichment(false);
     }
   }
 
@@ -161,6 +216,12 @@ export default function AdminSettingsPage() {
                     ? integrations.elevenLabsKeyMasked
                     : "nicht verbunden"}
                 </p>
+                <p>
+                  Stripe:{" "}
+                  {integrations.stripeConfigured
+                    ? integrations.stripeKeyMasked
+                    : "nicht verbunden — Einnahmen = 0"}
+                </p>
               </div>
             )}
             <div className="space-y-2">
@@ -200,6 +261,17 @@ export default function AdminSettingsPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="stripe-key">Stripe Secret Key</Label>
+              <Input
+                id="stripe-key"
+                type="password"
+                className="font-mono text-caption"
+                placeholder="sk_live_… — für Einnahmen in Finanzen"
+                value={stripeKey}
+                onChange={(e) => setStripeKey(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="usd-chf">USD → CHF Kurs</Label>
               <Input
                 id="usd-chf"
@@ -212,6 +284,59 @@ export default function AdminSettingsPage() {
             </div>
             <Button type="submit" disabled={savingFinance}>
               {savingFinance ? "Speichern…" : "APIs speichern"}
+            </Button>
+          </form>
+
+          <form
+            onSubmit={saveEnrichment}
+            className="space-y-4 rounded-card border border-stroke bg-surface p-6"
+          >
+            <p className="font-medium text-navy">KI (Agent & Anrufe)</p>
+            <p className="text-caption text-text-muted">
+              OpenAI-kompatibler Key für intelligente Agent-Erstellung
+              (Website-Analyse), Anruf-Zusammenfassungen und Kosten in Finanzen.
+            </p>
+            {enrichment && (
+              <p className="text-caption text-text-muted">
+                Status:{" "}
+                {enrichment.configured
+                  ? enrichment.apiKeyMasked
+                  : "nicht verbunden — Standard-Vorlagen"}
+              </p>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="enrichment-key">OpenAI API Key</Label>
+              <Input
+                id="enrichment-key"
+                type="password"
+                className="font-mono text-caption"
+                placeholder="sk-…"
+                value={enrichmentKey}
+                onChange={(e) => setEnrichmentKey(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="enrichment-base">API Base URL</Label>
+              <Input
+                id="enrichment-base"
+                className="font-mono text-caption"
+                placeholder="https://api.openai.com/v1"
+                value={enrichmentBaseUrl}
+                onChange={(e) => setEnrichmentBaseUrl(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="enrichment-model">Modell</Label>
+              <Input
+                id="enrichment-model"
+                className="font-mono text-caption"
+                placeholder="gpt-4o-mini"
+                value={enrichmentModel}
+                onChange={(e) => setEnrichmentModel(e.target.value)}
+              />
+            </div>
+            <Button type="submit" disabled={savingEnrichment}>
+              {savingEnrichment ? "Speichern…" : "KI speichern"}
             </Button>
           </form>
         </>

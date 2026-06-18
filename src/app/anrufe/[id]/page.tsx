@@ -47,7 +47,7 @@ export default async function CallDetailPage({ params }: PageProps) {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Link
-          href="/"
+          href="/anrufe"
           className="flex items-center gap-1 text-body text-text-muted transition-colors hover:text-accent"
         >
           <ArrowLeft className="h-4 w-4 stroke-[1.5]" />
@@ -58,7 +58,6 @@ export default async function CallDetailPage({ params }: PageProps) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1>{call.callerName ?? call.callerPhone}</h1>
-          <p className="mt-1 text-text-muted">{call.property}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <CategoryBadge category={call.category} />
             <Badge variant={call.urgency === "hoch" ? "notfall" : "default"}>

@@ -1,20 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  Bot,
-  CalendarClock,
-  CheckCircle2,
-  ChevronDown,
-  Loader2,
-} from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -27,13 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AgentCreateWizard, type AgentWizardDraft } from "@/components/telefonagent/AgentCreateWizard";
+import { AgentDetailModal } from "@/components/telefonagent/AgentDetailModal";
+import { AgentList } from "@/components/telefonagent/AgentList";
+import { AgentStatusHero } from "@/components/telefonagent/AgentStatusHero";
 import { CallVolumeChart } from "@/components/telefonagent/CallVolumeChart";
+import { PhoneNumberWizard } from "@/components/telefonagent/PhoneNumberWizard";
 import { CalendarIntegrations } from "@/components/integrations/CalendarIntegrations";
-import { PhoneOnboarding } from "@/components/telefonagent/PhoneOnboarding";
 import { QuotaGate } from "@/components/billing/QuotaGate";
 import { normalizeAgentLanguage } from "@/lib/elevenlabs/agent-config";
 import type { OnboardingPhase, StoredAgent } from "@/lib/onboarding-types";
@@ -139,8 +134,12 @@ export default function TelefonagentPage() {
   const [createNewAgent, setCreateNewAgent] = useState(false);
   const [requestingNumber, setRequestingNumber] = useState(false);
   const [confirmingForwarding, setConfirmingForwarding] = useState(false);
-
-  const [agentOpen, setAgentOpen] = useState(false);
+  const [disconnectingPhone, setDisconnectingPhone] = useState(false);
+  const [createWizardOpen, setCreateWizardOpen] = useState(false);
+  const [detailAgentId, setDetailAgentId] = useState<string | null>(null);
+  const [detailMode, setDetailMode] = useState<"view" | "edit">("view");
+  const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
+  const [activatingAgentId, setActivatingAgentId] = useState<string | null>(null);
 
   const [calendars, setCalendars] = useState<ConnectedCalendar[]>([]);
   const [apptEnabled, setApptEnabled] = useState(false);
@@ -284,15 +283,29 @@ export default function TelefonagentPage() {
   }, [onboardingPhase, applySettings]);
 
   useEffect(() => {
-    if (onboardingPhase === "agent") {
-      setAgentOpen(true);
+    if (
+      onboardingPhase === "agent" &&
+      storedAgents.length === 0 &&
+      !createWizardOpen &&
+      detailAgentId === null
+    ) {
+      setCreateWizardOpen(true);
       if (caps.hasApiKey && !settings.connected) {
         autoConnect().then(() => loadVoices());
       } else {
         loadVoices();
       }
     }
-  }, [onboardingPhase, caps.hasApiKey, settings.connected, autoConnect, loadVoices]);
+  }, [
+    onboardingPhase,
+    storedAgents.length,
+    createWizardOpen,
+    detailAgentId,
+    caps.hasApiKey,
+    settings.connected,
+    autoConnect,
+    loadVoices,
+  ]);
 
   useEffect(() => {
     if (settings.connected) loadVoices();
@@ -315,7 +328,21 @@ export default function TelefonagentPage() {
     })();
   }, []);
 
-  async function handleSaveAgent() {
+  async function handleSaveAgent(
+    override?: AgentWizardDraft & { agentId?: string; createNew?: boolean }
+  ) {
+    const saveName = override?.name ?? name;
+    const saveVoiceId = override?.voiceId ?? voiceId;
+    const saveLanguage = override
+      ? normalizeAgentLanguage(override.language)
+      : language;
+    const saveGreeting = override?.greeting ?? greeting;
+    const saveSystemPrompt = override?.systemPrompt ?? systemPrompt;
+    const isNew =
+      override?.createNew ??
+      (override?.agentId ? false : createNewAgent || !selectedAgentId);
+    const saveAgentId = override?.agentId ?? (isNew ? undefined : selectedAgentId);
+
     let connected = settings.connected;
     if (!connected) {
       try {
@@ -331,11 +358,11 @@ export default function TelefonagentPage() {
     }
     if (!connected) {
       toast.error("Verbindung konnte nicht hergestellt werden.");
-      return;
+      return false;
     }
-    if (!voiceId) {
+    if (!saveVoiceId) {
       toast.error("Bitte eine Stimme auswählen.");
-      return;
+      return false;
     }
     setSavingAgent(true);
     try {
@@ -343,14 +370,16 @@ export default function TelefonagentPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
-          voiceId,
-          voiceName: voices.find((v) => v.id === voiceId)?.name,
-          language,
-          greeting,
-          systemPrompt,
-          agentId: createNewAgent ? undefined : selectedAgentId || undefined,
-          createNew: createNewAgent || !selectedAgentId,
+          name: saveName,
+          voiceId: saveVoiceId,
+          voiceName:
+            override?.voiceName ??
+            voices.find((v) => v.id === saveVoiceId)?.name,
+          language: saveLanguage,
+          greeting: saveGreeting,
+          systemPrompt: saveSystemPrompt,
+          agentId: isNew ? undefined : saveAgentId || undefined,
+          createNew: isNew,
         }),
       });
       const data = await res.json();
@@ -364,16 +393,14 @@ export default function TelefonagentPage() {
         if (data.settings?.onboardingPhase === "fertig") {
           setOnboardingPhase("fertig");
         }
-        toast.success(
-          createNewAgent || !selectedAgentId
-            ? "Agent erstellt"
-            : "Agent aktualisiert"
-        );
-      } else {
-        toast.error("Speichern fehlgeschlagen", { description: data.error });
+        toast.success(isNew ? "Agent erstellt" : "Agent aktualisiert");
+        return true;
       }
+      toast.error("Speichern fehlgeschlagen", { description: data.error });
+      return false;
     } catch {
       toast.error("Netzwerkfehler beim Speichern");
+      return false;
     } finally {
       setSavingAgent(false);
     }
@@ -414,35 +441,84 @@ export default function TelefonagentPage() {
       if (res.ok && data.ok) {
         setOnboardingPhase(data.phase as OnboardingPhase);
         applySettings(data.settings as Settings);
-        toast.success("Weiterleitung bestätigt — konfigurieren Sie jetzt Ihren Agenten.");
-      } else {
-        toast.error("Speichern fehlgeschlagen");
+        if (storedAgents.length === 0) {
+          setCreateWizardOpen(true);
+        }
+        toast.success("Weiterleitung bestätigt — richten Sie jetzt Ihren Agenten ein.");
+        return true;
       }
+      toast.error("Speichern fehlgeschlagen");
+      return false;
     } catch {
       toast.error("Netzwerkfehler");
+      return false;
     } finally {
       setConfirmingForwarding(false);
     }
   }
 
-  function handleSelectAgent(agentId: string) {
-    if (agentId === "__new__") {
-      setCreateNewAgent(true);
-      setSelectedAgentId("");
-      setName(mockAgentConfig.name);
-      setGreeting(mockAgentConfig.greeting);
-      setSystemPrompt(caps.defaultSystemPrompt);
-      return;
+  async function handleDisconnectPhone() {
+    setDisconnectingPhone(true);
+    try {
+      const res = await fetch("/api/phone/disconnect", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setOnboardingPhase(data.phase as OnboardingPhase);
+        applySettings(data.settings as Settings);
+        setForwardingStatus("nicht_eingerichtet");
+        toast.success("Telefonnummer entkoppelt");
+        return true;
+      }
+      toast.error("Entkoppeln fehlgeschlagen");
+      return false;
+    } catch {
+      toast.error("Netzwerkfehler");
+      return false;
+    } finally {
+      setDisconnectingPhone(false);
     }
-    const agent = storedAgents.find((a) => a.id === agentId);
-    if (agent) loadAgentIntoForm(agent);
+  }
+
+  function handleSelectAgent(agentId: string) {
+    setDetailAgentId(agentId);
+    setDetailMode("view");
+    if (settings.connected || caps.hasApiKey) loadVoices();
+  }
+
+  function handleEditAgent(agentId: string) {
+    setDetailAgentId(agentId);
+    setDetailMode("edit");
+    if (settings.connected || caps.hasApiKey) loadVoices();
+  }
+
+  async function handleDetailSave(draft: AgentWizardDraft) {
+    if (!detailAgentId) return;
+    const ok = await handleSaveAgent({
+      ...draft,
+      agentId: detailAgentId,
+      createNew: false,
+    });
+    if (ok) setDetailMode("view");
+  }
+
+  async function handleWizardSave(draft: AgentWizardDraft) {
+    const ok = await handleSaveAgent({ ...draft, createNew: true });
+    if (ok) setCreateWizardOpen(false);
+  }
+
+  function handleCreateNewAgent() {
+    setCreateWizardOpen(true);
+    if (settings.connected || caps.hasApiKey) loadVoices();
   }
 
   async function handleActivateAgent(agentId: string) {
+    if (settings.agentId === agentId) return;
     const agent = storedAgents.find((a) => a.id === agentId);
     if (!agent) return;
-    loadAgentIntoForm(agent);
-    setSavingAgent(true);
+
+    const previousAgentId = settings.agentId;
+    setSettings((s) => ({ ...s, agentId }));
+    setActivatingAgentId(agentId);
     try {
       const res = await fetch("/api/elevenlabs/agent", {
         method: "POST",
@@ -456,10 +532,50 @@ export default function TelefonagentPage() {
       const data = await res.json();
       if (res.ok && data.ok) {
         applySettings(data.settings as Settings);
-        toast.success(`${agent.name} ist jetzt aktiv`);
+        if (data.agents) {
+          const incoming = data.agents as StoredAgent[];
+          setStoredAgents((prev) => {
+            const byId = new Map(incoming.map((a) => [a.id, a]));
+            const kept = prev.map((a) => byId.get(a.id) ?? a);
+            const extra = incoming.filter(
+              (a) => !prev.some((p) => p.id === a.id)
+            );
+            return [...kept, ...extra];
+          });
+        }
+        setSelectedAgentId(agentId);
+      } else {
+        setSettings((s) => ({ ...s, agentId: previousAgentId }));
+        toast.error("Aktivieren fehlgeschlagen", { description: data.error });
       }
+    } catch {
+      setSettings((s) => ({ ...s, agentId: previousAgentId }));
+      toast.error("Netzwerkfehler");
     } finally {
-      setSavingAgent(false);
+      setActivatingAgentId(null);
+    }
+  }
+
+  async function handleDeleteAgent(agentId: string) {
+    setDeletingAgentId(agentId);
+    try {
+      const res = await fetch(
+        `/api/elevenlabs/agent/delete?id=${encodeURIComponent(agentId)}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        applySettings(data.settings as Settings);
+        if (data.agents) setStoredAgents(data.agents as StoredAgent[]);
+        if (detailAgentId === agentId) setDetailAgentId(null);
+        toast.success("Agent gelöscht");
+      } else {
+        toast.error("Löschen fehlgeschlagen", { description: data.error });
+      }
+    } catch {
+      toast.error("Netzwerkfehler");
+    } finally {
+      setDeletingAgentId(null);
     }
   }
 
@@ -518,347 +634,138 @@ export default function TelefonagentPage() {
   const forwardingActive = forwardingStatus === "aktiv";
   const curaNumber =
     settings.curaForwardingNumber ?? caps.forwardingNumber ?? "";
-  const showAgentPanel =
-    onboardingPhase === "agent" || onboardingPhase === "fertig";
+  const showAgentSection =
+    onboardingPhase === "agent" ||
+    onboardingPhase === "fertig" ||
+    storedAgents.length > 0;
+  const detailAgent =
+    storedAgents.find((a) => a.id === detailAgentId) ?? null;
 
   return (
     <>
-    <div className="space-y-8">
-      <h1>Telefonagent</h1>
+      <div className="space-y-8">
+        <CallVolumeChart />
 
-      <CallVolumeChart />
-
-    <QuotaGate>
-    <div className="space-y-8">
-      {!statusLoading && (
-        <PhoneOnboarding
-          phase={onboardingPhase}
-          curaNumber={curaNumber}
-          forwardingInstructions={forwardingInstructions}
-          forwardingType={forwardingType}
-          onForwardingTypeChange={setForwardingType}
-          requesting={requestingNumber}
-          confirming={confirmingForwarding}
-          onRequestNumber={handleRequestNumber}
-          onConfirmForwarding={handleConfirmForwarding}
-        />
-      )}
-
-      {forwardingActive && (
-        <section className="space-y-4">
-          <div>
-            <h2>Kalender</h2>
-            <p className="mt-1 text-text-muted">
-              Verbinden Sie einen Kalender, damit Ihr Telefonagent Termine
-              direkt eintragen kann.
-            </p>
-          </div>
-          <CalendarIntegrations />
-        </section>
-      )}
-
-      {forwardingActive && calendars.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarClock className="h-5 w-5 stroke-[1.5] text-accent" />
-              Terminvereinbarung
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-4 rounded-btn border border-stroke p-4">
-              <p className="font-medium text-text">Termine durch den Agenten</p>
-              <Switch checked={apptEnabled} onCheckedChange={setApptEnabled} />
-            </div>
-            {apptEnabled && (
-              <div className="space-y-2">
-                <Label>Kalender</Label>
-                <Select
-                  value={apptProvider}
-                  onValueChange={(v) =>
-                    setApptProvider(v as CalendarProviderId)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Kalender auswählen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {calendars.map((c) => (
-                      <SelectItem key={c.provider} value={c.provider}>
-                        {CALENDAR_LABELS[c.provider]}
-                        {c.accountLabel ? ` · ${c.accountLabel}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+        <QuotaGate>
+          <div className="space-y-6">
+            {forwardingActive && (
+              <AgentStatusHero isLive phoneNumber={curaNumber || undefined} />
             )}
-            <Button
-              size="sm"
-              onClick={handleSaveAppointment}
-              disabled={savingAppt}
-            >
-              {savingAppt && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Speichern
-            </Button>
-          </CardContent>
-        </Card>
-      )}
 
-      {showAgentPanel && (
-      <div className="rounded-card border border-stroke bg-surface">
-        <button
-          type="button"
-          onClick={() => setAgentOpen((v) => !v)}
-          className="flex w-full items-center justify-between gap-4 p-6 text-left"
-          aria-expanded={agentOpen}
-        >
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent/10">
-              <Bot className="h-5 w-5 stroke-[1.5] text-accent" />
-            </span>
-            <div>
-              <p className="label-caps text-text-muted">Agent</p>
-              <p className="text-h3 text-navy">
-                {settings.agentName || name || "Neuer Agent"}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 text-text-muted">
-            <span className="text-caption">
-              {agentOpen ? "Schliessen" : "Bearbeiten"}
-            </span>
-            <ChevronDown
-              className={`h-5 w-5 stroke-[1.5] transition-transform ${
-                agentOpen ? "rotate-180" : ""
-              }`}
+            {statusLoading ? (
+              <Skeleton className="h-40 w-full rounded-[18px]" />
+            ) : (
+              showAgentSection && (
+                <AgentList
+                    agents={storedAgents}
+                    activeAgentId={settings.agentId}
+                    selectedAgentId={detailAgentId ?? selectedAgentId}
+                    deletingId={deletingAgentId}
+                    activatingId={activatingAgentId}
+                    onActivate={handleActivateAgent}
+                    onSelect={handleSelectAgent}
+                    onEdit={handleEditAgent}
+                    onCreateNew={handleCreateNewAgent}
+                    onDelete={handleDeleteAgent}
+                  />
+              )
+            )}
+
+            <AgentCreateWizard
+              open={createWizardOpen}
+              onClose={() => setCreateWizardOpen(false)}
+              voices={voices}
+              voicesLoading={voicesLoading}
+              saving={savingAgent}
+              onSave={handleWizardSave}
             />
-          </div>
-        </button>
 
-        {agentOpen && (
-          <div className="border-t border-stroke p-6">
-            <Tabs defaultValue="config">
-              <TabsList>
-                <TabsTrigger value="config">Konfiguration</TabsTrigger>
-                <TabsTrigger value="hours">Geschäftszeiten</TabsTrigger>
-                <TabsTrigger value="escalation">Eskalation</TabsTrigger>
-                <TabsTrigger value="knowledge">Wissensbasis</TabsTrigger>
-              </TabsList>
+            <AgentDetailModal
+              open={detailAgentId !== null}
+              agent={detailAgent}
+              mode={detailMode}
+              voices={voices}
+              voicesLoading={voicesLoading}
+              saving={savingAgent}
+              onClose={() => setDetailAgentId(null)}
+              onCancelEdit={() => setDetailMode("view")}
+              onEdit={() => setDetailMode("edit")}
+              onSave={handleDetailSave}
+            />
 
-              <TabsContent value="config">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Bot className="h-5 w-5 stroke-[1.5] text-accent" />
-                      Agent-Konfiguration
-                    </CardTitle>
-                    <CardDescription>
-                      {settings.agentId
-                        ? `Agent-ID: ${settings.agentId}`
-                        : "Wird beim ersten Speichern erstellt."}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {storedAgents.length > 0 && (
-                      <div className="space-y-2">
-                        <Label>Aktiver Agent</Label>
-                        <Select
-                          value={selectedAgentId || settings.agentId || ""}
-                          onValueChange={handleSelectAgent}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Agent auswählen" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {storedAgents.map((a) => (
-                              <SelectItem key={a.id} value={a.id}>
-                                {a.name}
-                                {settings.agentId === a.id ? " · aktiv" : ""}
-                              </SelectItem>
-                            ))}
-                            <SelectItem value="__new__">+ Neuer Agent</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {selectedAgentId &&
-                          settings.agentId !== selectedAgentId && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleActivateAgent(selectedAgentId)}
-                              disabled={savingAgent}
-                            >
-                              Als aktiv setzen
-                            </Button>
-                          )}
-                      </div>
-                    )}
-                    {onboardingPhase === "agent" && (
-                      <p className="rounded-btn bg-baby-blue/40 p-3 text-body text-text">
-                        Richten Sie mindestens einen Agenten ein und speichern
-                        Sie ihn. Sie können später weitere Agenten anlegen und
-                        jederzeit einen anderen aktivieren.
-                      </p>
-                    )}
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="agent-name">Agent-Name</Label>
-                        <Input
-                          id="agent-name"
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Stimme</Label>
-                        {voicesLoading ? (
-                          <Skeleton className="h-10 w-full" />
-                        ) : voices.length === 0 ? (
-                          <p className="text-body text-text-muted">
-                            Keine deutschfähigen Stimmen im ElevenLabs-Workspace
-                            gefunden.
-                          </p>
-                        ) : (
-                          <Select
-                            value={voiceId}
-                            onValueChange={setVoiceId}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Stimme auswählen" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {voices.map((v) => (
-                                <SelectItem key={v.id} value={v.id}>
-                                  {v.name} · {v.language}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Sprache</Label>
-                        <Select value={language} onValueChange={setLanguage}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {languageOptions
-                              .filter((l) => l.available)
-                              .map((l) => (
-                                <SelectItem key={l.value} value={l.value}>
-                                  {l.label}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-caption text-text-muted">
-                          Schweizerdeutsch wird über Sprachanweisungen gesteuert;
-                          wählen Sie nach Möglichkeit eine passende Stimme.
-                        </p>
-                      </div>
-                    </div>
+            {forwardingActive && (
+              <section className="space-y-4">
+                <h2>Kalender</h2>
+                <CalendarIntegrations />
+              </section>
+            )}
+
+            {forwardingActive && calendars.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Terminvereinbarung</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between gap-4 rounded-btn border border-stroke p-4">
+                    <p className="font-medium text-text">Termine durch den Agenten</p>
+                    <Switch checked={apptEnabled} onCheckedChange={setApptEnabled} />
+                  </div>
+                  {apptEnabled && (
                     <div className="space-y-2">
-                      <Label htmlFor="greeting">Begrüssungstext</Label>
-                      <textarea
-                        id="greeting"
-                        className="flex min-h-[80px] w-full rounded-btn border border-stroke bg-surface px-3 py-2 text-body text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
-                        value={greeting}
-                        onChange={(e) => setGreeting(e.target.value)}
-                      />
+                      <Label>Kalender</Label>
+                      <Select
+                        value={apptProvider}
+                        onValueChange={(v) =>
+                          setApptProvider(v as CalendarProviderId)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Kalender auswählen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {calendars.map((c) => (
+                            <SelectItem key={c.provider} value={c.provider}>
+                              {CALENDAR_LABELS[c.provider]}
+                              {c.accountLabel ? ` · ${c.accountLabel}` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="system-prompt">Anweisungen</Label>
-                      <textarea
-                        id="system-prompt"
-                        className="flex min-h-[220px] w-full rounded-btn border border-stroke bg-surface px-3 py-2 font-mono text-caption leading-relaxed text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
-                        value={systemPrompt}
-                        onChange={(e) => setSystemPrompt(e.target.value)}
-                      />
-                    </div>
-                    <Button
-                      onClick={handleSaveAgent}
-                      disabled={savingAgent || !voiceId}
-                    >
-                      {savingAgent && (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      )}
-                      {settings.agentId ? "Agent aktualisieren" : "Agent erstellen"}
-                    </Button>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="hours">
-                <Card>
-                  <CardContent className="space-y-4 pt-6">
-                    {Object.entries(mockAgentConfig.businessHours).map(
-                      ([key, value]) => (
-                        <div
-                          key={key}
-                          className="flex items-center justify-between"
-                        >
-                          <Label className="capitalize">
-                            {key === "weekdays"
-                              ? "Wochentage"
-                              : key === "saturday"
-                                ? "Samstag"
-                                : "Sonntag"}
-                          </Label>
-                          <Input className="w-48" defaultValue={value} />
-                        </div>
-                      )
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={handleSaveAppointment}
+                    disabled={savingAppt}
+                  >
+                    {savingAppt && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                    Speichern
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
-              <TabsContent value="escalation">
-                <Card>
-                  <CardContent className="space-y-3 pt-6">
-                    {mockAgentConfig.escalationRules.map((rule, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between gap-4 rounded-btn border border-stroke p-3"
-                      >
-                        <span className="text-body text-text">{rule}</span>
-                        <Switch defaultChecked />
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="knowledge">
-                <Card>
-                  <CardContent className="space-y-3 pt-6">
-                    {mockAgentConfig.knowledgeBase.map((item, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-3 rounded-btn bg-baby-blue/40 p-3 text-body text-text"
-                      >
-                        <CheckCircle2 className="h-4 w-4 shrink-0 stroke-[1.5] text-accent" />
-                        {item}
-                      </div>
-                    ))}
-                    <Separator />
-                    <Button variant="outline" size="sm">
-                      Eintrag hinzufügen
-                    </Button>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
+            {!statusLoading && (
+              <PhoneNumberWizard
+                phase={onboardingPhase}
+                curaNumber={curaNumber}
+                forwardingInstructions={forwardingInstructions}
+                forwardingType={forwardingType}
+                forwardingStatus={forwardingStatus}
+                requesting={requestingNumber}
+                confirming={confirmingForwarding}
+                disconnecting={disconnectingPhone}
+                onRequestNumber={handleRequestNumber}
+                onConfirmForwarding={handleConfirmForwarding}
+                onDisconnect={handleDisconnectPhone}
+                onForwardingTypeChange={setForwardingType}
+              />
+            )}
           </div>
-        )}
+        </QuotaGate>
       </div>
-      )}
-    </div>
-    </QuotaGate>
-    </div>
     </>
   );
 }

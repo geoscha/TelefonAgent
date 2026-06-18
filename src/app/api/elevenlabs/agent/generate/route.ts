@@ -1,0 +1,94 @@
+import { NextResponse, type NextRequest } from "next/server";
+
+import {
+  generateAgentDraft,
+  type GenerateAgentInput,
+} from "@/lib/elevenlabs/generate-agent";
+import {
+  filterAgentVoices,
+  normalizeAgentLanguage,
+  type RawElevenLabsVoice,
+} from "@/lib/elevenlabs/agent-config";
+import {
+  describeElevenLabsError,
+  getElevenLabsClient,
+} from "@/lib/elevenlabs/client";
+import {
+  pickAgentVoiceId,
+  type AgentVoiceGender,
+} from "@/lib/elevenlabs/pick-voice";
+
+export const dynamic = "force-dynamic";
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = (await req.json()) as {
+      industry?: string;
+      website?: string;
+      goal?: string;
+      gender?: string;
+      language?: string;
+    };
+
+    const industry = body.industry?.trim();
+    const goal = body.goal?.trim();
+    if (!industry) {
+      return NextResponse.json(
+        { ok: false, error: "Bitte Branche angeben." },
+        { status: 400 }
+      );
+    }
+    if (!goal) {
+      return NextResponse.json(
+        { ok: false, error: "Bitte Ziel angeben." },
+        { status: 400 }
+      );
+    }
+
+    const gender: AgentVoiceGender =
+      body.gender === "female" ? "female" : "male";
+    const language = normalizeAgentLanguage(body.language);
+
+    const input: GenerateAgentInput = {
+      industry,
+      website: body.website?.trim() || undefined,
+      goal,
+      gender,
+      language,
+    };
+
+    const draft = await generateAgentDraft(input);
+
+    const client = getElevenLabsClient();
+    const voiceRes = (await client.voices.getAll()) as {
+      voices?: RawElevenLabsVoice[];
+    };
+    const rawVoices = voiceRes.voices ?? [];
+    const voiceId = pickAgentVoiceId(rawVoices, gender, language);
+    const catalog = filterAgentVoices(rawVoices);
+    const voiceName = catalog.find((v) => v.id === voiceId)?.name;
+
+    if (!voiceId) {
+      return NextResponse.json(
+        { ok: false, error: "Keine passende Stimme gefunden." },
+        { status: 503 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      draft: {
+        ...draft,
+        voiceId,
+        voiceName,
+      },
+      meta: {
+        aiGenerated: draft.aiGenerated,
+        websiteAnalyzed: draft.websiteAnalyzed,
+      },
+    });
+  } catch (error) {
+    const { status, message } = describeElevenLabsError(error);
+    return NextResponse.json({ ok: false, error: message }, { status });
+  }
+}

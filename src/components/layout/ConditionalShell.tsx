@@ -6,7 +6,8 @@ import { BrandToaster } from "@/components/layout/BrandToaster";
 
 export function ConditionalShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isAuthRoute =
+  const isPublicShell =
+    pathname === "/" ||
     pathname === "/login" ||
     pathname === "/signup" ||
     pathname.startsWith("/admin") ||
@@ -14,7 +15,7 @@ export function ConditionalShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {isAuthRoute ? children : <AppShell>{children}</AppShell>}
+      {isPublicShell ? children : <AppShell>{children}</AppShell>}
       <BrandToaster />
     </>
   );

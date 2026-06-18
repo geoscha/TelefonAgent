@@ -19,13 +19,13 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/", label: "Anrufe", icon: LayoutDashboard },
+  { href: "/anrufe", label: "Anrufe", icon: LayoutDashboard },
   { href: "/telefonagent", label: "Telefonagent", icon: Bot },
   { href: "/einstellungen", label: "Profil", icon: Settings },
 ];
 
 function isActiveHref(pathname: string, href: string) {
-  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function GlassNav() {
@@ -52,7 +52,7 @@ export function GlassNav() {
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
-      router.push("/login");
+      router.push("/");
       router.refresh();
     } finally {
       setLoggingOut(false);
@@ -64,10 +64,8 @@ export function GlassNav() {
     <>
       <header className="fixed inset-x-0 top-0 z-50 px-4 pt-3 lg:px-8">
         <div className="glass-pill mx-auto flex h-[60px] max-w-4xl items-center justify-between gap-6 rounded-full px-6 lg:px-8">
-          {/* Left zone — wordmark (~22px) */}
-          <CuraLogo mode="difference" size="sm" href="/" />
+          <CuraLogo mode="difference" size="sm" href="/anrufe" />
 
-          {/* Centre zone — nav links */}
           <nav className="hidden md:flex md:items-center">
             <ul className="flex items-center gap-1">
               {navItems.map((item) => {
@@ -78,7 +76,7 @@ export function GlassNav() {
                       href={item.href}
                       className={cn(
                         "relative flex items-center rounded-full px-3 py-1.5 text-[15px] font-medium leading-none transition-colors",
-                        isActive ? "text-accent" : "text-text-muted hover:text-text"
+                        isActive ? "text-accent" : "text-text-muted hover:text-navy"
                       )}
                     >
                       {isActive && (
@@ -96,7 +94,6 @@ export function GlassNav() {
             </ul>
           </nav>
 
-          {/* Right zone — user avatar + menu */}
           <div className="flex items-center">
             <div className="relative hidden sm:block" ref={userMenuRef}>
               <button
@@ -167,7 +164,7 @@ export function GlassNav() {
                           "flex items-center gap-3 rounded-btn px-3 py-2.5 text-[15px] font-medium",
                           isActive
                             ? "bg-accent/[0.08] text-accent"
-                            : "text-text-muted hover:text-text"
+                            : "text-text-muted hover:text-navy"
                         )}
                       >
                         <Icon className="h-[18px] w-[18px] stroke-[1.5]" />

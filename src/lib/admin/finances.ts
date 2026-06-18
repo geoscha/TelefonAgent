@@ -1,10 +1,16 @@
 import "server-only";
 
 import { getFinanceIntegrations } from "@/lib/admin/finance-integrations";
+import { getEnrichmentConfig } from "@/lib/admin/enrichment-config";
 import {
   fetchElevenLabsBalance,
   fetchElevenLabsCosts,
 } from "@/lib/admin/finance-plugins/elevenlabs-costs";
+import {
+  fetchOpenAiCosts,
+  fetchOpenAiSpend,
+} from "@/lib/admin/finance-plugins/openai-costs";
+import { fetchStripeRevenue } from "@/lib/admin/finance-plugins/stripe-revenue";
 import {
   fetchTwilioBalance,
   fetchTwilioCosts,
@@ -12,8 +18,6 @@ import {
 import type { ProviderCostResult } from "@/lib/admin/finance-plugins/twilio-costs";
 import { listAdminPoolNumbers } from "@/lib/admin/number-pool";
 import { getFinanceConfig } from "@/lib/admin/finance-config";
-import { proMonthlyRevenueChf } from "@/lib/admin/pricing";
-import type { BillingInterval } from "@/lib/store";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface FinanceTimePoint {
@@ -24,6 +28,7 @@ export interface FinanceTimePoint {
   profitChf: number;
   twilioCostChf: number;
   elevenLabsCostChf: number;
+  openAiCostChf: number;
   calls: number;
   newSignups: number;
   totalSignups: number;
@@ -49,12 +54,18 @@ export interface FinanceProviderBalance {
   elevenLabsTier?: string;
   elevenLabsSource: "api" | "estimate" | "unconfigured";
   elevenLabsError?: string;
+  openAiSpendUsd?: number;
+  openAiSpendChf?: number;
+  openAiSource: "api" | "estimate" | "unconfigured";
+  openAiError?: string;
 }
 
 export interface FinanceDashboard {
   integrations: {
     twilioConfigured: boolean;
     elevenLabsConfigured: boolean;
+    stripeConfigured: boolean;
+    openAiConfigured: boolean;
   };
   kpis: {
     mrrChf: number;
@@ -65,6 +76,7 @@ export interface FinanceDashboard {
     totalLoss12mChf: number;
     twilioCostChf: number;
     elevenLabsCostChf: number;
+    openAiCostChf: number;
     totalSignups: number;
     totalCustomersEver: number;
     deletedCustomers: number;
@@ -82,6 +94,8 @@ export interface FinanceDashboard {
     costPerCallMinuteMonthChf: number | null;
     twilio: FinanceProviderStatus;
     elevenLabs: FinanceProviderStatus;
+    openAi: FinanceProviderStatus;
+    stripe: FinanceProviderStatus;
     balances: FinanceProviderBalance;
   };
   series: FinanceTimePoint[];
@@ -90,7 +104,6 @@ export interface FinanceDashboard {
 interface ProfileRow {
   id: string;
   plan: string;
-  billing_interval: BillingInterval | null;
   created_at: string;
 }
 
@@ -113,6 +126,7 @@ const RETENTION_DAYS = 30;
 export async function getAdminFinances(): Promise<FinanceDashboard> {
   const config = getFinanceConfig();
   const integrations = await getFinanceIntegrations();
+  const enrichment = await getEnrichmentConfig();
   const admin = createAdminClient();
 
   const monthStarts = Array.from({ length: MONTHS }, (_, i) =>
@@ -120,18 +134,21 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
   );
   const monthKeys = monthStarts.map(monthKey);
 
-  const [pool, profilesRes, callsRes, registryRes, twilioCosts, elevenLabsCosts, twilioBalance, elevenLabsBalance] =
+  const [pool, profilesRes, callsRes, registryRes, twilioCosts, elevenLabsCosts, openAiCosts, twilioBalance, elevenLabsBalance, openAiSpend, stripeRevenue] =
     await Promise.all([
       listAdminPoolNumbers(),
-      admin.from("profiles").select("id, plan, billing_interval, created_at"),
+      admin.from("profiles").select("id, plan, created_at"),
       admin.from("calls").select("user_id, started_at, duration_seconds"),
       admin
         .from("customer_registry")
         .select("id, created_at, deleted_at, call_seconds_lifetime"),
       fetchTwilioCosts(integrations, monthKeys),
       fetchElevenLabsCosts(integrations, monthKeys),
+      fetchOpenAiCosts(enrichment, monthKeys, integrations.usdToChfRate),
       fetchTwilioBalance(integrations),
       fetchElevenLabsBalance(integrations),
+      fetchOpenAiSpend(enrichment, integrations.usdToChfRate),
+      fetchStripeRevenue(integrations, monthKeys, monthStarts),
     ]);
 
   const profiles = (profilesRes.data ?? []) as ProfileRow[];
@@ -196,10 +213,8 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
     totalSignups > 0 ? (activeUsers30d / totalSignups) * 100 : 0;
 
   const proProfiles = profiles.filter((p) => p.plan === "pro");
-  const mrrChf = proProfiles.reduce(
-    (s, p) => s + proMonthlyRevenueChf(p.billing_interval),
-    0
-  );
+  const mrrChf = stripeRevenue.mrr.amountChf;
+  const thisMonthRevenueChf = stripeRevenue.thisMonth.amountChf;
 
   const twilioThisMonth = pickCost(
     twilioCosts.thisMonth,
@@ -212,9 +227,13 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
     config.elevenLabsPerMinuteChf,
     config.elevenLabsPlatformMonthlyChf
   );
+  const openAiThisMonth = pickOpenAiCost(openAiCosts.thisMonth);
 
-  const monthlyCostChf = twilioThisMonth.amountChf + elevenLabsThisMonth.amountChf;
-  const monthlyProfitChf = mrrChf - monthlyCostChf;
+  const monthlyCostChf =
+    twilioThisMonth.amountChf +
+    elevenLabsThisMonth.amountChf +
+    openAiThisMonth.amountChf;
+  const monthlyProfitChf = thisMonthRevenueChf - monthlyCostChf;
   const userValueRatio =
     monthlyCostChf > 0 ? mrrChf / monthlyCostChf : mrrChf > 0 ? Infinity : 0;
   const userValueChf =
@@ -231,7 +250,9 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
     config.elevenLabsPerMinuteChf,
     config.elevenLabsPlatformMonthlyChf,
     twilioCosts.byMonth,
-    elevenLabsCosts.byMonth
+    elevenLabsCosts.byMonth,
+    openAiCosts.byMonth,
+    stripeRevenue.byMonth
   );
 
   const totalRevenue12mChf = series.reduce((s, p) => s + p.revenueChf, 0);
@@ -259,6 +280,8 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
         integrations.twilioAccountSid && integrations.twilioAuthToken
       ),
       elevenLabsConfigured: Boolean(integrations.elevenLabsApiKey),
+      stripeConfigured: Boolean(integrations.stripeSecretKey),
+      openAiConfigured: Boolean(enrichment.apiKey),
     },
     kpis: {
       mrrChf,
@@ -269,6 +292,7 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
       totalLoss12mChf,
       twilioCostChf: twilioThisMonth.amountChf,
       elevenLabsCostChf: elevenLabsThisMonth.amountChf,
+      openAiCostChf: openAiThisMonth.amountChf,
       totalSignups,
       totalCustomersEver,
       deletedCustomers,
@@ -294,6 +318,16 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
         source: elevenLabsThisMonth.source,
         error: elevenLabsThisMonth.error,
       },
+      openAi: {
+        amountChf: openAiThisMonth.amountChf,
+        source: openAiThisMonth.source,
+        error: openAiThisMonth.error,
+      },
+      stripe: {
+        amountChf: mrrChf,
+        source: stripeRevenue.mrr.source,
+        error: stripeRevenue.mrr.error,
+      },
       balances: {
         twilioBalanceChf: twilioBalance.balanceChf,
         twilioBalanceUsd: twilioBalance.balanceUsd,
@@ -306,10 +340,21 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
         elevenLabsTier: elevenLabsBalance.tier,
         elevenLabsSource: elevenLabsBalance.source,
         elevenLabsError: elevenLabsBalance.error,
+        openAiSpendUsd: openAiSpend.spendUsd,
+        openAiSpendChf: openAiSpend.spendChf,
+        openAiSource: openAiSpend.source,
+        openAiError: openAiSpend.error,
       },
     },
     series,
   };
+}
+
+function pickOpenAiCost(api: ProviderCostResult): ProviderCostResult {
+  if (api.source === "unconfigured") {
+    return { amountChf: 0, source: "unconfigured" };
+  }
+  return api;
 }
 
 function pickCost(
@@ -366,7 +411,9 @@ function buildSeries(
   elevenLabsPerMinuteChf: number,
   elevenLabsPlatformMonthlyChf: number,
   twilioByMonth: Record<string, ProviderCostResult>,
-  elevenLabsByMonth: Record<string, ProviderCostResult>
+  elevenLabsByMonth: Record<string, ProviderCostResult>,
+  openAiByMonth: Record<string, ProviderCostResult>,
+  stripeByMonth: Record<string, ProviderCostResult>
 ): FinanceTimePoint[] {
   const points: FinanceTimePoint[] = [];
 
@@ -378,10 +425,11 @@ function buildSeries(
       (p) => new Date(p.created_at) <= end
     );
     const proInMonth = monthProfiles.filter((p) => p.plan === "pro");
-    const revenueChf = proInMonth.reduce(
-      (s, p) => s + proMonthlyRevenueChf(p.billing_interval),
-      0
-    );
+    const stripeMonth = stripeByMonth[key];
+    const revenueChf =
+      stripeMonth?.source === "api" && !stripeMonth.error
+        ? stripeMonth.amountChf
+        : 0;
 
     const monthCalls = calls.filter((c) => {
       const d = new Date(c.started_at);
@@ -392,6 +440,7 @@ function buildSeries(
 
     const twilioApi = twilioByMonth[key];
     const elApi = elevenLabsByMonth[key];
+    const openAiApi = openAiByMonth[key];
     const twilioCostChf =
       twilioApi?.source === "api" && !twilioApi.error
         ? twilioApi.amountChf
@@ -401,7 +450,11 @@ function buildSeries(
         ? elApi.amountChf
         : callMinutes * elevenLabsPerMinuteChf +
           elevenLabsPlatformMonthlyChf;
-    const costChf = twilioCostChf + elevenLabsCostChf;
+    const openAiCostChf =
+      openAiApi?.source === "api" && !openAiApi.error
+        ? openAiApi.amountChf
+        : 0;
+    const costChf = twilioCostChf + elevenLabsCostChf + openAiCostChf;
 
     const newSignups = registry.filter((r) => {
       const d = new Date(r.created_at);
@@ -429,6 +482,7 @@ function buildSeries(
       profitChf: revenueChf - costChf,
       twilioCostChf,
       elevenLabsCostChf,
+      openAiCostChf,
       calls: monthCalls.length,
       newSignups,
       totalSignups: totalSignupsInMonth,

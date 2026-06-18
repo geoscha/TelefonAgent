@@ -1,29 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  User,
-  Check,
-  Sparkles,
-  LifeBuoy,
-  Trash2,
   Loader2,
-  KeyRound,
-  LogOut,
-  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -40,8 +24,8 @@ import {
 } from "@/lib/phone/forwarding-codes";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
 import type { CallQuotaView } from "@/lib/billing/quota-display";
-import { FREE_CALL_SECONDS_LIMIT } from "@/lib/billing/quota-display";
-import { UsageRing } from "@/components/billing/UsageRing";
+import { FREE_CALL_SECONDS_LIMIT, quotaRemainingHighlight } from "@/lib/billing/quota-display";
+import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
 
 type BillingPlan = "free" | "pro";
 type BillingInterval = "monthly" | "yearly";
@@ -72,8 +56,7 @@ export default function ProfilPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [savingAccount, setSavingAccount] = useState(false);
-  const [savingEmail, setSavingEmail] = useState(false);
+  const [savingName, setSavingName] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -83,11 +66,21 @@ export default function ProfilPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportMessages, setSupportMessages] = useState<
+    { id: string; message: string; createdAt: string }[]
+  >([]);
+  const [supportText, setSupportText] = useState("");
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportSending, setSupportSending] = useState(false);
+  const supportScrollRef = useRef<HTMLDivElement>(null);
   const [curaNumber, setCuraNumber] = useState<string | null>(null);
   const [forwardingType, setForwardingType] =
     useState<ForwardingType>("bedingt");
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase | null>(null);
+
+  const profileLoaded = useRef(false);
 
   useEffect(() => {
     fetch("/api/profile")
@@ -97,6 +90,7 @@ export default function ProfilPage() {
         setName(p.name ?? "");
         setEmail(p.email ?? "");
         if (p.billingInterval) setInterval(p.billingInterval);
+        profileLoaded.current = true;
       })
       .catch(() => toast.error("Profil konnte nicht geladen werden."));
 
@@ -119,78 +113,33 @@ export default function ProfilPage() {
       .catch(() => {});
   }, []);
 
-  async function saveAccount() {
-    if (!name.trim()) {
-      toast.error("Bitte einen Namen eingeben.");
+  async function saveName() {
+    if (!profileLoaded.current || !profile) return;
+
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setName(profile.name ?? "");
       return;
     }
-    setSavingAccount(true);
+    if (trimmed === profile.name) return;
+
+    setSavingName(true);
     try {
       const res = await fetch("/api/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name: trimmed }),
       });
       if (!res.ok) throw new Error();
       const p = (await res.json()) as Profile;
       setProfile(p);
-      toast.success("Name gespeichert.");
+      setName(p.name ?? trimmed);
       router.refresh();
     } catch {
-      toast.error("Speichern fehlgeschlagen.");
+      toast.error("Name konnte nicht gespeichert werden.");
+      setName(profile.name ?? "");
     } finally {
-      setSavingAccount(false);
-    }
-  }
-
-  async function saveEmail() {
-    const trimmed = email.trim();
-    if (!trimmed) {
-      toast.error("Bitte eine E-Mail-Adresse eingeben.");
-      return;
-    }
-    if (profile && trimmed === profile.email) {
-      toast.info("Die E-Mail-Adresse ist unverändert.");
-      return;
-    }
-    setSavingEmail(true);
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase.auth.updateUser({ email: trimmed });
-      if (error) {
-        toast.error(
-          error.message.includes("already")
-            ? "Diese E-Mail-Adresse wird bereits verwendet."
-            : "E-Mail konnte nicht geändert werden."
-        );
-        return;
-      }
-
-      const res = await fetch("/api/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmed }),
-      });
-      if (!res.ok) throw new Error();
-
-      const authEmail = data.user?.email ?? trimmed;
-      const p = (await res.json()) as Profile;
-      setProfile({ ...p, email: authEmail });
-      setEmail(authEmail);
-
-      if (authEmail !== trimmed) {
-        toast.success("Bestätigungs-E-Mail gesendet.", {
-          description:
-            "Bitte bestätigen Sie die neue Adresse über den Link in Ihrem Postfach.",
-        });
-      } else {
-        toast.success("E-Mail gespeichert.");
-      }
-      router.refresh();
-    } catch {
-      toast.error("E-Mail konnte nicht gespeichert werden.");
-    } finally {
-      setSavingEmail(false);
+      setSavingName(false);
     }
   }
 
@@ -265,12 +214,69 @@ export default function ProfilPage() {
     }
   }
 
+  async function loadSupportMessages() {
+    setSupportLoading(true);
+    try {
+      const res = await fetch("/api/support");
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setSupportMessages(data.messages ?? []);
+      }
+    } catch {
+      toast.error("Support-Nachrichten konnten nicht geladen werden.");
+    } finally {
+      setSupportLoading(false);
+    }
+  }
+
+  async function sendSupportMessage() {
+    const trimmed = supportText.trim();
+    if (!trimmed) return;
+
+    setSupportSending(true);
+    try {
+      const res = await fetch("/api/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: trimmed }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setSupportText("");
+        setSupportMessages((prev) => [...prev, data.message]);
+        toast.success("Nachricht gesendet.");
+      } else {
+        toast.error(data.error ?? "Senden fehlgeschlagen.");
+      }
+    } catch {
+      toast.error("Senden fehlgeschlagen.");
+    } finally {
+      setSupportSending(false);
+    }
+  }
+
+  function toggleSupport() {
+    const next = !supportOpen;
+    setSupportOpen(next);
+    if (next && supportMessages.length === 0) {
+      void loadSupportMessages();
+    }
+  }
+
+  useEffect(() => {
+    if (!supportOpen) return;
+    supportScrollRef.current?.scrollTo({
+      top: supportScrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [supportMessages, supportOpen]);
+
   async function handleLogout() {
     setLoggingOut(true);
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
-      router.push("/login");
+      router.push("/");
       router.refresh();
     } catch {
       toast.error("Abmeldung fehlgeschlagen.");
@@ -284,7 +290,7 @@ export default function ProfilPage() {
       const res = await fetch("/api/account/delete", { method: "POST" });
       if (!res.ok) throw new Error();
       toast.success("Konto gelöscht.");
-      router.push("/login");
+      router.push("/");
       router.refresh();
     } catch {
       toast.error("Konto konnte nicht gelöscht werden.");
@@ -301,153 +307,80 @@ export default function ProfilPage() {
       onboardingPhase === "agent" ||
       onboardingPhase === "fertig");
   const deactivateCode = forwardingDeactivateCode(forwardingType);
+  const firstName =
+    (profile?.name ?? name).trim().split(/\s+/)[0] ||
+    profile?.name ||
+    name ||
+    "…";
+  const quotaHighlight = profile?.callQuota
+    ? quotaRemainingHighlight(profile.callQuota)
+    : { value: "—", suffix: "Min. frei" };
 
   return (
-    <div className="space-y-12 pb-4">
-      <div>
-        <h1>Profil</h1>
-        <p className="mt-1 text-text-muted">
-          Verwalten Sie Ihr Konto und Ihren Plan.
-        </p>
+    <div className="space-y-section pb-4">
+      <WelcomeBanner
+        name={firstName}
+        highlight={quotaHighlight.value}
+        highlightSuffix={quotaHighlight.suffix}
+      />
+
+      <div className="space-y-3">
+        <Input
+          id="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => void saveName()}
+          placeholder="Name"
+          autoComplete="name"
+          disabled={savingName}
+        />
+        <Input
+          id="email"
+          type="email"
+          value={email}
+          readOnly
+          placeholder="E-Mail"
+          tabIndex={-1}
+          className="cursor-default bg-bg/60 text-text-muted"
+        />
       </div>
 
-      {profile?.callQuota && (
-        <Card className="max-w-xl">
-          <CardContent className="py-6">
-            <UsageRing
-              usedSeconds={profile.callQuota.usedSeconds}
-              limitSeconds={profile.callQuota.limitSeconds}
-              percentUsed={profile.callQuota.percentUsed}
-              periodLabel={
-                profile.callQuota.plan === "pro"
-                  ? profile.callQuota.periodLabel
-                  : "Gratis — einmalig"
-              }
-            />
-            {profile.callQuota.resetsAt && profile.plan === "pro" && (
-              <p className="mt-4 text-caption text-text-muted">
-                Reset am{" "}
-                {new Date(profile.callQuota.resetsAt).toLocaleDateString("de-CH")}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      <div className="space-y-3 border-t border-stroke pt-8">
+        <Input
+          id="current-password"
+          type="password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+          placeholder="Aktuelles Passwort"
+          autoComplete="current-password"
+        />
+        <Input
+          id="new-password"
+          type="password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          placeholder="Neues Passwort"
+          autoComplete="new-password"
+        />
+        <Input
+          id="confirm-password"
+          type="password"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          placeholder="Passwort bestätigen"
+          autoComplete="new-password"
+        />
+        <Button
+          onClick={savePassword}
+          disabled={savingPassword || !profile}
+          variant="outline"
+        >
+          {savingPassword ? "Speichern…" : "Passwort ändern"}
+        </Button>
+      </div>
 
-      {/* Konto */}
-      <Card className="max-w-xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5 stroke-[1.5] text-accent" />
-            Kontoinformationen
-          </CardTitle>
-          <CardDescription>
-            Ihr Name erscheint in der Begrüssung auf der Startseite.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Vor- und Nachname"
-            />
-          </div>
-          <Button onClick={saveAccount} disabled={savingAccount || !profile}>
-            {savingAccount ? "Speichern…" : "Speichern"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Login */}
-      <Card className="max-w-xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 stroke-[1.5] text-accent" />
-            Login-Daten
-          </CardTitle>
-          <CardDescription>
-            E-Mail und Passwort für die Anmeldung bei Cura.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">E-Mail</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@firma.ch"
-              />
-            </div>
-            <Button
-              onClick={saveEmail}
-              disabled={savingEmail || !profile}
-              variant="outline"
-              size="sm"
-            >
-              {savingEmail ? "Speichern…" : "E-Mail speichern"}
-            </Button>
-          </div>
-
-          <div className="border-t border-stroke pt-6 space-y-4">
-            <p className="text-body font-medium text-navy">Passwort ändern</p>
-            <div className="space-y-2">
-              <Label htmlFor="current-password">Aktuelles Passwort</Label>
-              <Input
-                id="current-password"
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                autoComplete="current-password"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-password">Neues Passwort</Label>
-              <Input
-                id="new-password"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                autoComplete="new-password"
-                placeholder="Mindestens 6 Zeichen"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirm-password">Passwort bestätigen</Label>
-              <Input
-                id="confirm-password"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-              />
-            </div>
-            <Button
-              onClick={savePassword}
-              disabled={savingPassword || !profile}
-              size="sm"
-            >
-              {savingPassword ? "Speichern…" : "Passwort ändern"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Abrechnung */}
-      <section id="pricing" className="scroll-mt-8 space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2>Abrechnung</h2>
-            <p className="mt-1 text-text-muted">
-              Wählen Sie den Plan, der zu Ihnen passt.
-            </p>
-          </div>
-          {/* Interval toggle */}
+      <section id="pricing" className="scroll-mt-8 space-y-6 border-t border-stroke pt-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
           <div className="inline-flex items-center rounded-full border border-stroke bg-surface p-1 text-[13px] font-medium">
             <button
               type="button"
@@ -491,7 +424,7 @@ export default function ProfilPage() {
           <div
             className={cn(
               "relative flex flex-col rounded-card border bg-surface p-7",
-              !isPro ? "border-accent shadow-[0_8px_32px_rgba(255,107,26,0.10)]" : "border-stroke"
+              !isPro ? "border-accent shadow-[0_8px_32px_rgba(26,82,122,0.12)]" : "border-stroke"
             )}
           >
             {!isPro && (
@@ -500,17 +433,15 @@ export default function ProfilPage() {
               </span>
             )}
             <p className="text-[15px] font-semibold text-navy">Gratis</p>
-            <p className="mt-1 text-text-muted">Zum Ausprobieren.</p>
             <div className="mt-5 flex items-baseline gap-1">
               <span className="font-sans text-[40px] font-semibold leading-none text-navy">
                 CHF 0
               </span>
               <span className="text-text-muted">/ Monat</span>
             </div>
-            <ul className="mt-6 space-y-3">
+            <ul className="mt-6 space-y-2">
               {freeFeatures.map((f) => (
-                <li key={f} className="flex items-start gap-2.5 text-[15px] text-text">
-                  <Check className="mt-0.5 h-[18px] w-[18px] shrink-0 stroke-[2] text-accent" />
+                <li key={f} className="text-[15px] text-text">
                   {f}
                 </li>
               ))}
@@ -529,35 +460,21 @@ export default function ProfilPage() {
               isPro ? "border-accent" : "border-navy"
             )}
           >
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-accent/30 blur-3xl"
-            />
             {isPro && (
               <span className="absolute right-6 top-6 rounded-full bg-accent px-2.5 py-1 text-[12px] font-medium text-white">
                 Aktueller Plan
               </span>
             )}
-            <p className="flex items-center gap-2 text-[15px] font-semibold">
-              <Sparkles className="h-[18px] w-[18px] stroke-[1.5] text-accent" />
-              Cura Pro
-            </p>
-            <p className="mt-1 text-white/70">Für den vollen Automatik-Betrieb.</p>
+            <p className="text-[15px] font-semibold">Cura Pro</p>
             <div className="mt-5 flex items-baseline gap-1">
               <span className="font-sans text-[40px] font-semibold leading-none">
                 {proPrice}
               </span>
               <span className="text-white/70">{proPer}</span>
             </div>
-            {interval === "yearly" && (
-              <p className="mt-1 text-[13px] text-white/60">
-                entspricht CHF 83 / Monat
-              </p>
-            )}
-            <ul className="mt-6 space-y-3">
+            <ul className="mt-6 space-y-2">
               {proFeatures.map((f) => (
-                <li key={f} className="flex items-start gap-2.5 text-[15px] text-white/90">
-                  <Check className="mt-0.5 h-[18px] w-[18px] shrink-0 stroke-[2] text-accent" />
+                <li key={f} className="text-[15px] text-white/90">
                   {f}
                 </li>
               ))}
@@ -576,66 +493,77 @@ export default function ProfilPage() {
         </div>
       </section>
 
-      {/* Support */}
-      <Card className="max-w-xl">
-        <CardContent className="flex flex-wrap items-center justify-between gap-4 py-5">
-          <div className="flex items-center gap-3">
-            <LifeBuoy className="h-5 w-5 stroke-[1.5] text-accent" />
-            <div>
-              <p className="font-medium text-navy">Support</p>
-              <p className="text-body text-text-muted">
-                Wir helfen Ihnen gerne weiter.
-              </p>
-            </div>
-          </div>
-          <Button asChild variant="outline" size="sm">
-            <a href="mailto:support@cura.ch">Support kontaktieren</a>
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="border-t border-stroke pt-8">
+        <button
+          type="button"
+          onClick={toggleSupport}
+          className="text-body text-accent underline-offset-4 hover:underline"
+        >
+          Support kontaktieren
+        </button>
 
-      {/* Logout */}
-      <Card className="max-w-xl">
-        <CardContent className="flex flex-wrap items-center justify-between gap-4 py-5">
-          <div className="flex items-center gap-3">
-            <LogOut className="h-5 w-5 stroke-[1.5] text-accent" />
-            <div>
-              <p className="font-medium text-navy">Abmelden</p>
-              <p className="text-body text-text-muted">
-                Sitzung beenden und zur Anmeldeseite wechseln.
-              </p>
+        {supportOpen && (
+          <div className="mt-4 space-y-3 rounded-card border border-stroke bg-surface p-4">
+            <div
+              ref={supportScrollRef}
+              className="flex max-h-[220px] min-h-[80px] flex-col gap-2 overflow-y-auto"
+            >
+              {supportLoading ? (
+                <p className="text-caption text-text-muted">Laden…</p>
+              ) : supportMessages.length === 0 ? (
+                <p className="text-caption text-text-muted">
+                  Schreiben Sie uns — wir melden uns bei Ihnen.
+                </p>
+              ) : (
+                supportMessages.map((msg) => (
+                  <div key={msg.id} className="flex justify-end">
+                    <div className="max-w-[85%] rounded-[14px] bg-accent/10 px-3 py-2 text-[14px] leading-relaxed text-navy">
+                      {msg.message}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void sendSupportMessage();
+              }}
+              className="flex gap-2"
+            >
+              <Input
+                value={supportText}
+                onChange={(e) => setSupportText(e.target.value)}
+                placeholder="Ihre Nachricht…"
+                disabled={supportSending}
+              />
+              <Button
+                type="submit"
+                disabled={supportSending || !supportText.trim()}
+              >
+                {supportSending ? "…" : "Senden"}
+              </Button>
+            </form>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleLogout}
-            disabled={loggingOut}
-          >
-            {loggingOut ? "Abmelden…" : "Abmelden"}
-          </Button>
-        </CardContent>
-      </Card>
+        )}
 
-      {/* Danger zone */}
-      <Card className="max-w-xl border-red-200">
-        <CardContent className="flex flex-wrap items-center justify-between gap-4 py-5">
-          <div>
-            <p className="font-medium text-navy">Konto löschen</p>
-            <p className="text-body text-text-muted">
-              Entfernt alle Daten unwiderruflich.
-            </p>
-          </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setDeleteOpen(true)}
-          >
-            <Trash2 className="h-4 w-4 stroke-[1.5]" />
-            Konto löschen
-          </Button>
-        </CardContent>
-      </Card>
+        <button
+          type="button"
+          onClick={() => void handleLogout()}
+          disabled={loggingOut}
+          className="mt-6 block text-body text-accent underline-offset-4 hover:underline disabled:opacity-50"
+        >
+          {loggingOut ? "Abmelden…" : "Abmelden"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setDeleteOpen(true)}
+          className="mt-4 block text-body text-red-600 hover:text-red-700"
+        >
+          Konto löschen
+        </button>
+      </div>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-md">
@@ -648,10 +576,7 @@ export default function ProfilPage() {
           </DialogHeader>
           {showForwardingRemovalHint && (
             <div className="rounded-btn border border-stroke bg-bg/50 p-3 text-caption text-text">
-              <p className="flex items-start gap-2 font-medium text-navy">
-                <Info className="mt-0.5 h-4 w-4 shrink-0 stroke-[1.5] text-accent" />
-                Weiterleitung entfernen
-              </p>
+              <p className="font-medium text-navy">Weiterleitung entfernen</p>
               <p className="mt-2 text-text-muted">
                 Falls Sie Anrufe auf{" "}
                 <span className="font-mono text-text">{curaNumber}</span>{" "}

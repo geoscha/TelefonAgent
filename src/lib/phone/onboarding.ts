@@ -204,6 +204,15 @@ export async function confirmForwardingSetup(
   };
 }
 
+/** Customer confirmed they deactivated forwarding on their phone. */
+export async function disconnectPhoneForwarding(): Promise<PhoneOnboardingState> {
+  await requireUserId();
+  await updateSettings({
+    forwardingStatus: "nicht_eingerichtet",
+  });
+  return getPhoneOnboardingState();
+}
+
 export async function assignPhoneNumberToUser(
   userId: string,
   phoneNumber: string,

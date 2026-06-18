@@ -4,8 +4,21 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { LogOut, Phone, Settings, Users, Wallet } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { CuraLogo } from "@/components/brand/CuraLogo";
+import { cn } from "@/lib/utils";
+
+const navItems = [
+  { href: "/admin", label: "Anfragen" },
+  { href: "/admin/numbers", label: "Nummern", icon: Phone },
+  { href: "/admin/finances", label: "Finanzen", icon: Wallet },
+  { href: "/admin/customers", label: "Kunden", icon: Users },
+  { href: "/admin/settings", label: "Einstellungen", icon: Settings },
+];
+
+function isActive(pathname: string, href: string) {
+  if (href === "/admin") return pathname === "/admin";
+  return pathname.startsWith(href);
+}
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -15,85 +28,52 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   async function handleLogout() {
     setLoggingOut(true);
     await fetch("/api/admin/logout", { method: "POST" });
-    router.push("/admin/login");
+    router.push("/");
     router.refresh();
   }
 
   return (
-    <div className="min-h-screen bg-bg">
-      <header className="border-b border-stroke bg-surface">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-6">
-          <div className="flex items-center gap-6">
-            <CuraLogo mode="difference" size="sm" href="/admin" />
-            <nav className="flex items-center gap-1 text-body">
-              <Link
-                href="/admin"
-                className={`rounded-btn px-3 py-1.5 font-medium ${
-                  pathname === "/admin"
-                    ? "bg-accent/10 text-accent"
-                    : "text-text-muted hover:text-text"
-                }`}
-              >
-                Anfragen
-              </Link>
-              <Link
-                href="/admin/numbers"
-                className={`flex items-center gap-1.5 rounded-btn px-3 py-1.5 font-medium ${
-                  pathname === "/admin/numbers"
-                    ? "bg-accent/10 text-accent"
-                    : "text-text-muted hover:text-text"
-                }`}
-              >
-                <Phone className="h-4 w-4 stroke-[1.5]" />
-                Nummern
-              </Link>
-              <Link
-                href="/admin/finances"
-                className={`flex items-center gap-1.5 rounded-btn px-3 py-1.5 font-medium ${
-                  pathname === "/admin/finances"
-                    ? "bg-accent/10 text-accent"
-                    : "text-text-muted hover:text-text"
-                }`}
-              >
-                <Wallet className="h-4 w-4 stroke-[1.5]" />
-                Finanzen
-              </Link>
-              <Link
-                href="/admin/customers"
-                className={`flex items-center gap-1.5 rounded-btn px-3 py-1.5 font-medium ${
-                  pathname.startsWith("/admin/customers")
-                    ? "bg-accent/10 text-accent"
-                    : "text-text-muted hover:text-text"
-                }`}
-              >
-                <Users className="h-4 w-4 stroke-[1.5]" />
-                Kunden
-              </Link>
-              <Link
-                href="/admin/settings"
-                className={`flex items-center gap-1.5 rounded-btn px-3 py-1.5 font-medium ${
-                  pathname === "/admin/settings"
-                    ? "bg-accent/10 text-accent"
-                    : "text-text-muted hover:text-text"
-                }`}
-              >
-                <Settings className="h-4 w-4 stroke-[1.5]" />
-                Einstellungen
-              </Link>
-            </nav>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
+    <div className="min-h-screen bg-white text-text">
+      <header className="sticky top-0 z-20 border-b border-stroke bg-white">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+          <CuraLogo mode="contextual" theme="dark" size="sm" href="/admin" />
+          <nav className="flex flex-1 flex-wrap items-center gap-1">
+            {navItems.map((item) => {
+              const active = isActive(pathname, item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors sm:text-[14px]",
+                    active
+                      ? "bg-accent text-white"
+                      : "text-text-muted hover:bg-bg hover:text-navy"
+                  )}
+                >
+                  {Icon && (
+                    <Icon className="h-4 w-4 stroke-[1.5]" aria-hidden />
+                  )}
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+          <button
+            type="button"
             onClick={handleLogout}
             disabled={loggingOut}
+            className="inline-flex items-center gap-2 rounded-btn border border-stroke bg-white px-3 py-2 text-[13px] font-medium text-navy transition-colors hover:bg-bg disabled:opacity-60 sm:text-[14px]"
           >
-            <LogOut className="mr-2 h-4 w-4 stroke-[1.5]" />
-            {loggingOut ? "Abmelden…" : "Abmelden"}
-          </Button>
+            <LogOut className="h-4 w-4 stroke-[1.5]" aria-hidden />
+            {loggingOut ? "…" : "Abmelden"}
+          </button>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+        {children}
+      </main>
     </div>
   );
 }

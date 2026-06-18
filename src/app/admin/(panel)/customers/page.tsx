@@ -18,6 +18,8 @@ interface Customer {
   onboardingPhase?: string;
   callCount: number;
   lastCallAt?: string;
+  openSupportCount?: number;
+  lastSupportPreview?: string;
 }
 
 export default function AdminCustomersPage() {
@@ -76,6 +78,7 @@ export default function AdminCustomersPage() {
                 <th className="px-4 py-3 font-medium">Plan</th>
                 <th className="px-4 py-3 font-medium">Nummer</th>
                 <th className="px-4 py-3 font-medium">Anrufe</th>
+                <th className="px-4 py-3 font-medium">Support</th>
                 <th className="px-4 py-3 font-medium">Registriert</th>
               </tr>
             </thead>
@@ -100,6 +103,24 @@ export default function AdminCustomersPage() {
                     {c.curaNumber || "—"}
                   </td>
                   <td className="px-4 py-3">{c.callCount}</td>
+                  <td className="px-4 py-3">
+                    {(c.openSupportCount ?? 0) > 0 ? (
+                      <div className="max-w-[200px]">
+                        <Badge variant="warning">
+                          {c.openSupportCount === 1
+                            ? "Nachricht"
+                            : `${c.openSupportCount} Nachrichten`}
+                        </Badge>
+                        {c.lastSupportPreview && (
+                          <p className="mt-1 line-clamp-2 text-caption text-text-muted">
+                            {c.lastSupportPreview}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-caption text-text-muted">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-caption text-text-muted">
                     {new Date(c.createdAt).toLocaleDateString("de-CH")}
                   </td>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Phone } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -302,8 +301,7 @@ export function CallVolumeChart() {
             </svg>
 
             {total === 0 && (
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-text-muted">
-                <Phone className="h-5 w-5 stroke-[1.5]" />
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-text-muted">
                 <p className="text-body">Noch keine Anrufe in diesem Zeitraum</p>
               </div>
             )}

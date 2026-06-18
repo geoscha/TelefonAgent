@@ -3,11 +3,8 @@
 import { useState } from "react";
 import {
   Check,
-  Clock,
   Copy,
-  Info,
   Loader2,
-  Phone,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -49,10 +46,7 @@ export function PhoneOnboarding({
 
   return (
     <div className="rounded-card border border-stroke bg-surface p-5">
-      <div className="flex items-center gap-2 text-navy">
-        <Phone className="h-4 w-4 stroke-[1.5] text-accent" />
-        <p className="font-medium">Telefonnummer verbinden</p>
-      </div>
+      <p className="font-medium text-navy">Telefonnummer verbinden</p>
 
       {phase === "nummer_anfragen" && (
         <div className="mt-4 space-y-3">
@@ -68,16 +62,13 @@ export function PhoneOnboarding({
       )}
 
       {phase === "nummer_warte" && (
-        <div className="mt-4 flex gap-3 rounded-btn border border-stroke bg-bg/50 p-4">
-          <Clock className="mt-0.5 h-5 w-5 shrink-0 stroke-[1.5] text-accent" />
-          <div>
-            <p className="font-medium text-navy">In Bearbeitung</p>
-            <p className="mt-1 text-body text-text-muted">
-              Ihre Nummer wird eingerichtet. Das kann einige Stunden dauern.
-              Sobald die Nummer bereit ist, erscheint hier die Anleitung zur
-              Weiterleitung.
-            </p>
-          </div>
+        <div className="mt-4 rounded-btn border border-stroke bg-bg/50 p-4">
+          <p className="font-medium text-navy">In Bearbeitung</p>
+          <p className="mt-1 text-body text-text-muted">
+            Ihre Nummer wird eingerichtet. Das kann einige Stunden dauern.
+            Sobald die Nummer bereit ist, erscheint hier die Anleitung zur
+            Weiterleitung.
+          </p>
         </div>
       )}
 
@@ -112,8 +103,7 @@ export function PhoneOnboarding({
                 label="Alle Anrufe"
               />
             </div>
-            <div className="mt-3 flex gap-2 rounded-btn bg-baby-blue/40 p-3 text-caption text-text">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 stroke-[1.5] text-accent" />
+            <div className="mt-3 rounded-btn bg-baby-blue/40 p-3 text-caption text-text">
               <p>
                 <strong>Nur Überlauf:</strong> Anrufe werden weitergeleitet, wenn
                 Sie nicht erreichbar sind oder besetzt ist.{" "}

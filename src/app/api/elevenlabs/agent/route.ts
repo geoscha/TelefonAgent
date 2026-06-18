@@ -120,8 +120,9 @@ export async function POST(req: NextRequest) {
       systemPrompt,
     };
     const existingAgents = settings.agents ?? [];
-    const without = existingAgents.filter((a) => a.id !== agentId);
-    const agents = [...without, stored];
+    const agents = existingAgents.some((a) => a.id === agentId)
+      ? existingAgents.map((a) => (a.id === agentId ? stored : a))
+      : [...existingAgents, stored];
 
     let updated = await updateSettings({
       agentId,

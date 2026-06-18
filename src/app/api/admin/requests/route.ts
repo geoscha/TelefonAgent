@@ -24,13 +24,19 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("q") ?? undefined;
 
   try {
-    const [requests, pool, allOpen, inArbeit] = await Promise.all([
-      listRequests({ status, search }),
+    const [allRequests, pool] = await Promise.all([
+      listRequests({ status: "all", search }),
       listAdminPoolNumbers(),
-      listRequests({ status: "offen" }),
-      listRequests({ status: "in_arbeit" }),
     ]);
-    const allPending = [...allOpen, ...inArbeit];
+
+    const requests =
+      status === "all"
+        ? allRequests
+        : allRequests.filter((r) => r.status === status);
+
+    const allPending = allRequests.filter(
+      (r) => r.status === "offen" || r.status === "in_arbeit"
+    );
     const suggestions = suggestPhoneAssignments(allPending, pool);
     const sorted = sortRequestsForAdmin(requests);
     const freeCount = pool.filter((n) => n.status === "frei").length;
@@ -43,9 +49,13 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("[admin/requests]", error);
-    return NextResponse.json(
-      { ok: false, error: "Anfragen konnten nicht geladen werden." },
-      { status: 500 }
-    );
+    const raw =
+      error instanceof Error
+        ? `${error.message} ${String(error.cause ?? "")}`
+        : JSON.stringify(error);
+    const message = /fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT/i.test(raw)
+      ? "Datenbank nicht erreichbar. Internetverbindung und Supabase-Projekt prüfen."
+      : "Anfragen konnten nicht geladen werden.";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

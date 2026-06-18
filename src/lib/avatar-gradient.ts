@@ -11,7 +11,8 @@ export function hashString(input: string): number {
 }
 
 export function getAvatarGradientVariant(name: string): GradientVariant {
-  return hashString(name) % 2 === 0 ? "warm" : "cool";
+  void name;
+  return "cool";
 }
 
 export function getInitials(name: string): string {
