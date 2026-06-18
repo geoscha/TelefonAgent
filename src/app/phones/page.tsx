@@ -184,11 +184,8 @@ export default function PhonesPage() {
         );
       } else {
         invalidateStaleCache("token-balance");
-        toast.error(data.error ?? "Anfrage fehlgeschlagen", {
-          description:
-            data.code === "insufficient_tokens"
-              ? "Bitte laden Sie unter Abrechnung Tokens auf."
-              : undefined,
+        toast.error("Anfrage fehlgeschlagen", {
+          description: data.error ?? "Bitte versuchen Sie es erneut.",
         });
       }
     } catch {

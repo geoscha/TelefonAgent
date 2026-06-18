@@ -9,9 +9,7 @@ import {
 } from "@/lib/elevenlabs/phone";
 import { linkUserPhoneToAgent } from "@/lib/elevenlabs/sync-agent";
 import {
-  canAffordTokens,
-  prepareTokenBalanceForBilling,
-  PHONE_NUMBER_COST_TOKENS,
+  assertCanAffordPhoneNumber,
 } from "@/lib/billing/tokens";
 import { setupPhoneBilling } from "@/lib/billing/phone-billing";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -246,20 +244,31 @@ export async function requestAdditionalPoolNumber(): Promise<{
   error?: string;
 }> {
   const userId = await requireUserId();
-  await prepareTokenBalanceForBilling(userId);
-
-  if (!(await canAffordTokens(userId, PHONE_NUMBER_COST_TOKENS))) {
-    return {
-      pending: false,
-      autoAssigned: false,
-      insufficientTokens: true,
-      error:
-        "Nicht genügend Tokens. Bitte laden Sie Ihr Guthaben auf, um eine neue Nummer zu erstellen.",
-    };
-  }
 
   try {
     await syncNumberPoolFromEnv();
+    const admin = createAdminClient();
+    const { data: free } = await admin
+      .from("forwarding_number_pool")
+      .select("phone_number")
+      .is("assigned_user_id", null)
+      .limit(1)
+      .maybeSingle();
+
+    if (!free) {
+      return { pending: true, autoAssigned: false };
+    }
+
+    const affordability = await assertCanAffordPhoneNumber(userId);
+    if (!affordability.ok) {
+      return {
+        pending: false,
+        autoAssigned: false,
+        insufficientTokens: true,
+        error: affordability.error,
+      };
+    }
+
     const pool = await assignNumberFromPool(userId, { allowExisting: false });
     const existing = await listUserPhoneNumbers(userId);
     const phone = await addPoolPhoneNumber(
@@ -329,11 +338,11 @@ export async function addSipTrunkPhoneNumber(
     return { ok: false, error: "Diese Nummer ist bereits hinterlegt." };
   }
 
-  if (!(await canAffordTokens(userId, PHONE_NUMBER_COST_TOKENS))) {
+  const affordability = await assertCanAffordPhoneNumber(userId);
+  if (!affordability.ok) {
     return {
       ok: false,
-      error:
-        "Nicht genügend Tokens. Bitte laden Sie Ihr Guthaben auf, um eine neue Nummer zu erstellen.",
+      error: affordability.error,
     };
   }
 

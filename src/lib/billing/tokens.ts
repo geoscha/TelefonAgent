@@ -104,7 +104,71 @@ export async function prepareTokenBalanceForBilling(
   userId: string
 ): Promise<number> {
   await grantWelcomeTokensIfNeeded(userId);
+  await reverseOrphanPhoneCharges(userId);
   return repairTokenBalanceFromLedger(userId);
+}
+
+/** Credit back monthly phone charges for numbers that no longer exist. */
+export async function reverseOrphanPhoneCharges(userId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: charges, error } = await admin
+    .from("token_transactions")
+    .select("id, amount, reference_id")
+    .eq("user_id", userId)
+    .eq("source", "phone_monthly");
+
+  if (error) {
+    if (error.code === "42P01") return;
+    throw error;
+  }
+  if (!charges?.length) return;
+
+  const { data: phones } = await admin
+    .from("user_phone_numbers")
+    .select("id")
+    .eq("user_id", userId);
+
+  const phoneIds = new Set((phones ?? []).map((p) => p.id as string));
+
+  for (const charge of charges) {
+    const ref = charge.reference_id as string | null;
+    if (!ref?.startsWith("phone_monthly:")) continue;
+
+    const phoneId = ref.split(":")[1];
+    if (!phoneId || phoneIds.has(phoneId)) continue;
+
+    const amount = Math.abs(Number(charge.amount ?? 0));
+    if (amount <= 0) continue;
+
+    await creditTokens(
+      userId,
+      amount,
+      "billing_reversal",
+      `reversal:${charge.id as string}`,
+      { reversedTransactionId: charge.id, reason: "orphan_phone" }
+    );
+  }
+}
+
+export function formatInsufficientTokensMessage(
+  balance: number,
+  required: number
+): string {
+  return `Nicht genügend Tokens (vorhanden: ${balance.toLocaleString("de-CH")}, benötigt: ${required.toLocaleString("de-CH")} für den ersten Monat). Bitte laden Sie unter Abrechnung auf.`;
+}
+
+export async function assertCanAffordPhoneNumber(
+  userId: string
+): Promise<{ ok: true; balance: number } | { ok: false; balance: number; error: string }> {
+  const balance = await prepareTokenBalanceForBilling(userId);
+  if (balance >= PHONE_NUMBER_COST_TOKENS) {
+    return { ok: true, balance };
+  }
+  return {
+    ok: false,
+    balance,
+    error: formatInsufficientTokensMessage(balance, PHONE_NUMBER_COST_TOKENS),
+  };
 }
 
 interface TokenMutationResult {

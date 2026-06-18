@@ -333,7 +333,13 @@ function OverviewStep({
   return (
     <div className="space-y-4">
       {isEmpty && phase !== "nummer_warte" && (
-        <p className={userLabelClass}>Noch keine Telefonnummer hinterlegt.</p>
+        <div className="space-y-1">
+          <p className={userLabelClass}>Noch keine Telefonnummer hinterlegt.</p>
+          <p className={userLabelClass}>
+            Cura-Nummer: {formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)} Tokens
+            pro Monat
+          </p>
+        </div>
       )}
 
       {(numbers.length > 0 || hasPending) && (
@@ -485,8 +491,7 @@ function OverviewStep({
           ) : (
             <Plus className="h-4 w-4" />
           )}
-          Nummer beantragen · {formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)}{" "}
-          Tokens/Monat
+          Nummer beantragen
         </button>
         <button
           type="button"

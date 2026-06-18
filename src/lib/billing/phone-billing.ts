@@ -5,6 +5,7 @@ import {
   canAffordTokens,
   PHONE_NUMBER_COST_TOKENS,
   prepareTokenBalanceForBilling,
+  formatInsufficientTokensMessage,
 } from "@/lib/billing/tokens";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -54,10 +55,10 @@ export async function setupPhoneBilling(
 
   const affordable = await canAffordTokens(userId, PHONE_NUMBER_COST_TOKENS);
   if (!affordable) {
+    const balance = await prepareTokenBalanceForBilling(userId);
     return {
       ok: false,
-      error:
-        "Nicht genügend Tokens. Bitte laden Sie Ihr Guthaben auf, um eine neue Nummer zu aktivieren.",
+      error: formatInsufficientTokensMessage(balance, PHONE_NUMBER_COST_TOKENS),
     };
   }
 
@@ -90,10 +91,10 @@ export async function setupPhoneBilling(
       .eq("id", phoneId)
       .eq("user_id", userId);
 
+    const balance = await prepareTokenBalanceForBilling(userId);
     return {
       ok: false,
-      error:
-        "Nicht genügend Tokens. Bitte laden Sie Ihr Guthaben auf, um eine neue Nummer zu aktivieren.",
+      error: formatInsufficientTokensMessage(balance, PHONE_NUMBER_COST_TOKENS),
     };
   }
 
@@ -130,6 +131,28 @@ export async function processDuePhoneBilling(userId: string): Promise<void> {
   for (const row of phones ?? []) {
     const phoneId = row.id as string;
     let periodEnd = row.next_billing_at as string;
+
+    const { data: billed } = await admin
+      .from("token_transactions")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("source", "phone_monthly")
+      .like("reference_id", `phone_monthly:${phoneId}:%`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!billed) {
+      await admin
+        .from("user_phone_numbers")
+        .update({
+          assigned_at: null,
+          next_billing_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", phoneId)
+        .eq("user_id", userId);
+      continue;
+    }
 
     while (periodEnd && new Date(periodEnd).getTime() <= nowMs) {
       const paid = await chargePhonePeriod(userId, phoneId, periodEnd);

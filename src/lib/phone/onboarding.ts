@@ -15,9 +15,7 @@ import { isPhoneNumberRequest } from "@/lib/admin/request-types";
 import type { RequestStatus, UserRequest } from "@/lib/admin/request-types";
 import { assignNumberFromPool, syncNumberPoolFromEnv } from "@/lib/store/number-pool";
 import {
-  canAffordTokens,
-  PHONE_NUMBER_COST_TOKENS,
-  prepareTokenBalanceForBilling,
+  assertCanAffordPhoneNumber,
 } from "@/lib/billing/tokens";
 import { setupPhoneBilling } from "@/lib/billing/phone-billing";
 import { requireUserId } from "@/lib/supabase/server";
@@ -107,7 +105,6 @@ export async function requestPhoneNumber(): Promise<
   PhoneOnboardingState & { autoAssigned?: boolean; phone?: { phoneNumber: string } }
 > {
   const userId = await requireUserId();
-  await prepareTokenBalanceForBilling(userId);
   const current = await getPhoneOnboardingState(userId);
   const phones = await listUserPhoneNumbers(userId);
 
@@ -154,7 +151,8 @@ export async function requestPhoneNumber(): Promise<
 
 /** Assigns the next free pool number to a user and closes their open request. */
 export async function tryAutoAssignPhoneNumber(userId: string): Promise<boolean> {
-  if (!(await canAffordTokens(userId, PHONE_NUMBER_COST_TOKENS))) {
+  const affordability = await assertCanAffordPhoneNumber(userId);
+  if (!affordability.ok) {
     return false;
   }
 

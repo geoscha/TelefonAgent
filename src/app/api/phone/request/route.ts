@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { prepareTokenBalanceForBilling } from "@/lib/billing/tokens";
+import { assertCanAffordPhoneNumber } from "@/lib/billing/tokens";
 import { requestPhoneNumber } from "@/lib/phone/onboarding";
 import { requireUserId } from "@/lib/supabase/server";
 
@@ -11,9 +11,11 @@ function isInsufficientTokensMessage(message: string): boolean {
 }
 
 export async function POST() {
+  let tokenBalance: number | undefined;
   try {
     const userId = await requireUserId();
-    await prepareTokenBalanceForBilling(userId);
+    const affordability = await assertCanAffordPhoneNumber(userId);
+    tokenBalance = affordability.balance;
     const state = await requestPhoneNumber();
     return NextResponse.json({
       ok: true,
@@ -34,6 +36,7 @@ export async function POST() {
         ok: false,
         error: message,
         code: insufficient ? "insufficient_tokens" : "request_failed",
+        tokenBalance: insufficient ? tokenBalance : undefined,
       },
       { status: insufficient ? 402 : 500 }
     );
