@@ -25,9 +25,10 @@ export function getInitials(name: string): string {
   return trimmed.slice(0, 2).toUpperCase();
 }
 
+/** Teal-forward vs blue-forward accents from the unified brand gradient. */
 export const avatarGradientClasses: Record<GradientVariant, string> = {
-  warm: "bg-[radial-gradient(circle_at_30%_30%,#FF9F24_0%,#FF6B1A_55%,#E85A10_100%)]",
-  cool: "bg-[radial-gradient(circle_at_30%_30%,#C9D6DD_0%,#4D7496_55%,#16323F_100%)]",
+  warm: "bg-[radial-gradient(circle_at_30%_30%,#22d3bb_0%,#14b8a6_55%,#050f1f_100%)]",
+  cool: "bg-[radial-gradient(circle_at_30%_30%,#38bdf8_0%,#2563eb_55%,#050f1f_100%)]",
 };
 
 export function getStatAccentVariant(index: number): GradientVariant {
@@ -36,8 +37,8 @@ export function getStatAccentVariant(index: number): GradientVariant {
 
 export function statAccentClass(variant: GradientVariant): string {
   return variant === "warm"
-    ? "bg-[linear-gradient(90deg,#FF6B1A_0%,#FFE9D6_100%)]"
-    : "bg-[linear-gradient(90deg,#16323F_0%,#C9D6DD_100%)]";
+    ? "bg-[linear-gradient(90deg,#22d3bb_0%,#2563eb_100%)]"
+    : "bg-[linear-gradient(90deg,#050f1f_0%,#2563eb_100%)]";
 }
 
 export function cnAvatar(variant: GradientVariant, className?: string) {

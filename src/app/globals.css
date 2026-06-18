@@ -4,61 +4,103 @@
 
 @layer base {
   :root {
-    --bg: #f3f7fb;
+    /* Brand core — deep navy + teal/green + royal blue (Retell-inspired) */
+    --brand-navy-deep: #050f1f;
+    --brand-navy: #0a1628;
+    --brand-navy-mid: #0f2847;
+    --brand-blue: #2563eb;
+    --brand-blue-bright: #3b82f6;
+    --brand-teal: #22d3bb;
+    --brand-teal-deep: #14b8a6;
+    --brand-indigo: #6366f1;
+
+    /* Semantic tokens */
+    --bg: #eef2f7;
     --surface: #ffffff;
-    --text: #14242e;
-    --text-muted: #5c6d78;
-    --accent: #1a527a;
-    --navy: #16323f;
-    --blue-tint: #c5d4df;
-    --baby-blue: #e8f0f6;
-    --light-blue: #dfe9f2;
-    --steel-blue: #4d7496;
-    --divider: #e1e9f0;
-    --stroke: #cfd9e3;
-    --ring: #1a527a;
-    --cream: #ffe9d6;
-    --gradient-warm: radial-gradient(
-        ellipse 85% 70% at 15% 25%,
-        rgba(255, 107, 26, 0.32) 0%,
-        transparent 55%
+    --text: #0a1628;
+    --text-muted: #526070;
+    --accent: #2563eb;
+    --navy: #050f1f;
+    --blue-tint: #93c5fd;
+    --baby-blue: #dbeafe;
+    --light-blue: #bfdbfe;
+    --steel-blue: #1d4ed8;
+    --divider: #d8e0ea;
+    --stroke: #c5d0dc;
+    --ring: #2563eb;
+    --cream: #ccfbf1;
+
+    /* Unified brand gradient — teal (bottom-left) + blue (top-right) on deep navy */
+    --gradient-brand:
+      radial-gradient(
+        ellipse 100% 90% at 6% 94%,
+        rgba(34, 211, 187, 0.92) 0%,
+        rgba(34, 211, 187, 0) 46%
       ),
       radial-gradient(
-        ellipse 75% 60% at 85% 75%,
-        rgba(255, 233, 214, 0.85) 0%,
+        ellipse 92% 88% at 94% 8%,
+        rgba(59, 130, 246, 0.82) 0%,
+        rgba(59, 130, 246, 0) 44%
+      ),
+      radial-gradient(
+        ellipse 68% 58% at 58% 62%,
+        rgba(99, 102, 241, 0.38) 0%,
+        transparent 52%
+      ),
+      linear-gradient(
+        128deg,
+        #050f1f 0%,
+        #0a1f3d 34%,
+        #0f3468 68%,
+        #071525 100%
+      );
+
+    /* Teal-forward variant (replaces warm/orange) */
+    --gradient-brand-teal:
+      radial-gradient(
+        ellipse 85% 75% at 12% 88%,
+        rgba(43, 228, 189, 0.95) 0%,
+        rgba(43, 228, 189, 0) 50%
+      ),
+      radial-gradient(
+        ellipse 70% 65% at 88% 12%,
+        rgba(37, 99, 235, 0.55) 0%,
+        transparent 48%
+      ),
+      linear-gradient(135deg, #050f1f 0%, #0a2447 50%, #0f3468 100%);
+
+    /* Blue-forward variant (replaces cool grey) */
+    --gradient-brand-blue:
+      radial-gradient(
+        ellipse 80% 70% at 88% 15%,
+        rgba(59, 130, 246, 0.9) 0%,
+        rgba(59, 130, 246, 0) 48%
+      ),
+      radial-gradient(
+        ellipse 75% 68% at 10% 85%,
+        rgba(34, 211, 187, 0.45) 0%,
+        transparent 50%
+      ),
+      linear-gradient(135deg, #050f1f 0%, #0a1628 45%, #122040 100%);
+
+    /* Soft tint for light surfaces */
+    --gradient-brand-soft:
+      radial-gradient(
+        ellipse 80% 70% at 15% 85%,
+        rgba(34, 211, 187, 0.18) 0%,
         transparent 50%
       ),
       radial-gradient(
-        ellipse 100% 90% at 50% 100%,
-        rgba(251, 250, 247, 1) 0%,
-        transparent 65%
-      );
-    --gradient-cool: radial-gradient(
-        ellipse 70% 65% at 10% 20%,
-        rgba(22, 50, 63, 0.22) 0%,
-        transparent 55%
+        ellipse 75% 65% at 85% 15%,
+        rgba(59, 130, 246, 0.16) 0%,
+        transparent 48%
       ),
-      radial-gradient(
-        ellipse 80% 70% at 90% 55%,
-        rgba(201, 214, 221, 0.75) 0%,
-        transparent 50%
-      ),
-      radial-gradient(
-        ellipse 100% 85% at 45% 95%,
-        rgba(232, 240, 243, 0.95) 0%,
-        transparent 60%
-      );
-    --gradient-landing: radial-gradient(
-        120% 120% at 88% 8%,
-        #b9d4ea 0%,
-        rgba(185, 212, 234, 0) 42%
-      ),
-      radial-gradient(
-        90% 90% at 12% 92%,
-        #1a3b5d 0%,
-        rgba(26, 59, 93, 0) 55%
-      ),
-      linear-gradient(135deg, #1a3b5d 0%, #4a7394 48%, #8eb4d4 78%, #c5ddf0 100%);
+      linear-gradient(135deg, #eef2f7 0%, #e4ebf4 100%);
+
+    /* Legacy aliases → brand gradient */
+    --gradient-warm: var(--gradient-brand-teal);
+    --gradient-cool: var(--gradient-brand-blue);
+    --gradient-landing: var(--gradient-brand);
   }
 
   body {
@@ -132,7 +174,156 @@
   }
 
   .landing-gradient {
-    background: var(--gradient-landing);
+    background: var(--gradient-brand);
+  }
+
+  .brand-gradient {
+    background: var(--gradient-brand);
+  }
+
+  .retell-landing {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    color: #0e121b;
+
+    /* ── Landing look system ───────────────────────────────────────── */
+    --landing-radius: 10px;
+    --landing-radius-sm: 6px;
+
+    --landing-fs-eyebrow: 12px;
+    --landing-fs-title: 32px;
+    --landing-fs-subtitle: 13px;
+    --landing-fs-hero-eyebrow: 13px;
+    --landing-fs-hero-body: 13px;
+    --landing-fs-card-label: 10px;
+    --landing-fs-card-title: 18px;
+    --landing-fs-card-lead: 12px;
+    --landing-fs-body: 12px;
+    --landing-fs-caption: 11px;
+  }
+
+  /* Radius — einheitlich, halb so gross wie zuvor */
+  .landing-radius {
+    border-radius: var(--landing-radius);
+  }
+
+  .landing-radius-sm {
+    border-radius: var(--landing-radius-sm);
+  }
+
+  /* Typografie — feste Grössen, leichte Stärke (400) */
+  .landing-eyebrow {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    font-size: var(--landing-fs-eyebrow);
+    font-weight: 400;
+    line-height: 1.4;
+    color: #335cff;
+  }
+
+  .landing-title {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    font-size: var(--landing-fs-title);
+    font-weight: 400;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    color: #0e121b;
+  }
+
+  .landing-subtitle {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    font-size: var(--landing-fs-subtitle);
+    font-weight: 400;
+    line-height: 1.5;
+    color: #0e121b;
+  }
+
+  .landing-hero-eyebrow {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    font-size: var(--landing-fs-hero-eyebrow);
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .landing-hero-body {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    font-size: var(--landing-fs-hero-body);
+    font-weight: 400;
+    line-height: 1.5;
+  }
+
+  .landing-card-label {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    font-size: var(--landing-fs-card-label);
+    font-weight: 400;
+    line-height: 1.35;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .landing-card-title {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    font-size: var(--landing-fs-card-title);
+    font-weight: 400;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+
+  .landing-card-lead {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    font-size: var(--landing-fs-card-lead);
+    font-weight: 400;
+    line-height: 1.45;
+    color: #525866;
+  }
+
+  .landing-body {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    font-size: var(--landing-fs-body);
+    font-weight: 400;
+    line-height: 1.45;
+  }
+
+  .landing-caption {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    font-size: var(--landing-fs-caption);
+    font-weight: 400;
+    line-height: 1.35;
+    letter-spacing: -0.02em;
+  }
+
+  .landing-panel {
+    border-radius: var(--landing-radius);
+    background: #ffffff;
+  }
+
+  .landing-card {
+    border-radius: var(--landing-radius);
+    background: #f5f7fa;
+  }
+
+  .landing-card-dark {
+    border-radius: var(--landing-radius);
+    background: #0e121b;
+  }
+
+  .retell-landing .font-retell-sans {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+  }
+
+  .font-retell-display,
+  .retell-landing .font-retell-display {
+    font-family: "Denton Condensed", Arial, sans-serif;
+  }
+
+  .landing-nav-glass {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    box-shadow:
+      0 8px 32px -12px rgba(20, 36, 46, 0.16),
+      inset 0 1px 0 rgba(255, 255, 255, 0.65);
   }
 
   @keyframes agent-radio-select {
@@ -171,7 +362,7 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.65);
     --text: #14242e;
     --text-muted: #6a7a82;
-    --navy: #16323f;
+    --navy: #050f1f;
     --stroke: rgba(20, 36, 46, 0.1);
   }
 
@@ -230,13 +421,9 @@
       0 1px 2px rgba(20, 36, 46, 0.04);
   }
 
-  /* Replica of brand "Gradient 1": cool blue-grey (top-left) → warm amber → bright orange (bottom-right) */
+  /* Animated brand gradient (profile banners, highlights) */
   .welcome-gradient {
-    background:
-      radial-gradient(58% 80% at 88% 80%, #ff7a1f 0%, rgba(255, 122, 31, 0) 60%),
-      radial-gradient(70% 85% at 60% 52%, #ffb257 0%, rgba(255, 178, 87, 0) 66%),
-      radial-gradient(85% 95% at 12% 8%, #cbd8df 0%, rgba(203, 216, 223, 0) 58%),
-      linear-gradient(120deg, #c9d6dd 0%, #ffcb80 46%, #ff8a2a 100%);
+    background: var(--gradient-brand);
     will-change: transform;
     animation: gradient-drift 19s ease-in-out infinite;
   }
@@ -244,8 +431,8 @@
   .welcome-gradient-overlay {
     background: radial-gradient(
       52% 62% at 78% 28%,
-      rgba(255, 138, 42, 0.5) 0%,
-      rgba(255, 138, 42, 0) 62%
+      rgba(34, 211, 187, 0.35) 0%,
+      rgba(34, 211, 187, 0) 62%
     );
     will-change: transform;
     animation: gradient-drift-alt 24s ease-in-out infinite;

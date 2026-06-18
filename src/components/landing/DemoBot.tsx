@@ -471,7 +471,7 @@ export function DemoBot() {
     <div className="relative w-full max-w-[340px]">
       <div
         className={cn(
-          "landing-glass flex flex-col overflow-hidden rounded-[22px] transition-[filter,opacity]",
+          "landing-glass landing-radius flex flex-col overflow-hidden transition-[filter,opacity]",
           demoLocked && "pointer-events-none blur-md"
         )}
       >
@@ -517,7 +517,7 @@ export function DemoBot() {
                 >
                   <div
                     className={cn(
-                      "max-w-[90%] rounded-[16px] px-3.5 py-2.5 text-[14px] leading-relaxed",
+                      "landing-radius-sm max-w-[90%] px-3.5 py-2.5 landing-body",
                       entry.role === "user"
                         ? "bg-white/90 text-navy"
                         : "bg-white/12 text-white"
@@ -535,7 +535,7 @@ export function DemoBot() {
             })}
             {loading && (
               <div className="flex justify-start">
-                <div className="rounded-[16px] bg-white/12 px-3.5 py-2.5">
+                <div className="landing-radius-sm bg-white/12 px-3.5 py-2.5">
                   <div className="flex gap-1">
                     {[0, 1, 2].map((i) => (
                       <span

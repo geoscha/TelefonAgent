@@ -7,8 +7,10 @@ import {
   AuthFrame,
   authButtonClass,
   authButtonOutlineClass,
+  authErrorClass,
   authInputClass,
   authLinkClass,
+  authMutedTextClass,
 } from "@/components/landing/AuthFrame";
 import { getSiteUrl } from "@/lib/auth/site-url";
 import { createClient } from "@/lib/supabase/client";
@@ -44,8 +46,10 @@ export default function PasswortVergessenPage() {
   return (
     <AuthFrame
       title="Passwort vergessen"
+      subtitle="Wir senden Ihnen einen Link zum Zurücksetzen Ihres Passworts."
+      showLegal={false}
       footer={
-        <p className="text-center text-[13px] text-white/60">
+        <p className={`text-center ${authMutedTextClass}`}>
           <Link href="/login" className={authLinkClass}>
             Zur Anmeldung
           </Link>
@@ -54,7 +58,7 @@ export default function PasswortVergessenPage() {
     >
       {sent ? (
         <div className="space-y-4">
-          <p className="text-[14px] leading-relaxed text-white/80" role="status">
+          <p className={`${authMutedTextClass} text-[14px] leading-relaxed`} role="status">
             Falls ein Konto mit {email} existiert, erhalten Sie eine E-Mail.
           </p>
           <Link href="/login" className={authButtonOutlineClass}>
@@ -75,7 +79,7 @@ export default function PasswortVergessenPage() {
             />
           </AuthField>
           {error && (
-            <p className="text-[13px] text-red-200" role="alert">
+            <p className={authErrorClass} role="alert">
               {error}
             </p>
           )}

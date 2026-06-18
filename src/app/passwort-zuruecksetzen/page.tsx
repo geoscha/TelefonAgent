@@ -7,7 +7,9 @@ import {
   AuthField,
   AuthFrame,
   authButtonClass,
+  authErrorClass,
   authInputClass,
+  authMutedTextClass,
 } from "@/components/landing/AuthFrame";
 import { createClient } from "@/lib/supabase/client";
 
@@ -58,12 +60,12 @@ export default function PasswortZuruecksetzenPage() {
   }
 
   return (
-    <AuthFrame title="Neues Passwort">
+    <AuthFrame title="Neues Passwort" showLegal={false}>
       {!ready ? (
-        <p className="text-[14px] text-white/60">Laden…</p>
+        <p className={authMutedTextClass}>Laden…</p>
       ) : !hasSession ? (
         <div className="space-y-4">
-          <p className="text-[14px] text-red-200" role="alert">
+          <p className={authErrorClass} role="alert">
             Link ungültig oder abgelaufen.
           </p>
           <Link href="/passwort-vergessen" className={authButtonClass}>
@@ -95,7 +97,7 @@ export default function PasswortZuruecksetzenPage() {
             />
           </AuthField>
           {error && (
-            <p className="text-[13px] text-red-200" role="alert">
+            <p className={authErrorClass} role="alert">
               {error}
             </p>
           )}

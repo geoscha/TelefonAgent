@@ -7,8 +7,10 @@ import {
   AuthField,
   AuthFrame,
   authButtonClass,
+  authErrorClass,
   authInputClass,
   authLinkClass,
+  authMutedTextClass,
 } from "@/components/landing/AuthFrame";
 
 function AdminLoginForm() {
@@ -69,7 +71,7 @@ function AdminLoginForm() {
         />
       </AuthField>
       {error && (
-        <p className="text-[13px] text-red-200" role="alert">
+        <p className={authErrorClass} role="alert">
           {error}
         </p>
       )}
@@ -84,19 +86,16 @@ export default function AdminLoginPage() {
   return (
     <AuthFrame
       title="Admin"
+      showLegal={false}
       footer={
-        <p className="text-center text-[13px] text-white/60">
+        <p className={`text-center ${authMutedTextClass}`}>
           <Link href="/login" className={authLinkClass}>
             Zur Anmeldung
           </Link>
         </p>
       }
     >
-      <Suspense
-        fallback={
-          <p className="text-[14px] text-white/60">Laden…</p>
-        }
-      >
+      <Suspense fallback={<p className={authMutedTextClass}>Laden…</p>}>
         <AdminLoginForm />
       </Suspense>
     </AuthFrame>

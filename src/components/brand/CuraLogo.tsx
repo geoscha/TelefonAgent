@@ -25,9 +25,9 @@ interface CuraLogoProps {
 }
 
 const sizeMap = {
-  sm: { word: "text-[22px]", mark: "h-6 w-6" },
-  md: { word: "text-[26px]", mark: "h-7 w-7" },
-  lg: { word: "text-[40px]", mark: "h-9 w-9" },
+  sm: { word: "text-[24px]", mark: "h-6 w-6" },
+  md: { word: "text-[28px]", mark: "h-7 w-7" },
+  lg: { word: "text-[42px]", mark: "h-9 w-9" },
 };
 
 function CareMark({ className }: { className?: string }) {
@@ -63,7 +63,7 @@ export function CuraLogo({
   const wordmark = (
     <span
       className={cn(
-        "inline-flex items-center gap-2.5 font-sans font-semibold leading-none tracking-tight",
+        "inline-flex items-center gap-2.5 font-retell-display font-medium leading-none tracking-[-0.02em]",
         mode === "difference"
           ? "text-white mix-blend-difference"
           : theme === "dark"

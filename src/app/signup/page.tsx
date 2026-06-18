@@ -3,13 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+
 import {
   AuthField,
   AuthFrame,
   authButtonClass,
+  authErrorClass,
   authInputClass,
   authLinkClass,
+  authMutedTextClass,
 } from "@/components/landing/AuthFrame";
+import { signInWithGoogle } from "@/lib/auth/google-sign-in";
 import { createClient } from "@/lib/supabase/client";
 
 export default function SignupPage() {
@@ -18,7 +22,19 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function handleGoogleSignUp() {
+    setGoogleLoading(true);
+    setError(null);
+
+    const result = await signInWithGoogle("signup");
+    if (!result.ok) {
+      setError(result.error);
+      setGoogleLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -63,9 +79,14 @@ export default function SignupPage() {
 
   return (
     <AuthFrame
-      title="Registrieren"
+      title="Konto erstellen"
+      subtitle="Registrieren Sie sich bei Cura, um loszulegen."
+      showGoogle
+      onGoogleClick={handleGoogleSignUp}
+      googleLoading={googleLoading}
+      showLegal
       footer={
-        <p className="text-center text-[13px] text-white/60">
+        <p className={`text-center ${authMutedTextClass}`}>
           Bereits ein Konto?{" "}
           <Link href="/login" className={authLinkClass}>
             Anmelden
@@ -107,7 +128,7 @@ export default function SignupPage() {
           />
         </AuthField>
         {error && (
-          <p className="text-[13px] text-red-200" role="alert">
+          <p className={authErrorClass} role="alert">
             {error}
           </p>
         )}

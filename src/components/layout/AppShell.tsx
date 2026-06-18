@@ -17,18 +17,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const maskImage = useMotionTemplate`linear-gradient(to bottom, transparent 0px, black ${fade}px, black 100%)`;
 
   return (
-    <div className="h-screen overflow-hidden bg-bg">
-      <GlassNav />
-      <motion.main
-        ref={scrollRef}
-        style={{ WebkitMaskImage: maskImage, maskImage }}
-        className="fixed inset-x-0 bottom-0 top-[7rem] overflow-y-auto overflow-x-hidden"
-      >
-        <div className="mx-auto max-w-content px-6 pb-16 lg:px-10">
-          {children}
-        </div>
-      </motion.main>
-      <CommandPalette />
+    <div className="relative h-screen overflow-hidden">
+      <div aria-hidden className="landing-gradient pointer-events-none fixed inset-0" />
+      <div className="relative z-10 h-screen overflow-hidden">
+        <GlassNav />
+        <motion.main
+          ref={scrollRef}
+          style={{ WebkitMaskImage: maskImage, maskImage }}
+          className="fixed inset-x-0 bottom-0 top-[7rem] overflow-y-auto overflow-x-hidden"
+        >
+          <div className="mx-auto max-w-content px-6 pb-16 lg:px-10">
+            {children}
+          </div>
+        </motion.main>
+        <CommandPalette />
+      </div>
     </div>
   );
 }

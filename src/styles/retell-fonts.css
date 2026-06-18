@@ -1,0 +1,26 @@
+@font-face {
+  font-family: "Denton Condensed";
+  src: url("https://cdn.prod.website-files.com/64ada0f2685b2d18caa5e699/6959cff549d8d847f1399fc9_DentonCondensed-Thin.woff2")
+    format("woff2");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Untitled Sans";
+  src: url("https://cdn.prod.website-files.com/64ada0f2685b2d18caa5e699/6959d036be16bb645837eca8_untitled-sans-regular.woff2")
+    format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Untitled Sans";
+  src: url("https://cdn.prod.website-files.com/64ada0f2685b2d18caa5e699/6959d04e9d9fc2715928a923_untitled-sans-medium.woff2")
+    format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}

@@ -15,7 +15,7 @@ export function LandingFrame({
     <div className={cn("min-h-screen bg-bg p-2 sm:p-2.5", className)}>
       <div
         className={cn(
-          "landing-gradient relative flex min-h-[calc(100vh-16px)] flex-col overflow-hidden rounded-[26px] sm:min-h-[calc(100vh-20px)] sm:rounded-[30px]",
+          "landing-gradient landing-radius relative flex min-h-[calc(100vh-16px)] flex-col overflow-hidden sm:min-h-[calc(100vh-20px)]",
           contentClassName
         )}
       >

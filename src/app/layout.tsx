@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Hedvig_Letters_Serif, Rethink_Sans } from "next/font/google";
 import { ConditionalShell } from "@/components/layout/ConditionalShell";
 import "./globals.css";
+import "@/styles/retell-fonts.css";
 
 const rethinkSans = Rethink_Sans({
   subsets: ["latin"],
@@ -16,8 +17,9 @@ const hedvigSerif = Hedvig_Letters_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Cura — Admin Dashboard",
-  description: "KI-Telefonagent für Schweizer Immobilienverwaltungen",
+  title: "Cura — KI-Telefonagent für automatisierte Anrufe",
+  description:
+    "Erstellen, einsetzen und verwalten Sie KI-Telefonagenten der nächsten Generation — natürlich klingend, aufgabenorientiert und mühelos skalierbar.",
 };
 
 export default function RootLayout({

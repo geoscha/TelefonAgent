@@ -27,8 +27,8 @@ export function StatCard({
         className={cn(
           "pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-[0.07]",
           accent === "warm"
-            ? "bg-[radial-gradient(circle,#FF6B1A_0%,transparent_70%)]"
-            : "bg-[radial-gradient(circle,#16323F_0%,transparent_70%)]"
+            ? "bg-[radial-gradient(circle,#22d3bb_0%,transparent_70%)]"
+            : "bg-[radial-gradient(circle,#050f1f_0%,transparent_70%)]"
         )}
         aria-hidden
       />
