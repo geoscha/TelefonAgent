@@ -247,6 +247,7 @@ export function SetupDemoOverlay() {
     if (!demo?.active || demo.loading || !demo.step) return;
 
     const phase = demo.step;
+    const activeDemo = demo;
 
     function syncToTarget(e: Event) {
       const target = e.target;
@@ -254,9 +255,9 @@ export function SetupDemoOverlay() {
       if (target.closest("[data-setup-demo-overlay]")) return;
 
       const stepId = getGuideStepIdForElement(target, phase);
-      if (!stepId || stepId === demo.subStepId) return;
+      if (!stepId || stepId === activeDemo.subStepId) return;
 
-      demo.goToSubStep(stepId);
+      activeDemo.goToSubStep(stepId);
     }
 
     document.addEventListener("click", syncToTarget, true);
@@ -271,13 +272,14 @@ export function SetupDemoOverlay() {
   useEffect(() => {
     if (!demo?.active || !guideStep?.advanceOnClick) return;
 
-    const advance = demo.advance;
+    const activeDemo = demo;
+    const advance = activeDemo.advance;
     const target = guideStep.target;
     const stepId = guideStep.id;
     let el: Element | null = null;
 
     function onClick() {
-      if (demo.subStepId === stepId) advance();
+      if (activeDemo.subStepId === stepId) advance();
     }
 
     function attach() {

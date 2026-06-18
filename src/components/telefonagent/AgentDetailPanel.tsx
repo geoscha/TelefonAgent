@@ -128,6 +128,7 @@ export function AgentDetailPanel({
       euComplianceEnabled: Boolean(agent.euComplianceEnabled),
       website: agent.website ?? "",
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when switching agents
   }, [agent.id]);
 
   function scheduleSave(patch: AgentDetailUpdate, immediate = false) {
@@ -283,18 +284,9 @@ export function AgentDetailPanel({
     (phoneNumbers.length === 1 ? phoneNumbers[0]?.id : "") ??
     "";
 
-  const visiblePromptFields = PROMPT_SECTION_FIELDS.filter(({ key }) => {
-    if (key === "branche" || key === "ziel") return false;
-    const core =
-      key === "rolle" ||
-      key === "leistungen" ||
-      key === "typischeAnfragen" ||
-      key === "gespraechsfuehrung" ||
-      key === "eskalation" ||
-      key === "abschluss" ||
-      key === "sonstiges";
-    return core || sections[key].trim().length > 0;
-  });
+  const visiblePromptFields = PROMPT_SECTION_FIELDS.filter(
+    ({ key }) => key !== "branche" && key !== "ziel"
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">

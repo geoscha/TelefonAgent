@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Check,
   Copy,
@@ -25,10 +25,6 @@ import {
   type ForwardingType,
 } from "@/lib/phone/forwarding-codes";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
-import {
-  SETUP_DEMO_SKIP_EVENT,
-  type SetupDemoSkipDetail,
-} from "@/lib/setup-demo-events";
 
 type ForwardingStatus = "nicht_eingerichtet" | "anleitung" | "aktiv";
 
