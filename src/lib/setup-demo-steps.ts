@@ -1,0 +1,183 @@
+export type SetupDemoPhase = "agent" | "phone";
+
+export interface SetupDemoGuideStep {
+  id: string;
+  phase: SetupDemoPhase;
+  target: string;
+  title: string;
+  body: string;
+  /** Advance when the highlighted element is clicked. */
+  advanceOnClick?: boolean;
+  /** Hide overlay while this step is active (e.g. during AI generation). */
+  hidden?: boolean;
+  /** Text field step — show demo-panel "Weiter" when filled. */
+  textInput?: boolean;
+  /** Optional text field — demo-panel "Weiter" always available. */
+  textInputOptional?: boolean;
+}
+
+export const SETUP_DEMO_GUIDE: SetupDemoGuideStep[] = [
+  {
+    id: "agent_create",
+    phase: "agent",
+    target: "setup-demo-agent-create",
+    title: "Schritt 1 · Agent starten",
+    body: "Klicken Sie hier, um Ihren ersten KI-Telefonagenten anzulegen.",
+    advanceOnClick: true,
+  },
+  {
+    id: "agent_branche",
+    phase: "agent",
+    target: "setup-demo-agent-branche",
+    title: "Branche angeben",
+    body: "Geben Sie Ihre Branche ein, z. B. Immobilienverwaltung oder Handwerk.",
+    textInput: true,
+  },
+  {
+    id: "agent_branche_next",
+    phase: "agent",
+    target: "setup-demo-agent-branche-next",
+    title: "Weiter",
+    body: "Klicken Sie auf Weiter, wenn die Branche eingetragen ist.",
+  },
+  {
+    id: "agent_website",
+    phase: "agent",
+    target: "setup-demo-agent-website",
+    title: "Website (optional)",
+    body: "Tragen Sie optional Ihre Website ein und klicken Sie auf Weiter — oder überspringen Sie den Schritt.",
+    textInputOptional: true,
+  },
+  {
+    id: "agent_ziel",
+    phase: "agent",
+    target: "setup-demo-agent-ziel",
+    title: "Ziel des Agenten",
+    body: "Beschreiben Sie, wofür der Agent eingesetzt wird — z. B. Termine vereinbaren.",
+    textInput: true,
+  },
+  {
+    id: "agent_ziel_next",
+    phase: "agent",
+    target: "setup-demo-agent-ziel-next",
+    title: "Weiter",
+    body: "Klicken Sie auf Weiter, wenn das Ziel formuliert ist.",
+  },
+  {
+    id: "agent_gender",
+    phase: "agent",
+    target: "setup-demo-agent-gender",
+    title: "Stimme wählen",
+    body: "Wählen Sie, ob der Agent mit männlicher oder weiblicher Stimme sprechen soll.",
+  },
+  {
+    id: "agent_gender_next",
+    phase: "agent",
+    target: "setup-demo-agent-gender-next",
+    title: "Weiter",
+    body: "Klicken Sie auf Weiter.",
+  },
+  {
+    id: "agent_language",
+    phase: "agent",
+    target: "setup-demo-agent-language",
+    title: "Sprache",
+    body: "Wählen Sie Deutsch oder Schweizerdeutsch für den Agenten.",
+  },
+  {
+    id: "agent_language_create",
+    phase: "agent",
+    target: "setup-demo-agent-language-create",
+    title: "Agent erstellen",
+    body: "Klicken Sie hier — der Agent wird anhand Ihrer Angaben vorbereitet.",
+  },
+  {
+    id: "agent_generating",
+    phase: "agent",
+    target: "setup-demo-agent-generating",
+    title: "Agent wird erstellt…",
+    body: "Einen Moment — Ihr Agent wird gerade vorbereitet.",
+    hidden: true,
+  },
+  {
+    id: "agent_review_name",
+    phase: "agent",
+    target: "setup-demo-agent-review-name",
+    title: "Name prüfen",
+    body: "Passen Sie den Namen Ihres Agenten an, falls nötig.",
+    textInput: true,
+  },
+  {
+    id: "agent_review_voice",
+    phase: "agent",
+    target: "setup-demo-agent-review-voice",
+    title: "Stimme wählen",
+    body: "Wählen Sie die Stimme, mit der Ihr Agent Anrufer begrüsst.",
+  },
+  {
+    id: "agent_review_greeting",
+    phase: "agent",
+    target: "setup-demo-agent-review-greeting",
+    title: "Begrüssung",
+    body: "Formulieren Sie die Begrüssung, die Anrufer zuerst hören.",
+    textInput: true,
+  },
+  {
+    id: "agent_review_save",
+    phase: "agent",
+    target: "setup-demo-agent-review-save",
+    title: "Agent speichern",
+    body: "Klicken Sie auf Speichern — Ihr Agent ist dann einsatzbereit.",
+  },
+  {
+    id: "phone_request",
+    phase: "phone",
+    target: "setup-demo-phone-request",
+    title: "Schritt 2 · Nummer beantragen",
+    body: "Beantragen Sie Ihre erste Cura-Telefonnummer für eingehende Anrufe.",
+    advanceOnClick: true,
+  },
+];
+
+export function getGuideStepsForPhase(phase: SetupDemoPhase): SetupDemoGuideStep[] {
+  return SETUP_DEMO_GUIDE.filter((s) => s.phase === phase);
+}
+
+export function getGuideStepById(id: string): SetupDemoGuideStep | undefined {
+  return SETUP_DEMO_GUIDE.find((s) => s.id === id);
+}
+
+export function getGuideStepByTarget(
+  target: string
+): SetupDemoGuideStep | undefined {
+  return SETUP_DEMO_GUIDE.find((s) => s.target === target);
+}
+
+/** Resolve demo step from a clicked/focused element. */
+export function getGuideStepIdForElement(
+  el: Element | null,
+  phase: SetupDemoPhase | null
+): string | null {
+  if (!el || !phase) return null;
+  const host = el.closest("[data-setup-demo]");
+  if (!host) return null;
+  const target = host.getAttribute("data-setup-demo");
+  if (!target) return null;
+  const step = getGuideStepByTarget(target);
+  if (!step || step.hidden || step.phase !== phase) return null;
+  return step.id;
+}
+
+export function getInitialSubStepId(phase: SetupDemoPhase): string {
+  return getGuideStepsForPhase(phase)[0]?.id ?? "";
+}
+
+export function getNextSubStepId(
+  phase: SetupDemoPhase,
+  currentId: string
+): string | null {
+  const steps = getGuideStepsForPhase(phase);
+  const idx = steps.findIndex((s) => s.id === currentId);
+  if (idx < 0 || idx >= steps.length - 1) return null;
+  return steps[idx + 1].id;
+}

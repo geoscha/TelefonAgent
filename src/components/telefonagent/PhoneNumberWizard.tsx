@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useEffect, useState } from "react";
 import {
   Check,
   Copy,
@@ -25,6 +25,10 @@ import {
   type ForwardingType,
 } from "@/lib/phone/forwarding-codes";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
+import {
+  SETUP_DEMO_SKIP_EVENT,
+  type SetupDemoSkipDetail,
+} from "@/lib/setup-demo-events";
 
 type ForwardingStatus = "nicht_eingerichtet" | "anleitung" | "aktiv";
 
@@ -43,6 +47,17 @@ export interface UserPhoneNumberView {
 export interface PendingPhoneRequestView {
   id: string;
   createdAt: string;
+}
+
+function isPhoneLinked(num: UserPhoneNumberView): boolean {
+  if (num.forwardingStatus === "nicht_eingerichtet") return false;
+  if (
+    num.forwardingStatus === "aktiv" ||
+    num.forwardingStatus === "anleitung"
+  ) {
+    return true;
+  }
+  return num.source === "pool";
 }
 
 type WizardFlow = "overview" | "connect" | "disconnect" | "sip";
@@ -320,9 +335,7 @@ function OverviewStep({
           ))}
 
           {numbers.map((num) => {
-            const isConnected =
-              num.forwardingStatus === "aktiv" ||
-              num.forwardingStatus === "anleitung";
+            const isConnected = isPhoneLinked(num);
             return (
               <li
                 key={num.id}
@@ -410,6 +423,7 @@ function OverviewStep({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
+          data-setup-demo="setup-demo-phone-request"
           className={landingBtnPrimary}
           onClick={onRequestNumber}
           disabled={requesting || hasPending}

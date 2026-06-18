@@ -1,0 +1,204 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { usePathname, useRouter } from "next/navigation";
+
+import {
+  getGuideStepById,
+  getInitialSubStepId,
+  getNextSubStepId,
+  type SetupDemoPhase,
+} from "@/lib/setup-demo-steps";
+import { dispatchSetupDemoSkipped } from "@/lib/setup-demo-events";
+import type { SetupDemoStep } from "@/lib/setup-demo";
+
+interface SetupDemoContextValue {
+  active: boolean;
+  step: SetupDemoStep | null;
+  subStepId: string | null;
+  loading: boolean;
+  skip: () => Promise<void>;
+  advance: () => void;
+  goToSubStep: (subStepId: string) => void;
+  completeAgentStep: () => Promise<void>;
+  completePhoneStep: () => Promise<void>;
+  restart: () => Promise<void>;
+  refresh: () => Promise<void>;
+}
+
+const SetupDemoContext = createContext<SetupDemoContextValue | null>(null);
+
+export function useSetupDemo() {
+  const ctx = useContext(SetupDemoContext);
+  if (!ctx) {
+    throw new Error("useSetupDemo must be used within SetupDemoProvider");
+  }
+  return ctx;
+}
+
+export function useSetupDemoOptional() {
+  return useContext(SetupDemoContext);
+}
+
+export function SetupDemoProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [loading, setLoading] = useState(true);
+  const [active, setActive] = useState(false);
+  const [step, setStep] = useState<SetupDemoStep | null>(null);
+  const [subStepId, setSubStepId] = useState<string | null>(null);
+
+  const applyPayload = useCallback(
+    (data: {
+      active?: boolean;
+      step?: SetupDemoStep | null;
+      subStepId?: string | null;
+    }) => {
+      setActive(Boolean(data.active));
+      const nextStep = data.step ?? null;
+      setStep(nextStep);
+      if (nextStep === "agent" || nextStep === "phone") {
+        setSubStepId(
+          data.subStepId ?? getInitialSubStepId(nextStep as SetupDemoPhase)
+        );
+      } else {
+        setSubStepId(null);
+      }
+    },
+    []
+  );
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch("/api/setup-demo");
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        applyPayload(data);
+      }
+    } catch {
+      /* non-fatal */
+    } finally {
+      setLoading(false);
+    }
+  }, [applyPayload]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!active || !step) return;
+    if (step === "agent" && pathname !== "/telefonagent") {
+      router.push("/telefonagent");
+    }
+    if (step === "phone" && pathname !== "/phones") {
+      router.push("/phones");
+    }
+  }, [active, step, pathname, router]);
+
+  const goToSubStep = useCallback((id: string) => {
+    if (!getGuideStepById(id)) return;
+    setSubStepId(id);
+  }, []);
+
+  const advance = useCallback(() => {
+    if (!step || (step !== "agent" && step !== "phone") || !subStepId) return;
+    const next = getNextSubStepId(step, subStepId);
+    if (next) setSubStepId(next);
+  }, [step, subStepId]);
+
+  const skip = useCallback(async () => {
+    const res = await fetch("/api/setup-demo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "skip" }),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      applyPayload(data);
+      if (data.resetUi) dispatchSetupDemoSkipped(true);
+    }
+  }, [applyPayload]);
+
+  const completeAgentStep = useCallback(async () => {
+    const res = await fetch("/api/setup-demo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "complete_agent" }),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      applyPayload(data);
+      router.push("/phones");
+    }
+  }, [applyPayload, router]);
+
+  const completePhoneStep = useCallback(async () => {
+    const res = await fetch("/api/setup-demo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "complete_phone" }),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) applyPayload(data);
+  }, [applyPayload]);
+
+  const restart = useCallback(async () => {
+    const res = await fetch("/api/setup-demo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "restart" }),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      applyPayload({
+        ...data,
+        subStepId: getInitialSubStepId("agent"),
+      });
+      router.push("/telefonagent");
+    }
+  }, [applyPayload, router]);
+
+  const value = useMemo(
+    () => ({
+      active,
+      step,
+      subStepId,
+      loading,
+      skip,
+      advance,
+      goToSubStep,
+      completeAgentStep,
+      completePhoneStep,
+      restart,
+      refresh,
+    }),
+    [
+      active,
+      step,
+      subStepId,
+      loading,
+      skip,
+      advance,
+      goToSubStep,
+      completeAgentStep,
+      completePhoneStep,
+      restart,
+      refresh,
+    ]
+  );
+
+  return (
+    <SetupDemoContext.Provider value={value}>
+      {children}
+    </SetupDemoContext.Provider>
+  );
+}

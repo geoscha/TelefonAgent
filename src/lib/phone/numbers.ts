@@ -58,7 +58,10 @@ function rowToUserPhone(row: Record<string, unknown>): UserPhoneNumber {
     isPrimary: Boolean(row.is_primary),
     forwardingType: (row.forwarding_type as ForwardingType | null) ?? undefined,
     forwardingStatus:
-      (row.forwarding_status as ForwardingStatus | null) ?? undefined,
+      (row.forwarding_status as ForwardingStatus | null) ??
+      ((row.source as PhoneNumberSource) === "pool"
+        ? "anleitung"
+        : undefined),
     sipOutboundAddress:
       (row.sip_outbound_address as string | null) ?? undefined,
     sipOutboundTransport:
@@ -233,11 +236,12 @@ export async function requestAdditionalPoolNumber(): Promise<{
   try {
     await syncNumberPoolFromEnv();
     const pool = await assignNumberFromPool(userId, { allowExisting: false });
+    const existing = await listUserPhoneNumbers(userId);
     const phone = await addPoolPhoneNumber(
       userId,
       pool.phoneNumber,
       pool.elevenLabsPhoneNumberId,
-      { makePrimary: false }
+      { makePrimary: existing.length === 0 }
     );
 
     if (phone.elevenLabsPhoneNumberId) {

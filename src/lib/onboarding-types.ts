@@ -5,6 +5,9 @@ export type OnboardingPhase =
   | "agent"
   | "fertig";
 
+/** Post-signup guided demo: agent → first phone number. */
+export type SetupDemoStatus = "agent" | "phone" | "skipped" | "done";
+
 export interface StoredAgent {
   id: string;
   name: string;

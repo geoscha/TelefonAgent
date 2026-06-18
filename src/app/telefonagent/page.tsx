@@ -9,6 +9,7 @@ import { AgentDetailModal } from "@/components/telefonagent/AgentDetailModal";
 import { AgentDetailPanel } from "@/components/telefonagent/AgentDetailPanel";
 import { RetellAgentSidebar } from "@/components/telefonagent/RetellAgentSidebar";
 import { QuotaGate } from "@/components/billing/QuotaGate";
+import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import { normalizeAgentLanguage } from "@/lib/elevenlabs/agent-config";
 import type { OnboardingPhase, StoredAgent } from "@/lib/onboarding-types";
 import { mockAgentConfig } from "@/lib/mock/agent";
@@ -67,6 +68,7 @@ const DEFAULT_LANGUAGES: LanguageOption[] = [
 ];
 
 export default function TelefonagentPage() {
+  const setupDemo = useSetupDemoOptional();
   const [settings, setSettings] = useState<Settings>({ connected: false });
   const [caps, setCaps] = useState<Capabilities>({
     hasApiKey: false,
@@ -322,6 +324,9 @@ export default function TelefonagentPage() {
         if (data.settings?.onboardingPhase === "fertig") {
           setOnboardingPhase("fertig");
         }
+        if (isNew && setupDemo?.active && setupDemo.step === "agent") {
+          await setupDemo.completeAgentStep();
+        }
         toast.success(isNew ? "Agent erstellt" : "Agent aktualisiert");
         return true;
       }
@@ -475,42 +480,38 @@ export default function TelefonagentPage() {
     <>
       <QuotaGate>
         <div className="flex min-h-[560px] gap-3">
+          <RetellAgentSidebar
+            agents={storedAgents}
+            selectedAgentId={detailAgentId ?? selectedAgentId}
+            activeAgentId={settings.agentId}
+            onSelect={handleSelectAgent}
+            onCreateNew={handleCreateNewAgent}
+          />
           {statusLoading ? (
-            <Skeleton className="h-[560px] w-full rounded" />
+            <Skeleton className="h-[560px] flex-1 rounded" />
+          ) : detailAgent ? (
+            <AgentDetailPanel
+              agent={detailAgent}
+              isActive={settings.agentId === detailAgent.id}
+              voices={voices}
+              voicesLoading={voicesLoading}
+              deleting={deletingAgentId === detailAgent.id}
+              phoneNumbers={phoneNumbers}
+              assigningPhone={assigningPhone}
+              onAssignPhone={(phoneNumberId) =>
+                void handleAssignPhone(detailAgent.id, phoneNumberId)
+              }
+              onEdit={() => handleEditAgent(detailAgent.id)}
+              onDelete={() => void handleDeleteAgent(detailAgent.id)}
+              onActivate={() => void handleActivateAgent(detailAgent.id)}
+              activating={activatingAgentId === detailAgent.id}
+            />
           ) : (
-            <>
-              <RetellAgentSidebar
-                agents={storedAgents}
-                selectedAgentId={detailAgentId ?? selectedAgentId}
-                activeAgentId={settings.agentId}
-                onSelect={handleSelectAgent}
-                onCreateNew={handleCreateNewAgent}
-              />
-              {detailAgent ? (
-                <AgentDetailPanel
-                  agent={detailAgent}
-                  isActive={settings.agentId === detailAgent.id}
-                  voices={voices}
-                  voicesLoading={voicesLoading}
-                  deleting={deletingAgentId === detailAgent.id}
-                  phoneNumbers={phoneNumbers}
-                  assigningPhone={assigningPhone}
-                  onAssignPhone={(phoneNumberId) =>
-                    void handleAssignPhone(detailAgent.id, phoneNumberId)
-                  }
-                  onEdit={() => handleEditAgent(detailAgent.id)}
-                  onDelete={() => void handleDeleteAgent(detailAgent.id)}
-                  onActivate={() => void handleActivateAgent(detailAgent.id)}
-                  activating={activatingAgentId === detailAgent.id}
-                />
-              ) : (
-                <div className="landing-panel flex flex-1 items-center justify-center border border-dashed border-[#E1E4EA] p-8">
-                  <p className="landing-body text-[#99A0AE]">
-                    Agent auswählen oder neuen Agent hinzufügen
-                  </p>
-                </div>
-              )}
-            </>
+            <div className="landing-panel flex flex-1 items-center justify-center border border-dashed border-[#E1E4EA] p-8">
+              <p className="landing-body text-[#99A0AE]">
+                Agent auswählen oder neuen Agent hinzufügen
+              </p>
+            </div>
           )}
         </div>
       </QuotaGate>

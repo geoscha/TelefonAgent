@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, X } from "lucide-react";
 
 import { modalBackdropClass } from "@/components/landing/AuthFrame";
+import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import { cn } from "@/lib/utils";
 
 import {
@@ -60,6 +61,13 @@ export function AgentCreateWizard({
   saving,
   onSave,
 }: AgentCreateWizardProps) {
+  const demo = useSetupDemoOptional();
+  const demoActive = Boolean(demo?.active && demo.step === "agent");
+
+  function demoGoTo(stepId: string) {
+    if (demoActive) demo?.goToSubStep(stepId);
+  }
+
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<Step>("branche");
   const [industry, setIndustry] = useState("");
@@ -73,20 +81,26 @@ export function AgentCreateWizard({
   const [aiHint, setAiHint] = useState<string | null>(null);
 
   const [draft, setDraft] = useState<AgentWizardDraft | null>(null);
+  const wasOpenRef = useRef(false);
 
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (!open) return;
-    setStep("branche");
-    setIndustry("");
-    setWebsite("");
-    setGoal("");
-    setGender("female");
-    setLanguage("Deutsch");
-    setError(null);
-    setAiHint(null);
-    setDraft(null);
+    if (open && !wasOpenRef.current) {
+      setStep("branche");
+      setIndustry("");
+      setWebsite("");
+      setGoal("");
+      setGender("female");
+      setLanguage("Deutsch");
+      setError(null);
+      setAiHint(null);
+      setDraft(null);
+      if (demoActive) demo?.goToSubStep("agent_branche");
+    }
+    wasOpenRef.current = open;
+    // Reset wizard only when the modal opens — not on demo step changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -100,6 +114,7 @@ export function AgentCreateWizard({
 
   async function generate() {
     setStep("generating");
+    if (demoActive) demo?.goToSubStep("agent_generating");
     setError(null);
     setAiHint(null);
     try {
@@ -131,6 +146,11 @@ export function AgentCreateWizard({
       }
 
       setStep("review");
+      if (demoActive) {
+        demo?.goToSubStep(
+          next.name.trim() ? "agent_review_voice" : "agent_review_name"
+        );
+      }
     } catch {
       setError("Netzwerkfehler.");
       setStep("language");
@@ -193,6 +213,7 @@ export function AgentCreateWizard({
             <>
               <input
                 autoFocus
+                data-setup-demo="setup-demo-agent-branche"
                 value={industry}
                 onChange={(e) => setIndustry(e.target.value)}
                 placeholder="z.B. Immobilienverwaltung"
@@ -200,9 +221,13 @@ export function AgentCreateWizard({
               />
               <button
                 type="button"
+                data-setup-demo="setup-demo-agent-branche-next"
                 disabled={!industry.trim()}
                 className={agentModalButtonClass}
-                onClick={() => setStep("website")}
+                onClick={() => {
+                  setStep("website");
+                  demoGoTo("agent_website");
+                }}
               >
                 Weiter
               </button>
@@ -210,7 +235,7 @@ export function AgentCreateWizard({
           )}
 
           {step === "website" && (
-            <>
+            <div className="space-y-4" data-setup-demo="setup-demo-agent-website">
               <input
                 autoFocus
                 value={website}
@@ -221,7 +246,10 @@ export function AgentCreateWizard({
               <button
                 type="button"
                 className={agentModalButtonClass}
-                onClick={() => setStep("ziel")}
+                onClick={() => {
+                  setStep("ziel");
+                  demoGoTo("agent_ziel");
+                }}
               >
                 Weiter
               </button>
@@ -231,17 +259,19 @@ export function AgentCreateWizard({
                 onClick={() => {
                   setWebsite("");
                   setStep("ziel");
+                  demoGoTo("agent_ziel");
                 }}
               >
                 Überspringen
               </button>
-            </>
+            </div>
           )}
 
           {step === "ziel" && (
             <>
               <textarea
                 autoFocus
+                data-setup-demo="setup-demo-agent-ziel"
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
                 placeholder="z.B. Termine vereinbaren, Schadensmeldungen aufnehmen"
@@ -250,9 +280,13 @@ export function AgentCreateWizard({
               />
               <button
                 type="button"
+                data-setup-demo="setup-demo-agent-ziel-next"
                 disabled={!goal.trim()}
                 className={agentModalButtonClass}
-                onClick={() => setStep("gender")}
+                onClick={() => {
+                  setStep("gender");
+                  demoGoTo("agent_gender");
+                }}
               >
                 Weiter
               </button>
@@ -261,7 +295,10 @@ export function AgentCreateWizard({
 
           {step === "gender" && (
             <>
-              <div className="flex gap-2">
+              <div
+                className="flex gap-2"
+                data-setup-demo="setup-demo-agent-gender"
+              >
                 <Pill
                   active={gender === "female"}
                   onClick={() => setGender("female")}
@@ -275,8 +312,12 @@ export function AgentCreateWizard({
               </div>
               <button
                 type="button"
+                data-setup-demo="setup-demo-agent-gender-next"
                 className={agentModalButtonClass}
-                onClick={() => setStep("language")}
+                onClick={() => {
+                  setStep("language");
+                  demoGoTo("agent_language");
+                }}
               >
                 Weiter
               </button>
@@ -285,7 +326,10 @@ export function AgentCreateWizard({
 
           {step === "language" && (
             <>
-              <div className="flex flex-wrap gap-2">
+              <div
+                className="flex flex-wrap gap-2"
+                data-setup-demo="setup-demo-agent-language"
+              >
                 <Pill
                   active={language === "Deutsch"}
                   onClick={() => setLanguage("Deutsch")}
@@ -302,14 +346,22 @@ export function AgentCreateWizard({
                   {error}
                 </p>
               )}
-              <button type="button" className={agentModalButtonClass} onClick={generate}>
+              <button
+                type="button"
+                data-setup-demo="setup-demo-agent-language-create"
+                className={agentModalButtonClass}
+                onClick={generate}
+              >
                 Agent erstellen
               </button>
             </>
           )}
 
           {step === "generating" && (
-            <div className="space-y-3 py-4 text-center">
+            <div
+              className="space-y-3 py-4 text-center"
+              data-setup-demo="setup-demo-agent-generating"
+            >
               <Loader2 className="mx-auto h-8 w-8 animate-spin text-navy" />
               <p className="text-[13px] text-text-muted">
                 {website.trim()
@@ -328,6 +380,7 @@ export function AgentCreateWizard({
               <label className="block space-y-1.5">
                 <span className={agentModalLabelClass}>Name</span>
                 <input
+                  data-setup-demo="setup-demo-agent-review-name"
                   value={draft.name}
                   onChange={(e) => updateDraft({ name: e.target.value })}
                   className={agentModalInputClass}
@@ -341,7 +394,10 @@ export function AgentCreateWizard({
                 ) : voices.length === 0 ? (
                   <p className="text-[13px] text-text-muted">Keine Stimmen verfügbar</p>
                 ) : (
-                  <div className="flex flex-wrap gap-1.5">
+                  <div
+                    className="flex flex-wrap gap-1.5"
+                    data-setup-demo="setup-demo-agent-review-voice"
+                  >
                     {voices.map((voice) => (
                       <button
                         key={voice.id}
@@ -362,6 +418,7 @@ export function AgentCreateWizard({
               <label className="block space-y-1.5">
                 <span className={agentModalLabelClass}>Begrüssung</span>
                 <textarea
+                  data-setup-demo="setup-demo-agent-review-greeting"
                   value={draft.greeting}
                   onChange={(e) => updateDraft({ greeting: e.target.value })}
                   rows={3}
@@ -383,6 +440,7 @@ export function AgentCreateWizard({
 
               <button
                 type="button"
+                data-setup-demo="setup-demo-agent-review-save"
                 className={agentModalButtonClass}
                 disabled={
                   saving ||

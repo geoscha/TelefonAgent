@@ -24,9 +24,10 @@ export type ForwardingType = "alle" | "bedingt";
 export type ForwardingStatus = "nicht_eingerichtet" | "anleitung" | "aktiv";
 export type {
   OnboardingPhase,
+  SetupDemoStatus,
   StoredAgent,
 } from "@/lib/onboarding-types";
-import type { OnboardingPhase, StoredAgent } from "@/lib/onboarding-types";
+import type { OnboardingPhase, SetupDemoStatus, StoredAgent } from "@/lib/onboarding-types";
 export type CalendarProvider = "google" | "microsoft" | "apple";
 export type BillingPlan = "free" | "pro";
 export type BillingInterval = "monthly" | "yearly";
@@ -54,6 +55,7 @@ export interface ElevenLabsSettings {
   elevenLabsPhoneNumberId?: string;
   lastSync?: string;
   onboardingPhase?: OnboardingPhase;
+  setupDemoStatus?: SetupDemoStatus;
   forwardingInstructions?: string;
   agents?: StoredAgent[];
   /** Set when the ElevenLabs agent was removed after free quota exhaustion. */
@@ -111,6 +113,7 @@ function rowToSettings(row: any): ElevenLabsSettings {
     elevenLabsPhoneNumberId: row.elevenlabs_phone_number_id ?? undefined,
     lastSync: row.last_sync ?? undefined,
     onboardingPhase: row.onboarding_phase ?? undefined,
+    setupDemoStatus: row.setup_demo_status ?? undefined,
     forwardingInstructions: row.forwarding_instructions ?? undefined,
     agents: Array.isArray(row.agents) ? (row.agents as StoredAgent[]) : undefined,
     agentSuspendedAt: row.agent_suspended_at ?? undefined,
@@ -145,6 +148,7 @@ function settingsPatchToRow(patch: Partial<ElevenLabsSettings>): Record<string, 
     elevenLabsPhoneNumberId: "elevenlabs_phone_number_id",
     lastSync: "last_sync",
     onboardingPhase: "onboarding_phase",
+    setupDemoStatus: "setup_demo_status",
     forwardingInstructions: "forwarding_instructions",
     agents: "agents",
     agentSuspendedAt: "agent_suspended_at",

@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { UserAvatar } from "@/components/brand/UserAvatar";
 import { UserSidebar } from "@/components/layout/UserSidebar";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { SetupDemoOverlay } from "@/components/onboarding/SetupDemoOverlay";
+import { SetupDemoProvider } from "@/components/onboarding/SetupDemoProvider";
 import { landingNavBtnSecondary } from "@/components/landing/landing-buttons";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -42,35 +44,38 @@ export function UserShell({ children }: { children: React.ReactNode }) {
     profileName.trim().split(/\s+/)[0] || profileName || "Profil";
 
   return (
-    <div className="user-app min-h-screen bg-white">
-      <div className="flex h-screen overflow-hidden">
-        <UserSidebar />
+    <SetupDemoProvider>
+      <div className="user-app min-h-screen bg-white">
+        <div className="flex h-screen overflow-hidden">
+          <UserSidebar />
 
-        <div className="flex min-w-0 flex-1 flex-col bg-white">
-          <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-[#E1E4EA] bg-white px-4 sm:px-5">
-            <Link
-              href="/einstellungen"
-              className={cn(landingNavBtnSecondary, "gap-2 pr-3")}
-            >
-              <UserAvatar name={profileName} size="sm" />
-              <span className="max-w-[120px] truncate">{displayName}</span>
-            </Link>
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              disabled={loggingOut}
-              className={landingNavBtnSecondary}
-            >
-              {loggingOut ? "Abmelden…" : "Abmelden"}
-            </button>
-          </header>
+          <div className="flex min-w-0 flex-1 flex-col bg-white">
+            <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-[#E1E4EA] bg-white px-4 sm:px-5">
+              <Link
+                href="/einstellungen"
+                className={cn(landingNavBtnSecondary, "gap-2 pr-3")}
+              >
+                <UserAvatar name={profileName} size="sm" />
+                <span className="max-w-[120px] truncate">{displayName}</span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                disabled={loggingOut}
+                className={landingNavBtnSecondary}
+              >
+                {loggingOut ? "Abmelden…" : "Abmelden"}
+              </button>
+            </header>
 
-          <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-white p-4 sm:p-5 lg:p-6">
-            {children}
-          </main>
+            <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-white p-4 sm:p-5 lg:p-6">
+              {children}
+            </main>
+          </div>
         </div>
+        <CommandPalette />
+        <SetupDemoOverlay />
       </div>
-      <CommandPalette />
-    </div>
+    </SetupDemoProvider>
   );
 }

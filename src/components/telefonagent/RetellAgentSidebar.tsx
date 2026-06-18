@@ -29,6 +29,7 @@ export function RetellAgentSidebar({
       <button
         type="button"
         onClick={onCreateNew}
+        data-setup-demo="setup-demo-agent-create"
         className={cn(landingBtnSecondary, "w-full justify-start gap-2")}
       >
         <Plus className="h-3.5 w-3.5 stroke-[1.75]" />

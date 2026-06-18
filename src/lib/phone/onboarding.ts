@@ -328,6 +328,11 @@ export async function assignPhoneNumberToUser(
     { onConflict: "phone_number" }
   );
 
+  const existing = await listUserPhoneNumbers(userId);
+  await addPoolPhoneNumber(userId, normalized, elevenLabsId ?? normalized, {
+    makePrimary: existing.length === 0,
+  });
+
   return updateSettingsForUser(userId, {
     curaForwardingNumber: normalized,
     elevenLabsPhoneNumberId: elevenLabsId ?? undefined,

@@ -23,6 +23,7 @@ import type { OnboardingPhase } from "@/lib/onboarding-types";
 import type { CallQuotaView } from "@/lib/billing/quota-display";
 import { quotaRemainingHighlight } from "@/lib/billing/quota-display";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
+import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import { userPanelClass } from "@/components/user/user-styles";
 
 type BillingPlan = "free" | "pro";
@@ -36,6 +37,7 @@ interface Profile {
 
 export default function ProfilPage() {
   const router = useRouter();
+  const setupDemo = useSetupDemoOptional();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -60,6 +62,7 @@ export default function ProfilPage() {
     useState<ForwardingType>("bedingt");
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase | null>(null);
+  const [startingDemo, setStartingDemo] = useState(false);
 
   const profileLoaded = useRef(false);
 
@@ -238,6 +241,19 @@ export default function ProfilPage() {
     }
   }
 
+  async function startSetupDemo() {
+    if (!setupDemo) return;
+    setStartingDemo(true);
+    try {
+      await setupDemo.restart();
+      toast.success("Demo gestartet — folgen Sie den Schritten.");
+    } catch {
+      toast.error("Demo konnte nicht gestartet werden.");
+    } finally {
+      setStartingDemo(false);
+    }
+  }
+
   async function deleteAccount() {
     setDeleting(true);
     try {
@@ -340,6 +356,26 @@ export default function ProfilPage() {
         >
           Zur Abrechnung
         </Link>
+      </section>
+
+      <section className="scroll-mt-8 space-y-3 border-t border-stroke pt-8">
+        <p className="text-body font-medium text-navy">Einführungs-Demo</p>
+        <p className="text-body text-text-muted">
+          Schritt-für-Schritt-Anleitung: Agent konfigurieren und erste
+          Telefonnummer beantragen. Sie können die Demo jederzeit überspringen.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={startingDemo || setupDemo?.active}
+          onClick={() => void startSetupDemo()}
+        >
+          {setupDemo?.active
+            ? "Demo läuft…"
+            : startingDemo
+              ? "Starten…"
+              : "Demo starten"}
+        </Button>
       </section>
 
       <div className="border-t border-stroke pt-8">

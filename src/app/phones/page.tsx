@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { CalendarIntegrations } from "@/components/integrations/CalendarIntegrations";
 import { QuotaGate } from "@/components/billing/QuotaGate";
+import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import { landingBtnPrimary } from "@/components/landing/landing-buttons";
 import { AgentStatusHero } from "@/components/telefonagent/AgentStatusHero";
 import {
@@ -56,6 +57,7 @@ const CALENDAR_LABELS: Record<CalendarProviderId, string> = {
 };
 
 export default function PhonesPage() {
+  const setupDemo = useSetupDemoOptional();
   const [statusLoading, setStatusLoading] = useState(true);
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("nummer_anfragen");
@@ -169,6 +171,9 @@ export default function PhonesPage() {
         setOnboardingPhase(data.phase as OnboardingPhase);
         applySettings(data.settings as Settings);
         await loadOnboarding();
+        if (setupDemo?.active && setupDemo.step === "phone") {
+          await setupDemo.completePhoneStep();
+        }
         toast.success(
           data.autoAssigned
             ? "Nummer zugewiesen"
