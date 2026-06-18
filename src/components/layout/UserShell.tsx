@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { UserAvatar } from "@/components/brand/UserAvatar";
 import { UserSidebar } from "@/components/layout/UserSidebar";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { SetupDemoOverlay } from "@/components/onboarding/SetupDemoOverlay";
@@ -53,10 +52,9 @@ export function UserShell({ children }: { children: React.ReactNode }) {
             <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-[#E1E4EA] bg-white px-4 sm:px-5">
               <Link
                 href="/einstellungen"
-                className={cn(landingNavBtnSecondary, "gap-2 pr-3")}
+                className={cn(landingNavBtnSecondary, "max-w-[160px] truncate")}
               >
-                <UserAvatar name={profileName} size="sm" />
-                <span className="max-w-[120px] truncate">{displayName}</span>
+                {displayName}
               </Link>
               <button
                 type="button"

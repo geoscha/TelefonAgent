@@ -18,4 +18,8 @@ export interface StoredAgent {
   systemPrompt: string;
   /** user_phone_numbers.id — which inbound number this agent handles. */
   phoneNumberId?: string;
+  /** Append EU/DE/CH compliance instructions to the live agent prompt. */
+  euComplianceEnabled?: boolean;
+  /** Company website used for AI configuration. */
+  website?: string;
 }

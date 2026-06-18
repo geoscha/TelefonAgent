@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
 
     const updated = await updateSettings({ agents: updatedAgents });
 
-    if (settings.agentId === agentId && phoneNumberId) {
+    if (phoneNumberId) {
       await linkAgentToPhone(userId, agentId, phoneNumberId);
     }
 

@@ -8,6 +8,7 @@ import {
   buildAppointmentBlock,
   buildSystemPrompt,
 } from "@/lib/elevenlabs/prompt";
+import { applyEuCompliancePrompt } from "@/lib/elevenlabs/compliance";
 import {
   buildConversationConfig,
   filterAgentVoices,
@@ -32,6 +33,99 @@ interface AgentBody {
   agentId?: string;
   createNew?: boolean;
   phoneNumberId?: string;
+  euComplianceEnabled?: boolean;
+  website?: string;
+  /** Save to app settings only — used for auto-save in the detail panel. */
+  persistOnly?: boolean;
+}
+
+function buildEffectiveSystemPrompt(
+  systemPrompt: string,
+  complianceEnabled: boolean,
+  appointmentBookingEnabled: boolean
+): string {
+  let prompt = applyEuCompliancePrompt(systemPrompt, complianceEnabled);
+  if (appointmentBookingEnabled) {
+    prompt += buildAppointmentBlock();
+  }
+  return prompt;
+}
+
+async function persistAgentRecord(params: {
+  body: AgentBody;
+  agentId: string;
+  name: string;
+  voiceId: string;
+  language: ReturnType<typeof normalizeAgentLanguage>;
+  greeting: string;
+  systemPrompt: string;
+  userId: string;
+}) {
+  const { body, agentId, name, voiceId, language, greeting, systemPrompt, userId } =
+    params;
+  const settings = await getSettings();
+  const existingAgents = settings.agents ?? [];
+  const existing = existingAgents.find((a) => a.id === agentId);
+
+  const euComplianceEnabled =
+    typeof body.euComplianceEnabled === "boolean"
+      ? body.euComplianceEnabled
+      : (existing?.euComplianceEnabled ?? false);
+
+  const stored: StoredAgent = {
+    id: agentId,
+    name,
+    voiceId,
+    voiceName: body.voiceName,
+    language,
+    greeting,
+    systemPrompt,
+    phoneNumberId: body.phoneNumberId ?? existing?.phoneNumberId,
+    euComplianceEnabled,
+    website: body.website?.trim() || existing?.website,
+  };
+
+  const phones = await listUserPhoneNumbers(userId);
+  if (!stored.phoneNumberId && phones.length === 1) {
+    stored.phoneNumberId = phones[0].id;
+  } else if (!stored.phoneNumberId) {
+    stored.phoneNumberId = existingAgents.find((a) => a.id === agentId)?.phoneNumberId;
+  }
+
+  const agents = existingAgents.some((a) => a.id === agentId)
+    ? existingAgents.map((a) => (a.id === agentId ? stored : a))
+    : [...existingAgents, stored];
+
+  const isActiveAgent = settings.agentId === agentId;
+
+  let updated = await updateSettings({
+    agents,
+    lastSync: new Date().toISOString(),
+    ...(isActiveAgent
+      ? {
+          agentId,
+          agentName: name,
+          voiceId,
+          voiceName: body.voiceName,
+          language,
+          greeting,
+          systemPrompt,
+        }
+      : {}),
+  });
+
+  if (isActiveAgent && updated.onboardingPhase === "agent") {
+    updated = await completeAgentOnboarding();
+  }
+
+  if (
+    isActiveAgent &&
+    (stored.phoneNumberId || updated.curaForwardingNumber)
+  ) {
+    await linkAgentToPhone(userId, agentId, stored.phoneNumberId);
+  }
+
+  return { updated, agents, agentId, stored };
 }
 
 /** Create the agent on first save, update it on subsequent saves. */
@@ -50,7 +144,8 @@ export async function POST(req: NextRequest) {
   const voiceId = body.voiceId?.trim();
   const language = normalizeAgentLanguage(body.language);
   const greeting = body.greeting?.trim();
-  const systemPrompt = body.systemPrompt?.trim() || buildSystemPrompt(name ?? "Cura Telefonagent");
+  const systemPrompt =
+    body.systemPrompt?.trim() || buildSystemPrompt(name ?? "Cura Telefonagent");
 
   if (!name || !voiceId || !greeting) {
     return NextResponse.json(
@@ -63,8 +158,49 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const client = getElevenLabsClient();
+    const userId = await requireUserId();
     const settings = await getSettings();
+    const targetAgentId =
+      body.agentId?.trim() || (body.createNew ? undefined : settings.agentId);
+
+    const existingAgents = settings.agents ?? [];
+    const existing = targetAgentId
+      ? existingAgents.find((a) => a.id === targetAgentId)
+      : undefined;
+    const complianceEnabled =
+      typeof body.euComplianceEnabled === "boolean"
+        ? body.euComplianceEnabled
+        : (existing?.euComplianceEnabled ?? false);
+
+    if (body.persistOnly) {
+      if (!targetAgentId) {
+        return NextResponse.json(
+          { ok: false, error: "Agent nicht gefunden." },
+          { status: 400 }
+        );
+      }
+
+      const { updated, agents, agentId } = await persistAgentRecord({
+        body,
+        agentId: targetAgentId,
+        name,
+        voiceId,
+        language,
+        greeting,
+        systemPrompt,
+        userId,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        agentId,
+        settings: updated,
+        agents,
+        persistedOnly: true,
+      });
+    }
+
+    const client = getElevenLabsClient();
 
     const voiceRes = (await client.voices.getAll()) as {
       voices?: RawElevenLabsVoice[];
@@ -81,9 +217,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const effectivePrompt = settings.appointmentBookingEnabled
-      ? systemPrompt + buildAppointmentBlock()
-      : systemPrompt;
+    const effectivePrompt = buildEffectiveSystemPrompt(
+      systemPrompt,
+      complianceEnabled,
+      Boolean(settings.appointmentBookingEnabled)
+    );
 
     const conversationConfig = buildConversationConfig({
       greeting,
@@ -92,9 +230,7 @@ export async function POST(req: NextRequest) {
       voiceId,
     });
 
-    let agentId = body.createNew
-      ? undefined
-      : body.agentId?.trim() || settings.agentId;
+    let agentId = body.createNew ? undefined : targetAgentId;
 
     if (agentId) {
       await client.conversationalAi.agents.update(agentId, {
@@ -112,48 +248,16 @@ export async function POST(req: NextRequest) {
       agentId = created.agentId;
     }
 
-    const userId = await requireUserId();
-
-    const stored: StoredAgent = {
-      id: agentId,
+    const { updated, agents } = await persistAgentRecord({
+      body,
+      agentId,
       name,
       voiceId,
-      voiceName: body.voiceName,
       language,
       greeting,
       systemPrompt,
-      phoneNumberId: body.phoneNumberId,
-    };
-    const existingAgents = settings.agents ?? [];
-    const phones = await listUserPhoneNumbers(userId);
-    if (!stored.phoneNumberId && phones.length === 1) {
-      stored.phoneNumberId = phones[0].id;
-    } else if (!stored.phoneNumberId && agentId) {
-      stored.phoneNumberId = existingAgents.find((a) => a.id === agentId)?.phoneNumberId;
-    }
-    const agents = existingAgents.some((a) => a.id === agentId)
-      ? existingAgents.map((a) => (a.id === agentId ? stored : a))
-      : [...existingAgents, stored];
-
-    let updated = await updateSettings({
-      agentId,
-      agentName: name,
-      voiceId,
-      voiceName: body.voiceName,
-      language,
-      greeting,
-      systemPrompt,
-      agents,
-      lastSync: new Date().toISOString(),
+      userId,
     });
-
-    if (updated.onboardingPhase === "agent") {
-      updated = await completeAgentOnboarding();
-    }
-
-    if (stored.phoneNumberId || updated.curaForwardingNumber) {
-      await linkAgentToPhone(userId, agentId, stored.phoneNumberId);
-    }
 
     return NextResponse.json({ ok: true, agentId, settings: updated, agents });
   } catch (error) {

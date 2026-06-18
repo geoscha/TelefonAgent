@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { AgentCreateWizard, type AgentWizardDraft } from "@/components/telefonagent/AgentCreateWizard";
-import { AgentDetailModal } from "@/components/telefonagent/AgentDetailModal";
-import { AgentDetailPanel } from "@/components/telefonagent/AgentDetailPanel";
+import {
+  AgentDetailPanel,
+  type AgentDetailUpdate,
+} from "@/components/telefonagent/AgentDetailPanel";
 import { RetellAgentSidebar } from "@/components/telefonagent/RetellAgentSidebar";
 import { QuotaGate } from "@/components/billing/QuotaGate";
 import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
@@ -99,9 +101,14 @@ export default function TelefonagentPage() {
   const [createNewAgent, setCreateNewAgent] = useState(false);
   const [createWizardOpen, setCreateWizardOpen] = useState(false);
   const [detailAgentId, setDetailAgentId] = useState<string | null>(null);
-  const [detailMode, setDetailMode] = useState<"view" | "edit">("view");
   const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
   const [activatingAgentId, setActivatingAgentId] = useState<string | null>(null);
+  const [autoSavingAgent, setAutoSavingAgent] = useState(false);
+  const [autoSaveError, setAutoSaveError] = useState(false);
+  const elSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingElSyncRef = useRef<
+    (AgentWizardDraft & { agentId: string }) | null
+  >(null);
 
   const applySettings = useCallback((s: Settings) => {
     setSettings(s);
@@ -260,7 +267,12 @@ export default function TelefonagentPage() {
   }, [settings.connected, loadVoices]);
 
   async function handleSaveAgent(
-    override?: AgentWizardDraft & { agentId?: string; createNew?: boolean }
+    override?: AgentWizardDraft & {
+      agentId?: string;
+      createNew?: boolean;
+      euComplianceEnabled?: boolean;
+    },
+    options?: { silent?: boolean }
   ) {
     const saveName = override?.name ?? name;
     const saveVoiceId = override?.voiceId ?? voiceId;
@@ -269,6 +281,11 @@ export default function TelefonagentPage() {
       : language;
     const saveGreeting = override?.greeting ?? greeting;
     const saveSystemPrompt = override?.systemPrompt ?? systemPrompt;
+    const saveComplianceEnabled =
+      override?.euComplianceEnabled ??
+      storedAgents.find((a) => a.id === (override?.agentId ?? selectedAgentId))
+        ?.euComplianceEnabled ??
+      false;
     const isNew =
       override?.createNew ??
       (override?.agentId ? false : createNewAgent || !selectedAgentId);
@@ -288,11 +305,15 @@ export default function TelefonagentPage() {
       }
     }
     if (!connected) {
-      toast.error("Verbindung konnte nicht hergestellt werden.");
+      if (!options?.silent) {
+        toast.error("Verbindung konnte nicht hergestellt werden.");
+      }
       return false;
     }
     if (!saveVoiceId) {
-      toast.error("Bitte eine Stimme auswählen.");
+      if (!options?.silent) {
+        toast.error("Bitte eine Stimme auswählen.");
+      }
       return false;
     }
     setSavingAgent(true);
@@ -309,6 +330,7 @@ export default function TelefonagentPage() {
           language: saveLanguage,
           greeting: saveGreeting,
           systemPrompt: saveSystemPrompt,
+          euComplianceEnabled: saveComplianceEnabled,
           agentId: isNew ? undefined : saveAgentId || undefined,
           createNew: isNew,
         }),
@@ -327,13 +349,19 @@ export default function TelefonagentPage() {
         if (isNew && setupDemo?.active && setupDemo.step === "agent") {
           await setupDemo.completeAgentStep();
         }
-        toast.success(isNew ? "Agent erstellt" : "Agent aktualisiert");
+        if (!options?.silent) {
+          toast.success(isNew ? "Agent erstellt" : "Agent aktualisiert");
+        }
         return true;
       }
-      toast.error("Speichern fehlgeschlagen", { description: data.error });
+      if (!options?.silent) {
+        toast.error("Speichern fehlgeschlagen", { description: data.error });
+      }
       return false;
     } catch {
-      toast.error("Netzwerkfehler beim Speichern");
+      if (!options?.silent) {
+        toast.error("Netzwerkfehler beim Speichern");
+      }
       return false;
     } finally {
       setSavingAgent(false);
@@ -342,24 +370,81 @@ export default function TelefonagentPage() {
 
   function handleSelectAgent(agentId: string) {
     setDetailAgentId(agentId);
-    setDetailMode("view");
     if (settings.connected || caps.hasApiKey) loadVoices();
   }
 
-  function handleEditAgent(agentId: string) {
-    setDetailAgentId(agentId);
-    setDetailMode("edit");
-    if (settings.connected || caps.hasApiKey) loadVoices();
-  }
+  const queueElevenLabsSync = useCallback(
+    (draft: AgentWizardDraft & { agentId: string }) => {
+      pendingElSyncRef.current = draft;
+      if (elSyncTimerRef.current) clearTimeout(elSyncTimerRef.current);
+      elSyncTimerRef.current = setTimeout(() => {
+        const pending = pendingElSyncRef.current;
+        if (!pending) return;
+        void handleSaveAgent(
+          { ...pending, createNew: false },
+          { silent: true }
+        );
+      }, 2500);
+    },
+    // handleSaveAgent is stable enough for debounced background sync
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [settings.connected, voices]
+  );
 
-  async function handleDetailSave(draft: AgentWizardDraft) {
-    if (!detailAgentId) return;
-    const ok = await handleSaveAgent({
-      ...draft,
-      agentId: detailAgentId,
-      createNew: false,
-    });
-    if (ok) setDetailMode("view");
+  useEffect(() => {
+    return () => {
+      if (elSyncTimerRef.current) clearTimeout(elSyncTimerRef.current);
+    };
+  }, []);
+
+  async function handleAgentAutoSave(agentId: string, patch: AgentDetailUpdate) {
+    const agent = storedAgents.find((a) => a.id === agentId);
+    if (!agent) return;
+
+    const draft = {
+      name: patch.name ?? agent.name,
+      voiceId: patch.voiceId ?? agent.voiceId,
+      voiceName: patch.voiceName ?? agent.voiceName,
+      language: patch.language ?? agent.language,
+      greeting: patch.greeting ?? agent.greeting,
+      systemPrompt: patch.systemPrompt ?? agent.systemPrompt,
+      euComplianceEnabled:
+        patch.euComplianceEnabled ?? agent.euComplianceEnabled ?? false,
+      website: patch.website ?? agent.website ?? "",
+    };
+
+    if (!draft.name.trim() || !draft.greeting.trim() || !draft.voiceId) {
+      return;
+    }
+
+    setAutoSavingAgent(true);
+    setAutoSaveError(false);
+    try {
+      const res = await fetch("/api/elevenlabs/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...draft,
+          agentId,
+          createNew: false,
+          persistOnly: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        if (data.settings) applySettings(data.settings as Settings);
+        if (data.agents) setStoredAgents(data.agents as StoredAgent[]);
+        if (settings.connected || caps.hasApiKey) {
+          queueElevenLabsSync({ ...draft, agentId });
+        }
+      } else {
+        setAutoSaveError(true);
+      }
+    } catch {
+      setAutoSaveError(true);
+    } finally {
+      setAutoSavingAgent(false);
+    }
   }
 
   async function handleWizardSave(draft: AgentWizardDraft) {
@@ -468,10 +553,18 @@ export default function TelefonagentPage() {
       const preferred = settings.agentId ?? storedAgents[0]?.id;
       if (preferred) {
         setDetailAgentId(preferred);
-        setDetailMode("view");
       }
     }
   }, [storedAgents, detailAgentId, settings.agentId]);
+
+  useEffect(() => {
+    if (!detailAgentId || phoneNumbers.length !== 1) return;
+    const agent = storedAgents.find((a) => a.id === detailAgentId);
+    if (!agent?.phoneNumberId) {
+      void handleAssignPhone(detailAgentId, phoneNumbers[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailAgentId, phoneNumbers.length, storedAgents]);
 
   const detailAgent =
     storedAgents.find((a) => a.id === detailAgentId) ?? null;
@@ -496,15 +589,17 @@ export default function TelefonagentPage() {
               voices={voices}
               voicesLoading={voicesLoading}
               deleting={deletingAgentId === detailAgent.id}
+              saving={autoSavingAgent}
+              saveError={autoSaveError}
               phoneNumbers={phoneNumbers}
               assigningPhone={assigningPhone}
               onAssignPhone={(phoneNumberId) =>
                 void handleAssignPhone(detailAgent.id, phoneNumberId)
               }
-              onEdit={() => handleEditAgent(detailAgent.id)}
               onDelete={() => void handleDeleteAgent(detailAgent.id)}
               onActivate={() => void handleActivateAgent(detailAgent.id)}
               activating={activatingAgentId === detailAgent.id}
+              onUpdate={(patch) => void handleAgentAutoSave(detailAgent.id, patch)}
             />
           ) : (
             <div className="landing-panel flex flex-1 items-center justify-center border border-dashed border-[#E1E4EA] p-8">
@@ -523,19 +618,6 @@ export default function TelefonagentPage() {
         voicesLoading={voicesLoading}
         saving={savingAgent}
         onSave={handleWizardSave}
-      />
-
-      <AgentDetailModal
-        open={detailAgentId !== null && detailMode === "edit"}
-        agent={detailAgent}
-        mode={detailMode}
-        voices={voices}
-        voicesLoading={voicesLoading}
-        saving={savingAgent}
-        onClose={() => setDetailMode("view")}
-        onCancelEdit={() => setDetailMode("view")}
-        onEdit={() => setDetailMode("edit")}
-        onSave={handleDetailSave}
       />
     </>
   );

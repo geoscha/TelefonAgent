@@ -28,19 +28,16 @@ export async function POST(req: NextRequest) {
       goal?: string;
       gender?: string;
       language?: string;
+      keepVoice?: boolean;
     };
 
     const industry = body.industry?.trim();
-    const goal = body.goal?.trim();
+    const goal =
+      body.goal?.trim() ||
+      "Anrufe professionell entgegennehmen, Anliegen aufnehmen und bei Bedarf weiterleiten.";
     if (!industry) {
       return NextResponse.json(
         { ok: false, error: "Bitte Branche angeben." },
-        { status: 400 }
-      );
-    }
-    if (!goal) {
-      return NextResponse.json(
-        { ok: false, error: "Bitte Ziel angeben." },
         { status: 400 }
       );
     }
@@ -48,6 +45,7 @@ export async function POST(req: NextRequest) {
     const gender: AgentVoiceGender =
       body.gender === "female" ? "female" : "male";
     const language = normalizeAgentLanguage(body.language);
+    const keepVoice = Boolean(body.keepVoice);
 
     const input: GenerateAgentInput = {
       industry,
@@ -59,28 +57,32 @@ export async function POST(req: NextRequest) {
 
     const draft = await generateAgentDraft(input);
 
-    const client = getElevenLabsClient();
-    const voiceRes = (await client.voices.getAll()) as {
-      voices?: RawElevenLabsVoice[];
-    };
-    const rawVoices = voiceRes.voices ?? [];
-    const voiceId = pickAgentVoiceId(rawVoices, gender, language);
-    const catalog = filterAgentVoices(rawVoices);
-    const voiceName = catalog.find((v) => v.id === voiceId)?.name;
+    let voiceId: string | undefined;
+    let voiceName: string | undefined;
 
-    if (!voiceId) {
-      return NextResponse.json(
-        { ok: false, error: "Keine passende Stimme gefunden." },
-        { status: 503 }
-      );
+    if (!keepVoice) {
+      const client = getElevenLabsClient();
+      const voiceRes = (await client.voices.getAll()) as {
+        voices?: RawElevenLabsVoice[];
+      };
+      const rawVoices = voiceRes.voices ?? [];
+      voiceId = pickAgentVoiceId(rawVoices, gender, language);
+      const catalog = filterAgentVoices(rawVoices);
+      voiceName = catalog.find((v) => v.id === voiceId)?.name;
+
+      if (!voiceId) {
+        return NextResponse.json(
+          { ok: false, error: "Keine passende Stimme gefunden." },
+          { status: 503 }
+        );
+      }
     }
 
     return NextResponse.json({
       ok: true,
       draft: {
         ...draft,
-        voiceId,
-        voiceName,
+        ...(voiceId ? { voiceId, voiceName } : {}),
       },
       meta: {
         aiGenerated: draft.aiGenerated,
