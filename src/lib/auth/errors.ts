@@ -19,6 +19,13 @@ export function mapSignupError(message: string): string {
   if (m.includes("signup") && m.includes("disabled")) {
     return "Registrierungen sind derzeit deaktiviert. Bitte kontaktieren Sie den Support.";
   }
+  if (
+    m.includes("database error") ||
+    m.includes("trigger") ||
+    m.includes("failed to create user")
+  ) {
+    return "Registrierung fehlgeschlagen (Serverfehler). Bitte erneut versuchen oder Support kontaktieren.";
+  }
 
   return "Registrierung fehlgeschlagen. Bitte erneut versuchen.";
 }

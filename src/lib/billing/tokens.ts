@@ -147,7 +147,37 @@ export async function creditTokens(
 /** One-time welcome bonus for new accounts (idempotent). */
 export async function grantWelcomeTokensIfNeeded(userId: string): Promise<void> {
   const admin = createAdminClient();
-  const { data: existing } = await admin
+
+  let profile: { token_balance?: number } | null = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const { data, error } = await admin
+      .from("profiles")
+      .select("token_balance")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (error) {
+      if (error.code === "42703") {
+        // token_balance column not migrated yet
+        return;
+      }
+      throw error;
+    }
+
+    if (data) {
+      profile = data;
+      break;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+  }
+
+  if (!profile) {
+    console.warn("[tokens] welcome grant skipped — profile missing:", userId);
+    return;
+  }
+
+  const { data: existing, error: txError } = await admin
     .from("token_transactions")
     .select("id")
     .eq("user_id", userId)
@@ -155,7 +185,38 @@ export async function grantWelcomeTokensIfNeeded(userId: string): Promise<void> 
     .limit(1)
     .maybeSingle();
 
+  if (txError) {
+    if (txError.code === "42P01") {
+      // token_transactions table not migrated yet
+      if ((profile.token_balance ?? 0) < WELCOME_TOKEN_BONUS) {
+        await admin
+          .from("profiles")
+          .update({
+            token_balance: WELCOME_TOKEN_BONUS,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", userId);
+      }
+      return;
+    }
+    throw txError;
+  }
+
   if (existing) return;
+
+  const current = profile.token_balance ?? 0;
+  if (current >= WELCOME_TOKEN_BONUS) {
+    await insertTransaction(
+      userId,
+      WELCOME_TOKEN_BONUS,
+      current,
+      "welcome_bonus",
+      `welcome:${userId}`
+    ).catch((err) => {
+      console.warn("[tokens] welcome ledger sync failed:", err);
+    });
+    return;
+  }
 
   await creditTokens(
     userId,

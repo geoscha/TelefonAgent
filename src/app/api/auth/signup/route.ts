@@ -60,6 +60,7 @@ export async function POST(request: Request) {
     });
 
     if (error) {
+      console.error("[auth/signup] createUser failed:", error.message);
       return NextResponse.json(
         { ok: false, error: mapSignupError(error.message) },
         { status: 400 }
