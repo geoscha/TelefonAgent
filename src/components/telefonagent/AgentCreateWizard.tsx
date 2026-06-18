@@ -188,7 +188,12 @@ export function AgentCreateWizard({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div
+      className={cn(
+        "fixed inset-0 flex items-center justify-center p-4",
+        demoActive ? "z-[205]" : "z-[100]"
+      )}
+    >
       <button
         type="button"
         aria-label="Schliessen"

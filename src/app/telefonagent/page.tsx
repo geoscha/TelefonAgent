@@ -16,6 +16,9 @@ import { normalizeAgentLanguage } from "@/lib/elevenlabs/agent-config";
 import type { OnboardingPhase, StoredAgent } from "@/lib/onboarding-types";
 import { sessionThrottle, readStaleCache, writeStaleCache } from "@/lib/client/stale-cache";
 import { useWorkspace } from "@/lib/hooks/useWorkspace";
+import {
+  SETUP_DEMO_SKIP_EVENT,
+} from "@/lib/setup-demo-events";
 import { mockAgentConfig } from "@/lib/mock/agent";
 
 type ForwardingType = "alle" | "bedingt";
@@ -104,6 +107,7 @@ export default function TelefonagentPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [createNewAgent, setCreateNewAgent] = useState(false);
   const [createWizardOpen, setCreateWizardOpen] = useState(false);
+  const [createWizardDismissed, setCreateWizardDismissed] = useState(false);
   const [detailAgentId, setDetailAgentId] = useState<string | null>(null);
   const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
   const [activatingAgentId, setActivatingAgentId] = useState<string | null>(null);
@@ -236,11 +240,30 @@ export default function TelefonagentPage() {
     return () => clearInterval(interval);
   }, [onboardingPhase, revalidateWorkspace]);
 
+  const handleCloseCreateWizard = useCallback(() => {
+    setCreateWizardOpen(false);
+    setCreateWizardDismissed(true);
+    if (setupDemo?.active && setupDemo.step === "agent") {
+      void setupDemo.skip();
+    }
+  }, [setupDemo]);
+
+  useEffect(() => {
+    function onDemoSkipped() {
+      setCreateWizardOpen(false);
+      setCreateWizardDismissed(true);
+    }
+
+    window.addEventListener(SETUP_DEMO_SKIP_EVENT, onDemoSkipped);
+    return () => window.removeEventListener(SETUP_DEMO_SKIP_EVENT, onDemoSkipped);
+  }, []);
+
   useEffect(() => {
     if (
       onboardingPhase === "agent" &&
       storedAgents.length === 0 &&
       !createWizardOpen &&
+      !createWizardDismissed &&
       detailAgentId === null
     ) {
       setCreateWizardOpen(true);
@@ -254,6 +277,7 @@ export default function TelefonagentPage() {
     onboardingPhase,
     storedAgents.length,
     createWizardOpen,
+    createWizardDismissed,
     detailAgentId,
     caps.hasApiKey,
     settings.connected,
@@ -452,6 +476,7 @@ export default function TelefonagentPage() {
   }
 
   function handleCreateNewAgent() {
+    setCreateWizardDismissed(false);
     setCreateWizardOpen(true);
     if (settings.connected || caps.hasApiKey) loadVoices();
   }
@@ -612,7 +637,7 @@ export default function TelefonagentPage() {
 
       <AgentCreateWizard
         open={createWizardOpen}
-        onClose={() => setCreateWizardOpen(false)}
+        onClose={handleCloseCreateWizard}
         voices={voices}
         voicesLoading={voicesLoading}
         saving={savingAgent}

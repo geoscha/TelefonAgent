@@ -137,7 +137,7 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
       applyPayload(data);
       sessionStorage.removeItem(DEMO_STARTED_KEY);
       setDemoStarted(false);
-      if (data.resetUi) dispatchSetupDemoSkipped(true);
+      dispatchSetupDemoSkipped(true);
     }
   }, [applyPayload]);
 

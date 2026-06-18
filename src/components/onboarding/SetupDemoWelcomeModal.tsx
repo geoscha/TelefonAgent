@@ -23,12 +23,16 @@ export function SetupDemoWelcomeModal() {
   if (!mounted || !demo?.showWelcome) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 p-4">
+    <div
+      className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 p-4"
+      onClick={() => void demo.skip()}
+    >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="setup-demo-welcome-title"
         className="w-full max-w-md rounded border-2 border-[#0E121B] bg-white p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
       >
         <p
           id="setup-demo-welcome-title"
