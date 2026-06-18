@@ -29,8 +29,9 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
+import { notifyTokenBalanceChanged, useTokenBalance } from "@/lib/hooks/useTokenBalance";
 import { useWorkspace } from "@/lib/hooks/useWorkspace";
+import { PHONE_NUMBER_MONTHLY_TOKENS } from "@/lib/billing/quota-display";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
 
 type ForwardingType = "alle" | "bedingt";
@@ -62,6 +63,10 @@ export default function PhonesPage() {
   const setupDemo = useSetupDemoOptional();
   const { data: workspace, loading: workspaceLoading, revalidate: revalidateWorkspace } =
     useWorkspace();
+  const { tokenBalance, loading: tokenLoading } = useTokenBalance();
+  const canAffordPhoneNumber =
+    PHONE_NUMBER_MONTHLY_TOKENS <= 0 ||
+    (!tokenLoading && (tokenBalance?.balance ?? 0) >= PHONE_NUMBER_MONTHLY_TOKENS);
   const statusLoading = workspaceLoading && workspace === null;
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("nummer_anfragen");
@@ -187,9 +192,15 @@ export default function PhonesPage() {
         }
       } else {
         notifyTokenBalanceChanged();
-        toast.error("Anfrage fehlgeschlagen", {
-          description: data.error ?? "Bitte versuchen Sie es erneut.",
-        });
+        if (data.code === "insufficient_tokens") {
+          toast.error("Nicht genügend Tokens", {
+            description: data.error ?? "Bitte laden Sie Ihr Guthaben unter Abrechnung auf.",
+          });
+        } else {
+          toast.error("Anfrage fehlgeschlagen", {
+            description: data.error ?? "Bitte versuchen Sie es erneut.",
+          });
+        }
       }
     } catch {
       toast.error("Netzwerkfehler");
@@ -268,7 +279,7 @@ export default function PhonesPage() {
         setForwardingStatus("aktiv");
         if (data.numbers) setNumbers(data.numbers as UserPhoneNumberView[]);
         await loadOnboarding();
-        toast.success("Weiterleitung verbunden");
+        toast.success("Nummer gekoppelt");
         return true;
       }
       toast.error("Speichern fehlgeschlagen");
@@ -331,7 +342,15 @@ export default function PhonesPage() {
       if (res.ok && data.ok) {
         setNumbers((data.numbers as UserPhoneNumberView[]) ?? []);
         await loadOnboarding();
-        toast.success("Nummer entfernt");
+        notifyTokenBalanceChanged();
+        const refunded = Number(data.refundTokens ?? 0);
+        if (refunded > 0) {
+          toast.success("Nummer entfernt", {
+            description: `${refunded.toLocaleString("de-CH")} Tokens zurückerstattet.`,
+          });
+        } else {
+          toast.success("Nummer entfernt");
+        }
       } else {
         toast.error("Entfernen fehlgeschlagen");
       }
@@ -402,6 +421,7 @@ export default function PhonesPage() {
             onActivate={handleActivate}
             onRemove={handleRemove}
             onForwardingTypeChange={setForwardingType}
+            canAffordPhoneNumber={canAffordPhoneNumber}
           />
         )}
 

@@ -2,10 +2,21 @@ import { NextResponse, type NextRequest } from "next/server";
 import Stripe from "stripe";
 
 import { getTokenPack } from "@/lib/billing/quota-display";
+import { creditTokens, getTokenBalanceForUser } from "@/lib/billing/tokens";
 import { getProfile } from "@/lib/store";
 import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+/** Gratis-Testguthaben wenn Stripe deaktiviert oder BILLING_TEST_MODE=true. */
+const TEST_TOPUP_TOKENS = 35_000;
+
+function isBillingTestMode(): boolean {
+  return (
+    process.env.BILLING_TEST_MODE === "true" ||
+    !process.env.STRIPE_SECRET_KEY?.trim()
+  );
+}
 
 function appOrigin(req: NextRequest): string {
   return (
@@ -15,17 +26,6 @@ function appOrigin(req: NextRequest): string {
 }
 
 export async function POST(req: NextRequest) {
-  const secret = process.env.STRIPE_SECRET_KEY;
-  if (!secret) {
-    return NextResponse.json(
-      {
-        error:
-          "Stripe ist noch nicht konfiguriert. Bitte STRIPE_SECRET_KEY hinterlegen.",
-      },
-      { status: 503 }
-    );
-  }
-
   let body: { packId?: string };
   try {
     body = await req.json();
@@ -39,6 +39,44 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = await requireUserId();
+
+  if (isBillingTestMode()) {
+    const referenceId = `test_topup:${userId}:${Date.now()}`;
+    const result = await creditTokens(
+      userId,
+      TEST_TOPUP_TOKENS,
+      "admin_topup",
+      referenceId,
+      { packId: pack.id, test: true }
+    );
+
+    if (!result.ok && !result.duplicate) {
+      return NextResponse.json(
+        { error: "Test-Guthaben konnte nicht gutgeschrieben werden." },
+        { status: 502 }
+      );
+    }
+
+    const tokenBalance = await getTokenBalanceForUser(userId);
+    return NextResponse.json({
+      ok: true,
+      test: true,
+      tokens: TEST_TOPUP_TOKENS,
+      tokenBalance,
+    });
+  }
+
+  const secret = process.env.STRIPE_SECRET_KEY;
+  if (!secret) {
+    return NextResponse.json(
+      {
+        error:
+          "Stripe ist noch nicht konfiguriert. Bitte STRIPE_SECRET_KEY hinterlegen.",
+      },
+      { status: 503 }
+    );
+  }
+
   const origin = appOrigin(req);
   const profile = await getProfile();
   const stripe = new Stripe(secret);

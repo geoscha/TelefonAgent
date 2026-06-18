@@ -1,5 +1,10 @@
 import "server-only";
 
+import { calculateCallTokenCost } from "@/lib/billing/quota-display";
+import {
+  ensureCallTokenCharge,
+  type CallTokenChargeStatus,
+} from "@/lib/billing/call-charges";
 import type { Call } from "@/lib/types";
 import { syncCallsForCurrentUser } from "@/lib/elevenlabs/sync-calls";
 import { getStoredCalls } from "@/lib/store";
@@ -33,9 +38,35 @@ export async function getAllFeedCalls(): Promise<Call[]> {
 }
 
 export async function getFeedCall(id: string): Promise<Call | null> {
+  const detail = await getFeedCallDetail(id);
+  return detail?.call ?? null;
+}
+
+export interface FeedCallDetail {
+  call: Call;
+  tokenCost: number;
+  tokenChargeStatus: CallTokenChargeStatus;
+  isRealCall: boolean;
+}
+
+export async function getFeedCallDetail(id: string): Promise<FeedCallDetail | null> {
   await ensureUserCallsSynced();
   const stored = await getStoredCalls();
-  return stored.find((c) => c.id === id) ?? null;
+  const call = stored.find((c) => c.id === id) ?? null;
+  if (!call) return null;
+
+  const isRealCall = !call.id.startsWith("call-");
+  const tokenCost = calculateCallTokenCost(call.durationSeconds);
+  let tokenChargeStatus: CallTokenChargeStatus = "skipped";
+
+  if (isRealCall && tokenCost > 0) {
+    const { requireUserId } = await import("@/lib/supabase/server");
+    const userId = await requireUserId();
+    const charge = await ensureCallTokenCharge(userId, call);
+    tokenChargeStatus = charge.status;
+  }
+
+  return { call, tokenCost, tokenChargeStatus, isRealCall };
 }
 
 export interface CallCounts {

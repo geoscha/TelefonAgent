@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   Check,
   Copy,
+  Info,
   Loader2,
   Plus,
   Trash2,
@@ -17,6 +18,13 @@ import {
 } from "@/components/landing/landing-buttons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { userLabelClass } from "@/components/user/user-styles";
 import {
   forwardingActivateCode,
@@ -27,8 +35,11 @@ import {
 import type { OnboardingPhase } from "@/lib/onboarding-types";
 import {
   formatBillingDateTime,
+  formatPhoneNumberBillingAmount,
+  formatPhoneNumberCostLabel,
   formatTokenCount,
   PHONE_NUMBER_MONTHLY_TOKENS,
+  resolvePhoneNextBillingAt,
 } from "@/lib/billing/quota-display";
 
 type ForwardingStatus = "nicht_eingerichtet" | "anleitung" | "aktiv";
@@ -54,14 +65,101 @@ export interface PendingPhoneRequestView {
 }
 
 function isPhoneLinked(num: UserPhoneNumberView): boolean {
-  if (num.forwardingStatus === "nicht_eingerichtet") return false;
-  if (
-    num.forwardingStatus === "aktiv" ||
-    num.forwardingStatus === "anleitung"
-  ) {
-    return true;
-  }
+  return num.forwardingStatus === "aktiv";
+}
+
+function needsCoupling(num: UserPhoneNumberView): boolean {
   return num.source === "pool";
+}
+
+function phoneListSubtitle(num: UserPhoneNumberView, isConnected: boolean): string {
+  const parts: string[] = [num.source === "sip_trunk" ? "SIP Trunk" : "Cura Nummer"];
+  const label = num.label?.trim();
+  if (
+    label &&
+    label.toLowerCase() !== "cura nummer" &&
+    label !== num.phoneNumber
+  ) {
+    parts.push(label);
+  }
+  if (isConnected) parts.push("Gekoppelt");
+  if (num.customerNumber) parts.push(`von ${num.customerNumber}`);
+  return parts.join(" · ");
+}
+
+function PhoneNumberInfoDialog({
+  phone,
+  open,
+  onOpenChange,
+}: {
+  phone: UserPhoneNumberView | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  if (!phone) return null;
+
+  const nextBillingAt = resolvePhoneNextBillingAt(phone);
+  const billingAmount = formatPhoneNumberBillingAmount();
+  const hasTokenCost = PHONE_NUMBER_MONTHLY_TOKENS > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-mono text-base font-normal">
+            {phone.phoneNumber}
+          </DialogTitle>
+          <DialogDescription>
+            {phone.source === "sip_trunk" ? "SIP Trunk" : "Cura Nummer"}
+          </DialogDescription>
+        </DialogHeader>
+        <dl className="space-y-3 text-[13px]">
+          {phone.assignedAt && (
+            <div>
+              <dt className="text-[11px] text-[#525866]">Zugewiesen am</dt>
+              <dd className="mt-0.5 text-[#0E121B]">
+                {formatBillingDateTime(phone.assignedAt)}
+              </dd>
+            </div>
+          )}
+          {hasTokenCost && (
+            <div>
+              <dt className="text-[11px] text-[#525866]">Tokenkosten</dt>
+              <dd className="mt-0.5 space-y-1 text-[#0E121B]">
+                <p>
+                  Beim Kauf: {formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)} Tokens
+                </p>
+                <p>
+                  Monatliche Gebühr: {formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)}{" "}
+                  Tokens
+                </p>
+              </dd>
+            </div>
+          )}
+          {hasTokenCost && (
+            <div>
+              <dt className="text-[11px] text-[#525866]">Nächste Abbuchung</dt>
+              <dd className="mt-0.5 text-[#0E121B]">
+                {nextBillingAt ? (
+                  <>
+                    {formatBillingDateTime(nextBillingAt)}
+                    {billingAmount ? ` · ${billingAmount}` : ""}
+                  </>
+                ) : (
+                  "Ein Monat nach Zuweisung der Nummer"
+                )}
+              </dd>
+            </div>
+          )}
+          {phone.pausedAt && (
+            <p className="text-[13px] text-amber-700">
+              Pausiert — bitte Guthaben aufladen
+            </p>
+          )}
+        </dl>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 type WizardFlow = "overview" | "connect" | "disconnect" | "sip";
@@ -92,6 +190,7 @@ interface PhoneNumberWizardProps {
   onActivate: (phoneId: string) => Promise<void>;
   onRemove: (phoneId: string) => Promise<void>;
   onForwardingTypeChange: (v: ForwardingType) => void;
+  canAffordPhoneNumber: boolean;
 }
 
 export function PhoneNumberWizard({
@@ -111,6 +210,7 @@ export function PhoneNumberWizard({
   onActivate,
   onRemove,
   onForwardingTypeChange,
+  canAffordPhoneNumber,
 }: PhoneNumberWizardProps) {
   const [flow, setFlow] = useState<WizardFlow>("overview");
   const [connectStep, setConnectStep] = useState<ConnectStep>("type");
@@ -187,6 +287,7 @@ export function PhoneNumberWizard({
           onStartDisconnect={startDisconnect}
           onActivate={onActivate}
           onRemove={onRemove}
+          canAffordPhoneNumber={canAffordPhoneNumber}
         />
       )}
 
@@ -275,6 +376,8 @@ export function PhoneNumberWizard({
 function PhoneBillingDetails({ phone }: { phone: UserPhoneNumberView }) {
   if (!phone.nextBillingAt) return null;
 
+  const billingAmount = formatPhoneNumberBillingAmount();
+
   return (
     <div className="rounded border border-[#E1E4EA] bg-[#FAFAFA] px-4 py-3">
       <p className="font-mono text-[14px] font-normal text-[#0E121B]">
@@ -283,10 +386,11 @@ function PhoneBillingDetails({ phone }: { phone: UserPhoneNumberView }) {
       <p className={`${userLabelClass} mt-2`}>
         Gültig bis: {formatBillingDateTime(phone.nextBillingAt)}
       </p>
-      <p className={userLabelClass}>
-        Nächste Abbuchung: {formatBillingDateTime(phone.nextBillingAt)} ·{" "}
-        {formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)} Tokens
-      </p>
+      {billingAmount && (
+        <p className={userLabelClass}>
+          Nächste Abbuchung: {formatBillingDateTime(phone.nextBillingAt)} · {billingAmount}
+        </p>
+      )}
       {phone.pausedAt && (
         <p className="mt-1 text-[13px] text-amber-700">
           Pausiert — bitte Guthaben aufladen
@@ -309,6 +413,7 @@ function OverviewStep({
   onStartDisconnect,
   onActivate,
   onRemove,
+  canAffordPhoneNumber,
 }: {
   phase: OnboardingPhase;
   numbers: UserPhoneNumberView[];
@@ -322,22 +427,29 @@ function OverviewStep({
   onStartDisconnect: (phoneId: string) => void;
   onActivate: (phoneId: string) => Promise<void>;
   onRemove: (phoneId: string) => Promise<void>;
+  canAffordPhoneNumber: boolean;
 }) {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [infoPhoneId, setInfoPhoneId] = useState<string | null>(null);
 
+  const infoPhone = numbers.find((n) => n.id === infoPhoneId) ?? null;
   const hasPending = pendingRequests.length > 0;
   const isEmpty = numbers.length === 0 && !hasPending;
 
   return (
     <div className="space-y-4">
+      <PhoneNumberInfoDialog
+        phone={infoPhone}
+        open={infoPhoneId !== null}
+        onOpenChange={(open) => !open && setInfoPhoneId(null)}
+      />
       {isEmpty && phase !== "nummer_warte" && (
         <div className="space-y-1">
           <p className={userLabelClass}>Noch keine Telefonnummer hinterlegt.</p>
           <p className={userLabelClass}>
-            Cura-Nummer: {formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)} Tokens
-            pro Monat
+            Cura-Nummer: {formatPhoneNumberCostLabel()}
           </p>
         </div>
       )}
@@ -378,6 +490,7 @@ function OverviewStep({
 
           {numbers.map((num) => {
             const isConnected = isPhoneLinked(num);
+            const showCoupling = needsCoupling(num);
             return (
               <li
                 key={num.id}
@@ -388,30 +501,36 @@ function OverviewStep({
                     {num.phoneNumber}
                   </p>
                   <p className="text-[11px] text-[#525866]">
-                    {num.source === "sip_trunk" ? "SIP Trunk" : "Cura Nummer"}
-                    {num.label ? ` · ${num.label}` : ""}
-                    {num.isPrimary ? " · Aktiv" : ""}
-                    {isConnected ? " · Verbunden" : ""}
-                    {num.customerNumber ? ` · von ${num.customerNumber}` : ""}
+                    {phoneListSubtitle(num, isConnected)}
                   </p>
-                  {num.nextBillingAt && (
-                    <div className="mt-1 space-y-0.5">
-                      <p className="text-[11px] text-[#525866]">
-                        Gültig bis: {formatBillingDateTime(num.nextBillingAt)}
-                      </p>
-                      <p className="text-[11px] text-[#525866]">
-                        Nächste Abbuchung: {formatBillingDateTime(num.nextBillingAt)}{" "}
-                        · {formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)} Tokens
-                      </p>
-                      {num.pausedAt && (
-                        <p className="text-[11px] text-amber-700">
-                          Pausiert — bitte Guthaben aufladen
-                        </p>
-                      )}
-                    </div>
-                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    className={landingBtnGhost}
+                    onClick={() => setInfoPhoneId(num.id)}
+                    aria-label="Details zur Nummer"
+                  >
+                    <Info className="h-4 w-4" />
+                  </button>
+                  {showCoupling &&
+                    (isConnected ? (
+                      <button
+                        type="button"
+                        className={landingBtnSecondary}
+                        onClick={() => onStartDisconnect(num.id)}
+                      >
+                        Entkoppeln
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={landingBtnPrimary}
+                        onClick={() => onStartConnect(num.id)}
+                      >
+                        Koppeln
+                      </button>
+                    ))}
                   {!num.isPrimary && numbers.length > 1 && (
                     <button
                       type="button"
@@ -432,24 +551,7 @@ function OverviewStep({
                       Aktivieren
                     </button>
                   )}
-                  {isConnected ? (
-                    <button
-                      type="button"
-                      className={landingBtnSecondary}
-                      onClick={() => onStartDisconnect(num.id)}
-                    >
-                      Entkoppeln
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className={landingBtnPrimary}
-                      onClick={() => onStartConnect(num.id)}
-                    >
-                      Verbinden
-                    </button>
-                  )}
-                  {!isConnected && (
+                  {showCoupling && !isConnected && (
                     <button
                       type="button"
                       className={landingBtnGhost}
@@ -484,7 +586,12 @@ function OverviewStep({
           data-setup-demo="setup-demo-phone-request"
           className={landingBtnPrimary}
           onClick={onRequestNumber}
-          disabled={requesting || hasPending}
+          disabled={requesting || hasPending || !canAffordPhoneNumber}
+          title={
+            !canAffordPhoneNumber
+              ? `Mindestens ${formatPhoneNumberCostLabel()} erforderlich`
+              : undefined
+          }
         >
           {requesting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -617,6 +724,10 @@ function ConnectTypeStep({
 }) {
   return (
     <div className="space-y-3">
+      <p className={userLabelClass}>
+        Koppeln Sie Ihre Handynummer mit der Cura-Nummer: Wählen Sie den
+        Weiterleitungstyp und folgen Sie den nächsten Schritten.
+      </p>
       <p className={userLabelClass}>Weiterleitungstyp</p>
       <div className="flex flex-wrap gap-1.5">
         <TypeChip
@@ -674,14 +785,14 @@ function ConnectConfirmStep({
 }) {
   return (
     <div className="space-y-3">
-      <p className={userLabelClass}>Weiterleitung aktiv?</p>
+      <p className={userLabelClass}>Weiterleitung eingerichtet?</p>
       <StepNav
         onBack={onBack}
         onNext={async () => {
           const ok = await onConfirm();
           if (ok) onDone();
         }}
-        nextLabel="Bestätigen"
+        nextLabel="Koppeln bestätigen"
         nextDisabled={confirming}
         nextLoading={confirming}
       />

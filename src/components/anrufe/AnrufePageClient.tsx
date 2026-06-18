@@ -11,6 +11,7 @@ import {
   syncCallsInBackground,
   useBackgroundSync,
 } from "@/lib/hooks/useBackgroundSync";
+import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
 import { useStaleFetch } from "@/lib/hooks/useStaleFetch";
 import type { Call } from "@/lib/types";
 
@@ -30,6 +31,7 @@ export function AnrufePageClient() {
 
   const refreshCalls = useCallback(() => {
     void revalidate();
+    notifyTokenBalanceChanged();
   }, [revalidate]);
 
   useBackgroundSync({

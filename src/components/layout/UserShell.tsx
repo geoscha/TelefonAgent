@@ -66,7 +66,6 @@ export function UserShell({ children }: { children: React.ReactNode }) {
             <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-[#E1E4EA] bg-white px-4 sm:px-5">
               <TokenBalanceBadge
                 balance={tokenBalance?.balance ?? 0}
-                phonePaused={tokenBalance?.phonePaused}
                 loading={tokenLoading && !tokenBalance}
               />
               <button

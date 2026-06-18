@@ -54,11 +54,36 @@ export const TOKEN_PACKS = [
   },
 ] as const;
 
-/** Shown on billing UI — monthly cost per phone number. */
-export const PHONE_NUMBER_MONTHLY_TOKENS = 1_800;
+/** Token cost per second of call duration. */
+export const CALL_SECOND_COST_TOKENS = 10;
+
+export function calculateCallTokenCost(durationSeconds: number): number {
+  if (durationSeconds <= 0) return 0;
+  return Math.round(durationSeconds) * CALL_SECOND_COST_TOKENS;
+}
+
+export function formatCallTokenRateLabel(): string {
+  return `${formatTokenCount(CALL_SECOND_COST_TOKENS)} Tokens/Sek.`;
+}
+
+/** Shown on billing UI — one-time cost to order a phone number (0 = free). */
+export const PHONE_NUMBER_MONTHLY_TOKENS = 1800;
+
+export function formatPhoneNumberCostLabel(): string {
+  if (PHONE_NUMBER_MONTHLY_TOKENS <= 0) return "kostenlos";
+  return `${formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)} Tokens pro Monat`;
+}
+
+export function formatPhoneNumberBillingAmount(): string | null {
+  if (PHONE_NUMBER_MONTHLY_TOKENS <= 0) return null;
+  return `${formatTokenCount(PHONE_NUMBER_MONTHLY_TOKENS)} Tokens`;
+}
 
 /** Start bonus for new accounts (welcome modal). */
 export const WELCOME_TOKEN_AMOUNT = 2_000;
+
+/** Header warning styling when balance falls below the welcome amount. */
+export const TOKEN_LOW_BALANCE_THRESHOLD = WELCOME_TOKEN_AMOUNT;
 
 export function getTokenPack(packId: string) {
   return TOKEN_PACKS.find((p) => p.id === packId);
@@ -72,4 +97,19 @@ export function formatBillingDateTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+export function addOneMonthIso(iso: string): string {
+  const d = new Date(iso);
+  d.setMonth(d.getMonth() + 1);
+  return d.toISOString();
+}
+
+export function resolvePhoneNextBillingAt(num: {
+  assignedAt?: string;
+  nextBillingAt?: string;
+}): string | null {
+  if (num.nextBillingAt) return num.nextBillingAt;
+  if (num.assignedAt) return addOneMonthIso(num.assignedAt);
+  return null;
 }

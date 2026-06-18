@@ -11,11 +11,20 @@ function isInsufficientTokensMessage(message: string): boolean {
 }
 
 export async function POST() {
-  let tokenBalance: number | undefined;
   try {
     const userId = await requireUserId();
     const affordability = await assertCanAffordPhoneNumber(userId);
-    tokenBalance = affordability.balance;
+    if (!affordability.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: affordability.error,
+          code: "insufficient_tokens",
+          tokenBalance: affordability.balance,
+        },
+        { status: 402 }
+      );
+    }
     const state = await requestPhoneNumber();
     return NextResponse.json({
       ok: true,
@@ -36,7 +45,6 @@ export async function POST() {
         ok: false,
         error: message,
         code: insufficient ? "insufficient_tokens" : "request_failed",
-        tokenBalance: insufficient ? tokenBalance : undefined,
       },
       { status: insufficient ? 402 : 500 }
     );

@@ -12,8 +12,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const numbers = await removeUserPhoneNumber(params.id);
-    return NextResponse.json({ ok: true, numbers });
+    const { numbers, refundTokens } = await removeUserPhoneNumber(params.id);
+    return NextResponse.json({ ok: true, numbers, refundTokens });
   } catch (error) {
     console.error("[phone/numbers/delete]", error);
     return NextResponse.json(

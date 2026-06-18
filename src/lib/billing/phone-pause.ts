@@ -33,7 +33,7 @@ export async function pauseUserPhones(userId: string): Promise<void> {
   if (!profile?.phone_paused_at) {
     await admin
       .from("profiles")
-      .update({ phone_paused_at: now, updated_at: now })
+      .update({ phone_paused_at: now })
       .eq("id", userId);
   }
 
@@ -58,7 +58,7 @@ export async function resumeUserPhones(userId: string): Promise<void> {
 
   await admin
     .from("profiles")
-    .update({ phone_paused_at: null, updated_at: now })
+    .update({ phone_paused_at: null })
     .eq("id", userId);
 
   await admin
@@ -140,7 +140,7 @@ export async function releaseStalePausedPhones(userId: string): Promise<boolean>
 
   await admin
     .from("profiles")
-    .update({ phone_paused_at: null, updated_at: new Date().toISOString() })
+    .update({ phone_paused_at: null })
     .eq("id", userId);
 
   return poolPhones.length > 0;

@@ -1,0 +1,213 @@
+-- Token billing v2: drop blocking triggers, single atomic RPC path, anti-cheat for clients only.
+
+drop trigger if exists guard_profile_token_balance on public.profiles;
+drop trigger if exists profiles_protect_token_balance on public.profiles;
+drop function if exists public.guard_profile_token_balance();
+drop function if exists public.profiles_protect_token_balance();
+
+-- Clients may update profile fields but never token columns.
+create or replace function public.profiles_sanitize_client_updates()
+returns trigger
+language plpgsql
+as $$
+begin
+  if coalesce(auth.role(), '') = 'authenticated' then
+    new.token_balance := old.token_balance;
+    new.phone_paused_at := old.phone_paused_at;
+    new.last_token_topup_at := old.last_token_topup_at;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_sanitize_client_updates on public.profiles;
+create trigger profiles_sanitize_client_updates
+  before update on public.profiles
+  for each row
+  execute function public.profiles_sanitize_client_updates();
+
+create or replace function public.debit_user_tokens(
+  p_user_id uuid,
+  p_amount integer,
+  p_source text,
+  p_reference_id text default null,
+  p_metadata jsonb default '{}'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_current integer;
+  v_new integer;
+begin
+  if p_amount <= 0 then
+    select coalesce(token_balance, 0) into v_current from profiles where id = p_user_id;
+    return jsonb_build_object(
+      'ok', true,
+      'balance', coalesce(v_current, 0),
+      'duplicate', false
+    );
+  end if;
+
+  if p_reference_id is not null and exists (
+    select 1 from token_transactions
+    where user_id = p_user_id and source = p_source and reference_id = p_reference_id
+  ) then
+    select coalesce(token_balance, 0) into v_current from profiles where id = p_user_id;
+    return jsonb_build_object(
+      'ok', true,
+      'balance', coalesce(v_current, 0),
+      'duplicate', true
+    );
+  end if;
+
+  select token_balance into v_current from profiles where id = p_user_id for update;
+  if not found then
+    return jsonb_build_object('ok', false, 'balance', 0, 'error', 'profile_not_found');
+  end if;
+
+  if v_current < p_amount then
+    return jsonb_build_object(
+      'ok', false,
+      'balance', v_current,
+      'error', 'insufficient',
+      'required', p_amount
+    );
+  end if;
+
+  v_new := v_current - p_amount;
+
+  update profiles set token_balance = v_new, updated_at = now() where id = p_user_id;
+
+  insert into token_transactions (user_id, amount, balance_after, source, reference_id, metadata)
+  values (p_user_id, -p_amount, v_new, p_source, p_reference_id, coalesce(p_metadata, '{}'::jsonb));
+
+  return jsonb_build_object('ok', true, 'balance', v_new, 'duplicate', false);
+exception
+  when unique_violation then
+    select coalesce(token_balance, 0) into v_current from profiles where id = p_user_id;
+    return jsonb_build_object('ok', true, 'balance', coalesce(v_current, 0), 'duplicate', true);
+  when others then
+    return jsonb_build_object(
+      'ok', false,
+      'balance', coalesce(v_current, 0),
+      'error', sqlerrm
+    );
+end;
+$$;
+
+create or replace function public.credit_user_tokens(
+  p_user_id uuid,
+  p_amount integer,
+  p_source text,
+  p_reference_id text,
+  p_metadata jsonb default '{}'::jsonb,
+  p_touch_topup boolean default false
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_current integer;
+  v_new integer;
+begin
+  if p_amount <= 0 then
+    select coalesce(token_balance, 0) into v_current from profiles where id = p_user_id;
+    return jsonb_build_object('ok', false, 'balance', coalesce(v_current, 0));
+  end if;
+
+  if exists (
+    select 1 from token_transactions
+    where user_id = p_user_id and source = p_source and reference_id = p_reference_id
+  ) then
+    select coalesce(token_balance, 0) into v_current from profiles where id = p_user_id;
+    return jsonb_build_object('ok', true, 'balance', coalesce(v_current, 0), 'duplicate', true);
+  end if;
+
+  select token_balance into v_current from profiles where id = p_user_id for update;
+  if not found then
+    return jsonb_build_object('ok', false, 'balance', 0, 'error', 'profile_not_found');
+  end if;
+
+  v_new := v_current + p_amount;
+
+  update profiles
+     set token_balance = v_new,
+         last_token_topup_at = case when p_touch_topup then now() else last_token_topup_at end,
+         updated_at = now()
+   where id = p_user_id;
+
+  insert into token_transactions (user_id, amount, balance_after, source, reference_id, metadata)
+  values (p_user_id, p_amount, v_new, p_source, p_reference_id, coalesce(p_metadata, '{}'::jsonb));
+
+  return jsonb_build_object('ok', true, 'balance', v_new, 'duplicate', false);
+exception
+  when unique_violation then
+    select coalesce(token_balance, 0) into v_current from profiles where id = p_user_id;
+    return jsonb_build_object('ok', true, 'balance', coalesce(v_current, 0), 'duplicate', true);
+  when others then
+    return jsonb_build_object('ok', false, 'balance', coalesce(v_current, 0), 'error', sqlerrm);
+end;
+$$;
+
+create or replace function public.grant_welcome_tokens(
+  p_user_id uuid,
+  p_amount integer default 2000
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_balance integer;
+  v_ref text;
+  v_credit jsonb;
+begin
+  v_ref := 'welcome:' || p_user_id::text;
+
+  if p_amount <= 0 or not exists (select 1 from profiles where id = p_user_id) then
+    select coalesce(token_balance, 0) into v_balance from profiles where id = p_user_id;
+    return jsonb_build_object('ok', true, 'balance', coalesce(v_balance, 0), 'granted', false);
+  end if;
+
+  if exists (
+    select 1 from token_transactions
+    where user_id = p_user_id and source = 'welcome_bonus' and reference_id = v_ref
+  ) then
+    select coalesce(token_balance, 0) into v_balance from profiles where id = p_user_id;
+    return jsonb_build_object('ok', true, 'balance', coalesce(v_balance, 0), 'granted', false);
+  end if;
+
+  select coalesce(token_balance, 0) into v_balance from profiles where id = p_user_id for update;
+
+  if v_balance >= p_amount then
+    insert into token_transactions (user_id, amount, balance_after, source, reference_id, metadata)
+    values (p_user_id, p_amount, v_balance, 'welcome_bonus', v_ref, '{}'::jsonb);
+    return jsonb_build_object('ok', true, 'balance', v_balance, 'granted', false);
+  end if;
+
+  v_credit := public.credit_user_tokens(
+    p_user_id, p_amount, 'welcome_bonus', v_ref, '{}'::jsonb, false
+  );
+  return v_credit || jsonb_build_object('granted', coalesce((v_credit->>'ok')::boolean, false));
+exception
+  when unique_violation then
+    select coalesce(token_balance, 0) into v_balance from profiles where id = p_user_id;
+    return jsonb_build_object('ok', true, 'balance', coalesce(v_balance, 0), 'granted', false);
+end;
+$$;
+
+revoke all on function public.debit_user_tokens(uuid, integer, text, text, jsonb) from public;
+revoke all on function public.credit_user_tokens(uuid, integer, text, text, jsonb, boolean) from public;
+revoke all on function public.grant_welcome_tokens(uuid, integer) from public;
+
+grant execute on function public.debit_user_tokens(uuid, integer, text, text, jsonb) to service_role;
+grant execute on function public.credit_user_tokens(uuid, integer, text, text, jsonb, boolean) to service_role;
+grant execute on function public.grant_welcome_tokens(uuid, integer) to service_role;
+
+notify pgrst, 'reload schema';

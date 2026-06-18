@@ -6,13 +6,19 @@ import {
   CheckSquare,
   PhoneForwarded,
   AlertTriangle,
+  Coins,
 } from "lucide-react";
+import { CallDetailBillingSync } from "@/components/anrufe/CallDetailBillingSync";
 import { CategoryBadge } from "@/components/dashboard/CallCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { getFeedCall } from "@/lib/store/calls-feed";
+import {
+  formatCallTokenRateLabel,
+  formatTokenCount,
+} from "@/lib/billing/quota-display";
+import { getFeedCallDetail } from "@/lib/store/calls-feed";
 import { formatDateTime, formatDuration } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -35,16 +41,16 @@ interface PageProps {
 }
 
 export default async function CallDetailPage({ params }: PageProps) {
-  const call = await getFeedCall(params.id);
-  if (!call) notFound();
+  const detail = await getFeedCallDetail(params.id);
+  if (!detail) notFound();
 
-  // Mock seed calls use "call-NNN" ids; real ElevenLabs calls use the
-  // conversation id and have a server-proxied recording available.
-  const isRealCall = !call.id.startsWith("call-");
+  const { call, tokenCost, tokenChargeStatus, isRealCall } = detail;
   const audioSrc = `/api/elevenlabs/conversations/${call.id}/audio`;
+  const refreshTokenBadge = isRealCall && tokenCost > 0;
 
   return (
     <div className="space-y-6">
+      <CallDetailBillingSync refresh={refreshTokenBadge} />
       <div className="flex items-center gap-4">
         <Link
           href="/anrufe"
@@ -117,6 +123,52 @@ export default async function CallDetailPage({ params }: PageProps) {
         </div>
 
         <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Coins className="h-4 w-4 stroke-[1.5] text-accent" />
+                Token-Kosten
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="space-y-3 text-body">
+                <div>
+                  <dt className="text-text-muted">Abgerechnet</dt>
+                  <dd className="font-medium text-text">
+                    {formatTokenCount(tokenCost)} Tokens
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-text-muted">Berechnung</dt>
+                  <dd className="font-medium text-text">
+                    {formatDuration(call.durationSeconds)} × {formatCallTokenRateLabel()}
+                  </dd>
+                </div>
+              </dl>
+              {!isRealCall && (
+                <p className="mt-3 text-caption text-text-muted">
+                  Beispielanruf — keine Abbuchung.
+                </p>
+              )}
+              {isRealCall && tokenChargeStatus === "charged_now" && (
+                <p className="mt-3 text-caption text-text-muted">
+                  Vom Token-Konto abgebucht.
+                </p>
+              )}
+              {isRealCall && tokenChargeStatus === "already_charged" && (
+                <p className="mt-3 text-caption text-text-muted">
+                  Bereits vom Token-Konto abgebucht.
+                </p>
+              )}
+              {isRealCall && tokenChargeStatus === "failed" && (
+                <p className="mt-3 text-caption text-red-700">
+                  Abbuchung fehlgeschlagen — bitte Guthaben prüfen oder erneut
+                  öffnen.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Zusammenfassung</CardTitle>

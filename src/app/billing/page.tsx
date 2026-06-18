@@ -17,6 +17,7 @@ import {
   tokenBalanceHighlight,
   type TokenBalanceView,
 } from "@/lib/billing/quota-display";
+import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
 import { cn } from "@/lib/utils";
 
 interface Profile {
@@ -68,8 +69,27 @@ function BillingPageContent() {
       });
       const data = (await res.json().catch(() => ({}))) as {
         url?: string;
+        ok?: boolean;
+        test?: boolean;
+        tokens?: number;
+        tokenBalance?: TokenBalanceView;
         error?: string;
       };
+      if (res.ok && data.test && data.ok) {
+        if (data.tokenBalance) {
+          setProfile((prev) =>
+            prev ? { ...prev, tokenBalance: data.tokenBalance } : prev
+          );
+        } else {
+          const p = (await fetch("/api/profile").then((r) => r.json())) as Profile;
+          setProfile(p);
+        }
+        notifyTokenBalanceChanged();
+        toast.success(
+          `${(data.tokens ?? 35_000).toLocaleString("de-CH")} Tokens gutgeschrieben (Test).`
+        );
+        return;
+      }
       if (res.ok && data.url) {
         window.location.href = data.url;
         return;

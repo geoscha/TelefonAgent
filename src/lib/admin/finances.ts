@@ -92,6 +92,10 @@ export interface FinanceDashboard {
     costPerUserChf: number;
     costPerCallMinuteChf: number | null;
     costPerCallMinuteMonthChf: number | null;
+    tokenSpend: TokenSpendStats;
+    costPerToken12mChf: number | null;
+    costPerTokenMonthChf: number | null;
+    revenuePerToken12mChf: number | null;
     twilio: FinanceProviderStatus;
     elevenLabs: FinanceProviderStatus;
     openAi: FinanceProviderStatus;
@@ -120,6 +124,20 @@ interface CallRow {
   duration_seconds: number;
 }
 
+interface TokenTransactionRow {
+  amount: number;
+  source: string;
+  created_at: string;
+}
+
+export interface TokenSpendStats {
+  /** Sum of all debits in the ledger (all users, all time). */
+  totalTokensSpent: number;
+  tokensSpent12m: number;
+  tokensSpentThisMonth: number;
+  bySource: Record<string, number>;
+}
+
 const MONTHS = 12;
 const RETENTION_DAYS = 30;
 
@@ -134,7 +152,7 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
   );
   const monthKeys = monthStarts.map(monthKey);
 
-  const [pool, profilesRes, callsRes, registryRes, twilioCosts, elevenLabsCosts, openAiCosts, twilioBalance, elevenLabsBalance, openAiSpend, stripeRevenue] =
+  const [pool, profilesRes, callsRes, registryRes, tokenTxRes, twilioCosts, elevenLabsCosts, openAiCosts, twilioBalance, elevenLabsBalance, openAiSpend, stripeRevenue] =
     await Promise.all([
       listAdminPoolNumbers(),
       admin.from("profiles").select("id, plan, created_at"),
@@ -142,6 +160,10 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
       admin
         .from("customer_registry")
         .select("id, created_at, deleted_at, call_seconds_lifetime"),
+      admin
+        .from("token_transactions")
+        .select("amount, source, created_at")
+        .lt("amount", 0),
       fetchTwilioCosts(integrations, monthKeys),
       fetchElevenLabsCosts(integrations, monthKeys),
       fetchOpenAiCosts(enrichment, monthKeys, integrations.usdToChfRate),
@@ -209,6 +231,15 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
     (c) => new Date(c.started_at) >= chartCutoff
   );
 
+  if (tokenTxRes.error) {
+    console.error("[finances] token_transactions:", tokenTxRes.error.message);
+  }
+  const tokenSpend = summarizeTokenSpend(
+    (tokenTxRes.data ?? []) as TokenTransactionRow[],
+    chartCutoff,
+    now
+  );
+
   const retentionPct =
     totalSignups > 0 ? (activeUsers30d / totalSignups) * 100 : 0;
 
@@ -274,6 +305,19 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
       ? totalLoss12mChf / callMinutes12m
       : costPerCallMinuteMonthChf;
 
+  const costPerToken12mChf =
+    tokenSpend.tokensSpent12m > 0
+      ? totalLoss12mChf / tokenSpend.tokensSpent12m
+      : null;
+  const costPerTokenMonthChf =
+    tokenSpend.tokensSpentThisMonth > 0
+      ? monthlyCostChf / tokenSpend.tokensSpentThisMonth
+      : null;
+  const revenuePerToken12mChf =
+    tokenSpend.tokensSpent12m > 0
+      ? totalRevenue12mChf / tokenSpend.tokensSpent12m
+      : null;
+
   return {
     integrations: {
       twilioConfigured: Boolean(
@@ -308,6 +352,10 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
       costPerUserChf,
       costPerCallMinuteChf,
       costPerCallMinuteMonthChf,
+      tokenSpend,
+      costPerToken12mChf,
+      costPerTokenMonthChf,
+      revenuePerToken12mChf,
       twilio: {
         amountChf: twilioThisMonth.amountChf,
         source: twilioThisMonth.source,
@@ -542,4 +590,35 @@ function monthEnd(d: Date): Date {
 
 function monthKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function summarizeTokenSpend(
+  rows: TokenTransactionRow[],
+  chartCutoff: Date,
+  now: Date
+): TokenSpendStats {
+  const bySource: Record<string, number> = {};
+  let totalTokensSpent = 0;
+  let tokensSpent12m = 0;
+  let tokensSpentThisMonth = 0;
+  const thisMonthKey = monthKey(now);
+
+  for (const row of rows) {
+    const spent = Math.abs(row.amount);
+    if (spent <= 0) continue;
+
+    totalTokensSpent += spent;
+    bySource[row.source] = (bySource[row.source] ?? 0) + spent;
+
+    const created = new Date(row.created_at);
+    if (created >= chartCutoff) tokensSpent12m += spent;
+    if (monthKey(created) === thisMonthKey) tokensSpentThisMonth += spent;
+  }
+
+  return {
+    totalTokensSpent,
+    tokensSpent12m,
+    tokensSpentThisMonth,
+    bySource,
+  };
 }

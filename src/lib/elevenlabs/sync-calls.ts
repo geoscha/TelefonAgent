@@ -5,6 +5,7 @@ import {
 } from "@elevenlabs/elevenlabs-js/api/resources/conversationalAi/resources/conversations/types/ConversationsListRequestExcludeStatusesItem";
 
 import { buildCallFromConversation } from "@/lib/calls/build-call";
+import { reconcileCallTokenCharges } from "@/lib/billing/call-charges";
 import { chargeCallTokens } from "@/lib/billing/tokens";
 import { hasApiKey, getElevenLabsClient } from "@/lib/elevenlabs/client";
 import {
@@ -66,7 +67,14 @@ export async function syncCallsForUser(userId: string): Promise<number> {
             const full = await client.conversationalAi.conversations.get(id);
             const call = await buildCallFromConversation(full);
             await addCallForUser(userId, call);
-            await chargeCallTokens(userId, call.id, call.durationSeconds);
+            const charge = await chargeCallTokens(userId, call.id, call.durationSeconds);
+            if (!charge.ok && !charge.duplicate) {
+              console.error("[sync-calls] charge failed:", {
+                callId: call.id,
+                cost: charge.cost,
+                error: charge.error,
+              });
+            }
             existingIds.add(id);
             synced += 1;
           } catch (err) {
@@ -81,6 +89,12 @@ export async function syncCallsForUser(userId: string): Promise<number> {
     } catch (err) {
       console.warn(`[sync-calls] agent ${agentId}:`, err);
     }
+  }
+
+  const allCalls = await getCallsForUser(userId);
+  const reconciled = await reconcileCallTokenCharges(userId, allCalls);
+  if (reconciled > 0) {
+    console.info(`[sync-calls] reconciled ${reconciled} call charge(s) for ${userId}`);
   }
 
   return synced;

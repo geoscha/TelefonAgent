@@ -245,6 +245,16 @@ export async function requestAdditionalPoolNumber(): Promise<{
 }> {
   const userId = await requireUserId();
 
+  const affordability = await assertCanAffordPhoneNumber(userId);
+  if (!affordability.ok) {
+    return {
+      pending: false,
+      autoAssigned: false,
+      insufficientTokens: true,
+      error: affordability.error,
+    };
+  }
+
   try {
     await syncNumberPoolFromEnv();
     const admin = createAdminClient();
@@ -257,16 +267,6 @@ export async function requestAdditionalPoolNumber(): Promise<{
 
     if (!free) {
       return { pending: true, autoAssigned: false };
-    }
-
-    const affordability = await assertCanAffordPhoneNumber(userId);
-    if (!affordability.ok) {
-      return {
-        pending: false,
-        autoAssigned: false,
-        insufficientTokens: true,
-        error: affordability.error,
-      };
     }
 
     const pool = await assignNumberFromPool(userId, { allowExisting: false });
@@ -499,7 +499,7 @@ export async function updatePhoneForwarding(
 
 export async function removeUserPhoneNumber(
   phoneId: string
-): Promise<UserPhoneNumber[]> {
+): Promise<{ numbers: UserPhoneNumber[]; refundTokens: number }> {
   const userId = await requireUserId();
   const admin = createAdminClient();
 
@@ -516,6 +516,13 @@ export async function removeUserPhoneNumber(
 
   const phone = rowToUserPhone(row as Record<string, unknown>);
   const wasPrimary = phone.isPrimary;
+
+  const { refundPhoneNumberOnRemoval } = await import("@/lib/billing/phone-billing");
+  const refundTokens = await refundPhoneNumberOnRemoval(userId, {
+    id: phone.id,
+    assignedAt: phone.assignedAt,
+    nextBillingAt: phone.nextBillingAt,
+  });
 
   if (phone.elevenLabsPhoneNumberId && phone.source === "sip_trunk") {
     await deletePhoneNumberFromElevenLabs(phone.elevenLabsPhoneNumberId).catch(
@@ -549,7 +556,7 @@ export async function removeUserPhoneNumber(
     }
   }
 
-  return listUserPhoneNumbers(userId);
+  return { numbers: listUserPhoneNumbers(userId), refundTokens };
 }
 
 export async function disconnectPhoneForwarding(

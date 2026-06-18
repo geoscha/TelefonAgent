@@ -76,7 +76,15 @@ export async function POST(req: Request) {
 
     const call = await buildCallFromWebhook(data);
     await addCallForUser(userId, call);
-    await chargeCallTokens(userId, call.id, call.durationSeconds);
+    const charge = await chargeCallTokens(userId, call.id, call.durationSeconds);
+    if (!charge.ok && !charge.duplicate) {
+      console.error("[webhook] call charge failed:", {
+        callId: call.id,
+        cost: charge.cost,
+        error: charge.error,
+        balance: charge.balance,
+      });
+    }
 
     const settings = await getSettingsForUser(userId);
     if (settings.forwardingStatus !== "aktiv") {

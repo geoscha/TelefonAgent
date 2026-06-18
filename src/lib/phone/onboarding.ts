@@ -105,6 +105,12 @@ export async function requestPhoneNumber(): Promise<
   PhoneOnboardingState & { autoAssigned?: boolean; phone?: { phoneNumber: string } }
 > {
   const userId = await requireUserId();
+
+  const affordability = await assertCanAffordPhoneNumber(userId);
+  if (!affordability.ok) {
+    throw new Error(affordability.error);
+  }
+
   const current = await getPhoneOnboardingState(userId);
   const phones = await listUserPhoneNumbers(userId);
 
