@@ -3,6 +3,10 @@
 import Link from "next/link";
 
 import { CuraLogo } from "@/components/brand/CuraLogo";
+import {
+  landingNavBtnPrimary,
+  landingNavBtnSecondary,
+} from "@/components/landing/landing-buttons";
 import { LANDING_CONTENT_CLASS } from "@/components/landing/landing-layout";
 import { cn } from "@/lib/utils";
 
@@ -19,22 +23,19 @@ export function RetellNav() {
         <CuraLogo mode="contextual" theme="dark" size="sm" href="/" />
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
-          <Link
-            href="/login"
-            className="landing-caption landing-radius-sm inline-flex min-h-8 items-center bg-[#F5F5FA] px-2.5 text-navy transition-colors hover:bg-[#EBEBF2] sm:min-h-9 sm:px-3"
-          >
+          <Link href="/login" className={landingNavBtnSecondary}>
             Anmelden
           </Link>
           <button
             type="button"
-            className="landing-caption landing-radius-sm hidden min-h-9 items-center px-2.5 text-navy transition-colors hover:bg-black/[0.04] sm:inline-flex sm:px-3"
+            className={cn(
+              landingNavBtnSecondary,
+              "hidden sm:inline-flex"
+            )}
           >
             Vertrieb kontaktieren
           </button>
-          <Link
-            href="/signup"
-            className="landing-caption landing-radius-sm inline-flex min-h-8 items-center bg-navy px-2.5 text-white transition-colors hover:bg-[#12233D] sm:min-h-9 sm:px-3"
-          >
+          <Link href="/signup" className={landingNavBtnPrimary}>
             Kostenlos testen
           </Link>
         </div>

@@ -8,8 +8,15 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  landingBtnPrimary,
+  landingBtnSecondary,
+} from "@/components/landing/landing-buttons";
+import {
+  userLabelClass,
+  userPanelClass,
+  userTitleClass,
+} from "@/components/user/user-styles";
 import {
   Dialog,
   DialogContent,
@@ -115,7 +122,7 @@ export function CalendarIntegrations() {
     return (
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-40 w-full rounded-card" />
+          <Skeleton key={i} className="h-40 w-full rounded" />
         ))}
       </div>
     );
@@ -163,42 +170,42 @@ function ProviderCard({
   const meta = META[status.provider];
 
   return (
-    <Card>
-      <CardContent className="p-5">
+    <div className={userPanelClass}>
+      <div className="p-5">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h3 className="text-h3 text-navy">{meta.name}</h3>
-            <p className="mt-1 text-body text-text-muted">{meta.description}</p>
+            <h3 className={userTitleClass}>{meta.name}</h3>
+            <p className={`${userLabelClass} mt-1`}>{meta.description}</p>
           </div>
           <StatusBadge connected={status.connected} />
         </div>
 
         {status.connected && status.accountLabel && (
-          <p className="mt-2 text-caption text-text-muted">
+          <p className={`${userLabelClass} mt-2`}>
             Verbunden als{" "}
-            <span className="font-medium text-text">{status.accountLabel}</span>
+            <span className="text-[#0E121B]">{status.accountLabel}</span>
           </p>
         )}
 
         <div className="mt-3">
           {status.connected ? (
-            <Button
-              variant="secondary"
-              size="sm"
+            <button
+              type="button"
+              className={landingBtnSecondary}
               onClick={onDisconnect}
               disabled={busy}
             >
-              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
               Trennen
-            </Button>
+            </button>
           ) : (
-            <Button size="sm" onClick={onConnect}>
+            <button type="button" className={landingBtnPrimary} onClick={onConnect}>
               Verbinden
-            </Button>
+            </button>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -206,10 +213,10 @@ function StatusBadge({ connected }: { connected: boolean }) {
   return (
     <span
       className={cn(
-        "shrink-0 rounded-btn border px-2 py-0.5 text-caption font-medium",
+        "shrink-0 rounded border px-2 py-0.5 text-[12px] font-normal",
         connected
-          ? "border-blue-tint bg-baby-blue text-steel-blue"
-          : "border-stroke bg-bg text-text-muted"
+          ? "border-[#335cff]/20 bg-[#EBEEF4] text-[#335cff]"
+          : "border-[#E1E4EA] bg-[#F5F7FA] text-[#525866]"
       )}
     >
       {connected ? "Verbunden" : "Nicht verbunden"}
@@ -279,15 +286,16 @@ function OAuthGuide({ status }: { status: CalStatus }) {
         </p>
       )}
 
-      <Button
-        className="mt-1 w-full"
+      <button
+        type="button"
+        className={cn(landingBtnPrimary, "mt-1 w-full justify-center")}
         disabled={!status.configured}
         onClick={() => {
           window.location.href = `/api/integrations/${provider}/connect`;
         }}
       >
         {signInLabel}
-      </Button>
+      </button>
     </>
   );
 }
@@ -371,10 +379,15 @@ function AppleGuide({ onConnected }: { onConnected: () => void }) {
         </div>
       </div>
 
-      <Button className="mt-1 w-full" onClick={submit} disabled={saving}>
-        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+      <button
+        type="button"
+        className={cn(landingBtnPrimary, "mt-1 w-full justify-center")}
+        onClick={submit}
+        disabled={saving}
+      >
+        {saving && <Loader2 className="h-4 w-4 animate-spin" />}
         Verbinden
-      </Button>
+      </button>
     </>
   );
 }

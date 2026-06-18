@@ -297,6 +297,48 @@
     background: #ffffff;
   }
 
+  /* Logged-in app — landing tokens, flat white UI, subtle corners */
+  .user-app {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    color: #0e121b;
+    background: #ffffff;
+
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --text: #0e121b;
+    --text-muted: #525866;
+    --stroke: #e1e4ea;
+    --divider: #e1e4ea;
+    --accent: #335cff;
+    --navy: #050f1f;
+    --baby-blue: #f5f7fa;
+
+    --landing-radius: 4px;
+    --landing-radius-sm: 2px;
+
+    --landing-fs-eyebrow: 12px;
+    --landing-fs-title: 18px;
+    --landing-fs-subtitle: 14px;
+    --landing-fs-hero-body: 13px;
+    --landing-fs-card-label: 11px;
+    --landing-fs-card-title: 15px;
+    --landing-fs-card-lead: 13px;
+    --landing-fs-body: 14px;
+    --landing-fs-caption: 13px;
+  }
+
+  .user-app .landing-eyebrow,
+  .user-app .landing-title,
+  .user-app .landing-subtitle,
+  .user-app .landing-body,
+  .user-app .landing-caption,
+  .user-app .landing-card-title,
+  .user-app .landing-card-lead,
+  .user-app .landing-hero-body {
+    font-family: "Untitled Sans", Georgia, sans-serif;
+    font-weight: 400;
+  }
+
   .landing-card {
     border-radius: var(--landing-radius);
     background: #f5f7fa;

@@ -14,8 +14,9 @@ import {
   normalizeAgentLanguage,
   type RawElevenLabsVoice,
 } from "@/lib/elevenlabs/agent-config";
-import { linkUserPhoneToAgent } from "@/lib/elevenlabs/sync-agent";
+import { linkAgentToPhone } from "@/lib/elevenlabs/sync-agent";
 import { completeAgentOnboarding } from "@/lib/phone/onboarding";
+import { listUserPhoneNumbers } from "@/lib/phone/numbers";
 import { getSettings, updateSettings, type StoredAgent } from "@/lib/store";
 import { requireUserId } from "@/lib/supabase/server";
 
@@ -30,6 +31,7 @@ interface AgentBody {
   systemPrompt?: string;
   agentId?: string;
   createNew?: boolean;
+  phoneNumberId?: string;
 }
 
 /** Create the agent on first save, update it on subsequent saves. */
@@ -110,6 +112,8 @@ export async function POST(req: NextRequest) {
       agentId = created.agentId;
     }
 
+    const userId = await requireUserId();
+
     const stored: StoredAgent = {
       id: agentId,
       name,
@@ -118,8 +122,15 @@ export async function POST(req: NextRequest) {
       language,
       greeting,
       systemPrompt,
+      phoneNumberId: body.phoneNumberId,
     };
     const existingAgents = settings.agents ?? [];
+    const phones = await listUserPhoneNumbers(userId);
+    if (!stored.phoneNumberId && phones.length === 1) {
+      stored.phoneNumberId = phones[0].id;
+    } else if (!stored.phoneNumberId && agentId) {
+      stored.phoneNumberId = existingAgents.find((a) => a.id === agentId)?.phoneNumberId;
+    }
     const agents = existingAgents.some((a) => a.id === agentId)
       ? existingAgents.map((a) => (a.id === agentId ? stored : a))
       : [...existingAgents, stored];
@@ -140,9 +151,8 @@ export async function POST(req: NextRequest) {
       updated = await completeAgentOnboarding();
     }
 
-    const userId = await requireUserId();
-    if (updated.curaForwardingNumber) {
-      await linkUserPhoneToAgent(userId);
+    if (stored.phoneNumberId || updated.curaForwardingNumber) {
+      await linkAgentToPhone(userId, agentId, stored.phoneNumberId);
     }
 
     return NextResponse.json({ ok: true, agentId, settings: updated, agents });

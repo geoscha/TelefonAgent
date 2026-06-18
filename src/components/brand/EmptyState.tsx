@@ -9,6 +9,7 @@ interface EmptyStateProps {
   title: string;
   description?: string;
   gradient?: GradientVariant;
+  subtle?: boolean;
   className?: string;
 }
 
@@ -65,6 +66,8 @@ const illustrations: Record<EmptyIllustration, () => JSX.Element> = {
 export function EmptyState({
   illustration,
   title,
+  description,
+  subtle = false,
   className,
 }: EmptyStateProps) {
   const Illustration = illustrations[illustration];
@@ -72,19 +75,28 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "relative flex flex-col items-center px-6 py-16 text-center",
+        "relative flex flex-col items-center px-6 py-12 text-center",
         className
       )}
     >
-      <div className="relative mb-8 flex h-36 w-36 items-center justify-center">
-        <div className="absolute inset-0 overflow-hidden rounded-full">
-          <BrandGradient variant="cool" blur="medium" />
-        </div>
-        <div className="relative z-10 text-text-muted">
+      {subtle ? (
+        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded border border-[#E1E4EA] bg-[#F5F7FA] text-[#99A0AE]">
           <Illustration />
         </div>
-      </div>
-      <h3 className="font-sans text-[22px] font-semibold text-navy">{title}</h3>
+      ) : (
+        <div className="relative mb-8 flex h-36 w-36 items-center justify-center">
+          <div className="absolute inset-0 overflow-hidden rounded-full">
+            <BrandGradient variant="cool" blur="medium" />
+          </div>
+          <div className="relative z-10 text-text-muted">
+            <Illustration />
+          </div>
+        </div>
+      )}
+      <h3 className="text-[15px] font-normal text-[#0E121B]">{title}</h3>
+      {description && (
+        <p className="mt-1 text-[13px] text-[#525866]">{description}</p>
+      )}
     </div>
   );
 }

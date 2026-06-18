@@ -1,10 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Loader2,
-} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import {
   forwardingDeactivateCode,
@@ -24,32 +21,18 @@ import {
 } from "@/lib/phone/forwarding-codes";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
 import type { CallQuotaView } from "@/lib/billing/quota-display";
-import { FREE_CALL_SECONDS_LIMIT, quotaRemainingHighlight } from "@/lib/billing/quota-display";
+import { quotaRemainingHighlight } from "@/lib/billing/quota-display";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
+import { userPanelClass } from "@/components/user/user-styles";
 
 type BillingPlan = "free" | "pro";
-type BillingInterval = "monthly" | "yearly";
 
 interface Profile {
   name: string;
   email: string;
   plan: BillingPlan;
-  billingInterval?: BillingInterval;
   callQuota?: CallQuotaView;
 }
-
-const freeFeatures = [
-  `${FREE_CALL_SECONDS_LIMIT} Sekunden Telefonate (Gesamt)`,
-  "KI-Telefonagent",
-  "Anruf-Transkripte & Zusammenfassungen",
-];
-
-const proFeatures = [
-  "1 Stunde Telefonate pro Monat",
-  "Kalender-Integration & Terminbuchung",
-  "Erweiterte Auswertungen",
-  "Priorisierter Support",
-];
 
 export default function ProfilPage() {
   const router = useRouter();
@@ -61,8 +44,6 @@ export default function ProfilPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
-  const [interval, setInterval] = useState<BillingInterval>("monthly");
-  const [upgrading, setUpgrading] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -89,7 +70,6 @@ export default function ProfilPage() {
         setProfile(p);
         setName(p.name ?? "");
         setEmail(p.email ?? "");
-        if (p.billingInterval) setInterval(p.billingInterval);
         profileLoaded.current = true;
       })
       .catch(() => toast.error("Profil konnte nicht geladen werden."));
@@ -188,32 +168,6 @@ export default function ProfilPage() {
     }
   }
 
-  async function upgrade() {
-    setUpgrading(true);
-    try {
-      const res = await fetch("/api/billing/upgrade", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interval }),
-      });
-      const data = (await res.json().catch(() => ({}))) as Profile & {
-        ok?: boolean;
-        error?: string;
-      };
-      if (res.ok && data.ok !== false) {
-        setProfile(data);
-        toast.success("Willkommen bei Cura Pro – Ihr Plan ist aktiv.");
-        router.refresh();
-        return;
-      }
-      toast.error(data.error ?? "Upgrade fehlgeschlagen.");
-    } catch {
-      toast.error("Upgrade fehlgeschlagen.");
-    } finally {
-      setUpgrading(false);
-    }
-  }
-
   async function loadSupportMessages() {
     setSupportLoading(true);
     try {
@@ -298,9 +252,6 @@ export default function ProfilPage() {
     }
   }
 
-  const isPro = profile?.plan === "pro";
-  const proPrice = interval === "yearly" ? "CHF 1’000" : "CHF 50";
-  const proPer = interval === "yearly" ? "/ Jahr" : "/ Monat";
   const showForwardingRemovalHint =
     !!curaNumber &&
     (onboardingPhase === "weiterleitung" ||
@@ -379,118 +330,16 @@ export default function ProfilPage() {
         </Button>
       </div>
 
-      <section id="pricing" className="scroll-mt-8 space-y-6 border-t border-stroke pt-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
-          <div className="inline-flex items-center rounded-full border border-stroke bg-surface p-1 text-[13px] font-medium">
-            <button
-              type="button"
-              onClick={() => setInterval("monthly")}
-              className={cn(
-                "rounded-full px-4 py-1.5 transition-colors",
-                interval === "monthly"
-                  ? "bg-accent text-white"
-                  : "text-text-muted hover:text-text"
-              )}
-            >
-              Monatlich
-            </button>
-            <button
-              type="button"
-              onClick={() => setInterval("yearly")}
-              className={cn(
-                "rounded-full px-4 py-1.5 transition-colors",
-                interval === "yearly"
-                  ? "bg-accent text-white"
-                  : "text-text-muted hover:text-text"
-              )}
-            >
-              Jährlich
-              <span
-                className={cn(
-                  "ml-1.5 rounded-full px-1.5 py-0.5 text-[11px]",
-                  interval === "yearly"
-                    ? "bg-white/20 text-white"
-                    : "bg-accent/10 text-accent"
-                )}
-              >
-                −17%
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <div className="grid gap-5 lg:grid-cols-2">
-          {/* Free */}
-          <div
-            className={cn(
-              "relative flex flex-col rounded-card border bg-surface p-7",
-              !isPro ? "border-accent shadow-[0_8px_32px_rgba(26,82,122,0.12)]" : "border-stroke"
-            )}
-          >
-            {!isPro && (
-              <span className="absolute right-6 top-6 rounded-full bg-accent/10 px-2.5 py-1 text-[12px] font-medium text-accent">
-                Aktueller Plan
-              </span>
-            )}
-            <p className="text-[15px] font-semibold text-navy">Gratis</p>
-            <div className="mt-5 flex items-baseline gap-1">
-              <span className="font-sans text-[40px] font-semibold leading-none text-navy">
-                CHF 0
-              </span>
-              <span className="text-text-muted">/ Monat</span>
-            </div>
-            <ul className="mt-6 space-y-2">
-              {freeFeatures.map((f) => (
-                <li key={f} className="text-[15px] text-text">
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-auto pt-7">
-              <Button variant="outline" className="w-full" disabled>
-                {isPro ? "Auf Gratis wechseln" : "Aktueller Plan"}
-              </Button>
-            </div>
-          </div>
-
-          {/* Pro */}
-          <div
-            className={cn(
-              "relative flex flex-col overflow-hidden rounded-card border bg-navy p-7 text-white",
-              isPro ? "border-accent" : "border-navy"
-            )}
-          >
-            {isPro && (
-              <span className="absolute right-6 top-6 rounded-full bg-accent px-2.5 py-1 text-[12px] font-medium text-white">
-                Aktueller Plan
-              </span>
-            )}
-            <p className="text-[15px] font-semibold">Cura Pro</p>
-            <div className="mt-5 flex items-baseline gap-1">
-              <span className="font-sans text-[40px] font-semibold leading-none">
-                {proPrice}
-              </span>
-              <span className="text-white/70">{proPer}</span>
-            </div>
-            <ul className="mt-6 space-y-2">
-              {proFeatures.map((f) => (
-                <li key={f} className="text-[15px] text-white/90">
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-auto pt-7">
-              <Button
-                onClick={upgrade}
-                disabled={upgrading || isPro}
-                className="w-full"
-              >
-                {upgrading && <Loader2 className="h-4 w-4 animate-spin" />}
-                {isPro ? "Aktiv" : "Jetzt upgraden"}
-              </Button>
-            </div>
-          </div>
-        </div>
+      <section className="scroll-mt-8 space-y-4 border-t border-stroke pt-8">
+        <p className="text-body text-text-muted">
+          Plan, Kontingent und Upgrade verwalten Sie unter Abrechnung.
+        </p>
+        <Link
+          href="/billing"
+          className="inline-flex text-body font-medium text-accent underline-offset-4 hover:underline"
+        >
+          Zur Abrechnung
+        </Link>
       </section>
 
       <div className="border-t border-stroke pt-8">
@@ -503,7 +352,7 @@ export default function ProfilPage() {
         </button>
 
         {supportOpen && (
-          <div className="mt-4 space-y-3 rounded-card border border-stroke bg-surface p-4">
+          <div className={`${userPanelClass} mt-4 space-y-3 p-4`}>
             <div
               ref={supportScrollRef}
               className="flex max-h-[220px] min-h-[80px] flex-col gap-2 overflow-y-auto"
@@ -517,7 +366,7 @@ export default function ProfilPage() {
               ) : (
                 supportMessages.map((msg) => (
                   <div key={msg.id} className="flex justify-end">
-                    <div className="max-w-[85%] rounded-[14px] bg-accent/10 px-3 py-2 text-[14px] leading-relaxed text-navy">
+                    <div className="max-w-[85%] rounded bg-[#EBEEF4] px-3 py-2 text-[14px] font-normal leading-relaxed text-[#0E121B]">
                       {msg.message}
                     </div>
                   </div>

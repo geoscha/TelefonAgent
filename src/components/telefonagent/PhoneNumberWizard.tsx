@@ -5,10 +5,19 @@ import {
   Check,
   Copy,
   Loader2,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import {
+  landingBtnGhost,
+  landingBtnPrimary,
+  landingBtnSecondary,
+} from "@/components/landing/landing-buttons";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { userLabelClass } from "@/components/user/user-styles";
 import {
   forwardingActivateCode,
   forwardingDeactivateCode,
@@ -19,123 +28,177 @@ import type { OnboardingPhase } from "@/lib/onboarding-types";
 
 type ForwardingStatus = "nicht_eingerichtet" | "anleitung" | "aktiv";
 
-type WizardFlow = "overview" | "connect" | "disconnect";
-type ConnectStep = "type" | "code" | "confirm";
+export interface UserPhoneNumberView {
+  id: string;
+  phoneNumber: string;
+  source: "pool" | "sip_trunk";
+  label?: string;
+  isPrimary: boolean;
+  forwardingStatus?: ForwardingStatus;
+  forwardingType?: ForwardingType;
+  customerNumber?: string;
+  validationStatus: "pending" | "valid" | "invalid";
+}
+
+export interface PendingPhoneRequestView {
+  id: string;
+  createdAt: string;
+}
+
+type WizardFlow = "overview" | "connect" | "disconnect" | "sip";
+type ConnectStep = "type" | "customer" | "code" | "confirm";
 type DisconnectStep = "code" | "confirm";
 
 interface PhoneNumberWizardProps {
   phase: OnboardingPhase;
-  curaNumber: string;
+  numbers: UserPhoneNumberView[];
+  pendingRequests: PendingPhoneRequestView[];
   forwardingType: ForwardingType;
-  forwardingStatus: ForwardingStatus;
   requesting: boolean;
+  addingSip: boolean;
   confirming: boolean;
   disconnecting: boolean;
   onRequestNumber: () => void;
-  onConfirmForwarding: () => Promise<boolean>;
-  onDisconnect: () => Promise<boolean>;
+  onCancelRequest: (requestId: string) => Promise<void>;
+  onAddSip: (input: {
+    phoneNumber: string;
+    label?: string;
+    outboundAddress?: string;
+  }) => Promise<boolean>;
+  onConfirmForwarding: (
+    phoneId: string,
+    customerNumber: string
+  ) => Promise<boolean>;
+  onDisconnect: (phoneId: string) => Promise<boolean>;
+  onActivate: (phoneId: string) => Promise<void>;
+  onRemove: (phoneId: string) => Promise<void>;
   onForwardingTypeChange: (v: ForwardingType) => void;
 }
 
 export function PhoneNumberWizard({
   phase,
-  curaNumber,
+  numbers,
+  pendingRequests,
   forwardingType,
-  forwardingStatus,
   requesting,
+  addingSip,
   confirming,
   disconnecting,
   onRequestNumber,
+  onCancelRequest,
+  onAddSip,
   onConfirmForwarding,
   onDisconnect,
+  onActivate,
+  onRemove,
   onForwardingTypeChange,
 }: PhoneNumberWizardProps) {
   const [flow, setFlow] = useState<WizardFlow>("overview");
   const [connectStep, setConnectStep] = useState<ConnectStep>("type");
   const [disconnectStep, setDisconnectStep] = useState<DisconnectStep>("code");
+  const [activePhoneId, setActivePhoneId] = useState<string | null>(null);
+  const [customerNumber, setCustomerNumber] = useState("");
+  const [sipNumber, setSipNumber] = useState("");
+  const [sipLabel, setSipLabel] = useState("");
+  const [sipAddress, setSipAddress] = useState("");
 
-  const hasNumber = Boolean(curaNumber);
-  const isConnected = forwardingStatus === "aktiv";
+  const activePhone = numbers.find((n) => n.id === activePhoneId);
+  const curaNumber = activePhone?.phoneNumber ?? "";
+  const activeForwardingType = activePhone?.forwardingType ?? forwardingType;
 
   const activateCode = useMemo(
-    () => (curaNumber ? forwardingActivateCode(curaNumber, forwardingType) : ""),
-    [curaNumber, forwardingType]
+    () =>
+      curaNumber
+        ? forwardingActivateCode(curaNumber, activeForwardingType)
+        : "",
+    [curaNumber, activeForwardingType]
   );
-  const deactivateCode = forwardingDeactivateCode(forwardingType);
-
-  const statusLabel = isConnected
-    ? "Verbunden"
-    : phase === "nummer_warte"
-      ? "Nummer wird eingerichtet"
-      : !hasNumber
-        ? "Keine Nummer"
-        : "Nicht verbunden";
-
-  const showStatusBadge = !(
-    hasNumber &&
-    !isConnected &&
-    (forwardingStatus === "anleitung" || forwardingStatus === "nicht_eingerichtet")
-  );
+  const deactivateCode = forwardingDeactivateCode(activeForwardingType);
 
   function resetToOverview() {
     setFlow("overview");
     setConnectStep("type");
     setDisconnectStep("code");
+    setActivePhoneId(null);
+    setCustomerNumber("");
+    setSipNumber("");
+    setSipLabel("");
+    setSipAddress("");
   }
 
-  function startConnect() {
-    if (!hasNumber) {
-      onRequestNumber();
-      return;
-    }
+  function startConnect(phoneId: string) {
+    const phone = numbers.find((n) => n.id === phoneId);
+    setActivePhoneId(phoneId);
+    setCustomerNumber(phone?.customerNumber ?? "");
+    if (phone?.forwardingType) onForwardingTypeChange(phone.forwardingType);
     setFlow("connect");
     setConnectStep("type");
   }
 
-  function startDisconnect() {
+  function startDisconnect(phoneId: string) {
+    const phone = numbers.find((n) => n.id === phoneId);
+    setActivePhoneId(phoneId);
+    if (phone?.forwardingType) onForwardingTypeChange(phone.forwardingType);
     setFlow("disconnect");
     setDisconnectStep("code");
   }
 
-  return (
-    <section className="w-full rounded-[22px] border border-stroke bg-surface p-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[14px] font-medium text-navy">Telefon</p>
-        {showStatusBadge && (
-          <span
-            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-              isConnected
-                ? "bg-emerald-100 text-emerald-800"
-                : "bg-bg text-text-muted"
-            }`}
-          >
-            {statusLabel}
-          </span>
-        )}
-      </div>
+  async function handleAddSip() {
+    const ok = await onAddSip({
+      phoneNumber: sipNumber,
+      label: sipLabel || undefined,
+      outboundAddress: sipAddress || undefined,
+    });
+    if (ok) resetToOverview();
+  }
 
+  return (
+    <div className="w-full space-y-4">
       {flow === "overview" && (
         <OverviewStep
           phase={phase}
-          curaNumber={curaNumber}
-          hasNumber={hasNumber}
-          isConnected={isConnected}
+          numbers={numbers}
+          pendingRequests={pendingRequests}
           requesting={requesting}
+          addingSip={addingSip}
           onRequestNumber={onRequestNumber}
+          onCancelRequest={onCancelRequest}
+          onStartSip={() => setFlow("sip")}
           onStartConnect={startConnect}
           onStartDisconnect={startDisconnect}
+          onActivate={onActivate}
+          onRemove={onRemove}
         />
       )}
 
-      {flow === "connect" && phase === "nummer_warte" && (
-        <WaitStep onBack={resetToOverview} />
+      {flow === "sip" && (
+        <SipTrunkStep
+          phoneNumber={sipNumber}
+          label={sipLabel}
+          outboundAddress={sipAddress}
+          adding={addingSip}
+          onPhoneNumberChange={setSipNumber}
+          onLabelChange={setSipLabel}
+          onAddressChange={setSipAddress}
+          onBack={resetToOverview}
+          onSubmit={handleAddSip}
+        />
       )}
 
-      {flow === "connect" && connectStep === "type" && phase !== "nummer_warte" && (
+      {flow === "connect" && connectStep === "type" && (
         <ConnectTypeStep
-          forwardingType={forwardingType}
+          forwardingType={activeForwardingType}
           onChange={onForwardingTypeChange}
           onBack={resetToOverview}
+          onNext={() => setConnectStep("customer")}
+        />
+      )}
+
+      {flow === "connect" && connectStep === "customer" && (
+        <ConnectCustomerStep
+          customerNumber={customerNumber}
+          onChange={setCustomerNumber}
+          onBack={() => setConnectStep("type")}
           onNext={() => setConnectStep("code")}
         />
       )}
@@ -143,106 +206,328 @@ export function PhoneNumberWizard({
       {flow === "connect" && connectStep === "code" && (
         <ConnectCodeStep
           curaNumber={curaNumber}
+          customerNumber={customerNumber}
           activateCode={activateCode}
-          onBack={() => setConnectStep("type")}
+          onBack={() => setConnectStep("customer")}
           onNext={() => setConnectStep("confirm")}
         />
       )}
 
-      {flow === "connect" && connectStep === "confirm" && (
+      {flow === "connect" && connectStep === "confirm" && activePhoneId && (
         <ConnectConfirmStep
           confirming={confirming}
           onBack={() => setConnectStep("code")}
-          onConfirm={onConfirmForwarding}
+          onConfirm={() => onConfirmForwarding(activePhoneId, customerNumber)}
           onDone={resetToOverview}
         />
       )}
 
-      {flow === "disconnect" && disconnectStep === "code" && (
+      {flow === "disconnect" && disconnectStep === "code" && activePhone && (
         <DisconnectCodeStep
+          customerNumber={activePhone.customerNumber}
           deactivateCode={deactivateCode}
-          hint={forwardingDeactivateHint(forwardingType)}
+          hint={forwardingDeactivateHint(activeForwardingType)}
           onBack={resetToOverview}
           onNext={() => setDisconnectStep("confirm")}
         />
       )}
 
-      {flow === "disconnect" && disconnectStep === "confirm" && (
+      {flow === "disconnect" && disconnectStep === "confirm" && activePhoneId && (
         <DisconnectConfirmStep
+          customerNumber={activePhone?.customerNumber}
           disconnecting={disconnecting}
           onBack={() => setDisconnectStep("code")}
-          onConfirm={onDisconnect}
+          onConfirm={() => onDisconnect(activePhoneId)}
           onDone={resetToOverview}
         />
       )}
-    </section>
+    </div>
   );
 }
 
 function OverviewStep({
   phase,
-  curaNumber,
-  hasNumber,
-  isConnected,
+  numbers,
+  pendingRequests,
   requesting,
+  addingSip,
   onRequestNumber,
+  onCancelRequest,
+  onStartSip,
   onStartConnect,
   onStartDisconnect,
+  onActivate,
+  onRemove,
 }: {
   phase: OnboardingPhase;
-  curaNumber: string;
-  hasNumber: boolean;
-  isConnected: boolean;
+  numbers: UserPhoneNumberView[];
+  pendingRequests: PendingPhoneRequestView[];
   requesting: boolean;
+  addingSip: boolean;
   onRequestNumber: () => void;
-  onStartConnect: () => void;
-  onStartDisconnect: () => void;
+  onCancelRequest: (requestId: string) => Promise<void>;
+  onStartSip: () => void;
+  onStartConnect: (phoneId: string) => void;
+  onStartDisconnect: (phoneId: string) => void;
+  onActivate: (phoneId: string) => Promise<void>;
+  onRemove: (phoneId: string) => Promise<void>;
 }) {
-  if (phase === "nummer_warte") {
-    return (
-      <div className="mt-3">
-        <p className="text-[13px] text-text-muted">Nummer wird eingerichtet…</p>
-      </div>
-    );
-  }
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  if (!hasNumber) {
-    return (
-      <div className="mt-3">
-        <Button size="sm" className="h-9 rounded-full text-[13px]" onClick={onRequestNumber} disabled={requesting}>
-          {requesting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Nummer beantragen
-        </Button>
-      </div>
-    );
-  }
+  const hasPending = pendingRequests.length > 0;
+  const isEmpty = numbers.length === 0 && !hasPending;
 
   return (
-    <div className="mt-3 space-y-3">
-      <p className="font-mono text-[14px] text-navy">{curaNumber}</p>
+    <div className="space-y-4">
+      {isEmpty && phase !== "nummer_warte" && (
+        <p className={userLabelClass}>Noch keine Telefonnummer hinterlegt.</p>
+      )}
+
+      {(numbers.length > 0 || hasPending) && (
+        <ul className="space-y-3">
+          {pendingRequests.map((req) => (
+            <li
+              key={req.id}
+              className="flex flex-wrap items-center justify-between gap-2 py-1"
+            >
+              <div className="min-w-0">
+                <p className="text-[14px] text-[#525866]">Nummer in Bearbeitung</p>
+                <p className="text-[11px] text-[#525866]">Cura Nummer</p>
+              </div>
+              <button
+                type="button"
+                className={landingBtnGhost}
+                disabled={cancellingId === req.id}
+                onClick={async () => {
+                  setCancellingId(req.id);
+                  try {
+                    await onCancelRequest(req.id);
+                  } finally {
+                    setCancellingId(null);
+                  }
+                }}
+                aria-label="Anfrage zurückziehen"
+              >
+                {cancellingId === req.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </button>
+            </li>
+          ))}
+
+          {numbers.map((num) => {
+            const isConnected =
+              num.forwardingStatus === "aktiv" ||
+              num.forwardingStatus === "anleitung";
+            return (
+              <li
+                key={num.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-1"
+              >
+                <div className="min-w-0">
+                  <p className="font-mono text-[14px] font-normal text-[#0E121B]">
+                    {num.phoneNumber}
+                  </p>
+                  <p className="text-[11px] text-[#525866]">
+                    {num.source === "sip_trunk" ? "SIP Trunk" : "Cura Nummer"}
+                    {num.label ? ` · ${num.label}` : ""}
+                    {num.isPrimary ? " · Aktiv" : ""}
+                    {isConnected ? " · Verbunden" : ""}
+                    {num.customerNumber ? ` · von ${num.customerNumber}` : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {!num.isPrimary && numbers.length > 1 && (
+                    <button
+                      type="button"
+                      className={landingBtnSecondary}
+                      disabled={activatingId === num.id}
+                      onClick={async () => {
+                        setActivatingId(num.id);
+                        try {
+                          await onActivate(num.id);
+                        } finally {
+                          setActivatingId(null);
+                        }
+                      }}
+                    >
+                      {activatingId === num.id && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      )}
+                      Aktivieren
+                    </button>
+                  )}
+                  {isConnected ? (
+                    <button
+                      type="button"
+                      className={landingBtnSecondary}
+                      onClick={() => onStartDisconnect(num.id)}
+                    >
+                      Entkoppeln
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={landingBtnPrimary}
+                      onClick={() => onStartConnect(num.id)}
+                    >
+                      Verbinden
+                    </button>
+                  )}
+                  {!isConnected && (
+                    <button
+                      type="button"
+                      className={landingBtnGhost}
+                      disabled={removingId === num.id}
+                      onClick={async () => {
+                        setRemovingId(num.id);
+                        try {
+                          await onRemove(num.id);
+                        } finally {
+                          setRemovingId(null);
+                        }
+                      }}
+                      aria-label="Nummer entfernen"
+                    >
+                      {removingId === num.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
       <div className="flex flex-wrap gap-2">
-        {!isConnected && (
-          <Button size="sm" className="h-9 rounded-full text-[13px]" onClick={onStartConnect}>
-            Verbinden
-          </Button>
-        )}
-        {(isConnected || phase === "fertig" || phase === "agent") && (
-          <Button size="sm" variant="outline" className="h-9 rounded-full text-[13px]" onClick={onStartDisconnect}>
-            Entkoppeln
-          </Button>
-        )}
+        <button
+          type="button"
+          className={landingBtnPrimary}
+          onClick={onRequestNumber}
+          disabled={requesting || hasPending}
+        >
+          {requesting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Plus className="h-4 w-4" />
+          )}
+          Nummer beantragen
+        </button>
+        <button
+          type="button"
+          className={landingBtnSecondary}
+          onClick={onStartSip}
+          disabled={addingSip}
+        >
+          Eigene Nummer (SIP)
+        </button>
       </div>
     </div>
   );
 }
 
-function WaitStep({ onBack }: { onBack: () => void }) {
+function ConnectCustomerStep({
+  customerNumber,
+  onChange,
+  onBack,
+  onNext,
+}: {
+  customerNumber: string;
+  onChange: (v: string) => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
   return (
-    <div className="mt-3 space-y-3">
-      <p className="text-[13px] text-text-muted">Nummer wird eingerichtet…</p>
-      <Button size="sm" variant="outline" className="h-9 rounded-full text-[13px]" onClick={onBack}>
-        Zurück
-      </Button>
+    <div className="space-y-3">
+      <p className={userLabelClass}>
+        Von welcher Nummer leiten Sie Anrufe weiter? Diese Nummer brauchen Sie
+        später auch zum Entkoppeln.
+      </p>
+      <div className="space-y-2">
+        <Label className={userLabelClass}>Ihre Telefonnummer</Label>
+        <Input
+          value={customerNumber}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="+41791234567"
+        />
+      </div>
+      <StepNav
+        onBack={onBack}
+        onNext={onNext}
+        nextLabel="Weiter"
+        nextDisabled={!customerNumber.trim()}
+      />
+    </div>
+  );
+}
+
+function SipTrunkStep({
+  phoneNumber,
+  label,
+  outboundAddress,
+  adding,
+  onPhoneNumberChange,
+  onLabelChange,
+  onAddressChange,
+  onBack,
+  onSubmit,
+}: {
+  phoneNumber: string;
+  label: string;
+  outboundAddress: string;
+  adding: boolean;
+  onPhoneNumberChange: (v: string) => void;
+  onLabelChange: (v: string) => void;
+  onAddressChange: (v: string) => void;
+  onBack: () => void;
+  onSubmit: () => void | Promise<void>;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className={userLabelClass}>
+        Eigene Nummer als SIP Trunk hinzufügen. Die Nummer wird bei ElevenLabs
+        importiert und auf Bot-Anrufe geprüft — nur SIP-kompatible Nummern
+        werden übernommen. Ein Telefonagent muss bereits existieren.
+      </p>
+      <div className="space-y-2">
+        <Label className={userLabelClass}>Telefonnummer (E.164)</Label>
+        <Input
+          value={phoneNumber}
+          onChange={(e) => onPhoneNumberChange(e.target.value)}
+          placeholder="+41791234567"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label className={userLabelClass}>Bezeichnung (optional)</Label>
+        <Input
+          value={label}
+          onChange={(e) => onLabelChange(e.target.value)}
+          placeholder="Hauptleitung"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label className={userLabelClass}>SIP-Adresse (optional, für ausgehend)</Label>
+        <Input
+          value={outboundAddress}
+          onChange={(e) => onAddressChange(e.target.value)}
+          placeholder="sip.provider.ch"
+        />
+      </div>
+      <StepNav
+        onBack={onBack}
+        onNext={() => void onSubmit()}
+        nextLabel="Prüfen & hinzufügen"
+        nextDisabled={adding || !phoneNumber.trim()}
+        nextLoading={adding}
+      />
     </div>
   );
 }
@@ -259,8 +544,8 @@ function ConnectTypeStep({
   onNext: () => void;
 }) {
   return (
-    <div className="mt-3 space-y-3">
-      <p className="text-[13px] text-text-muted">Weiterleitungstyp</p>
+    <div className="space-y-3">
+      <p className={userLabelClass}>Weiterleitungstyp</p>
       <div className="flex flex-wrap gap-1.5">
         <TypeChip
           active={forwardingType === "bedingt"}
@@ -280,19 +565,24 @@ function ConnectTypeStep({
 
 function ConnectCodeStep({
   curaNumber,
+  customerNumber,
   activateCode,
   onBack,
   onNext,
 }: {
   curaNumber: string;
+  customerNumber: string;
   activateCode: string;
   onBack: () => void;
   onNext: () => void;
 }) {
   return (
-    <div className="mt-3 space-y-3">
-      <p className="text-[13px] text-text-muted">Code wählen &amp; anrufen</p>
-      <CopyRow label="Nummer" value={curaNumber} mono />
+    <div className="space-y-3">
+      <p className={userLabelClass}>
+        Wählen Sie auf <strong>{customerNumber}</strong> den Code und drücken Sie
+        die Anruftaste.
+      </p>
+      <CopyRow label="Cura-Nummer" value={curaNumber} mono />
       {activateCode && <CopyRow label="Code" value={activateCode} mono />}
       <StepNav onBack={onBack} onNext={onNext} nextLabel="Weiter" />
     </div>
@@ -311,8 +601,8 @@ function ConnectConfirmStep({
   onDone: () => void;
 }) {
   return (
-    <div className="mt-3 space-y-3">
-      <p className="text-[13px] text-text-muted">Weiterleitung aktiv?</p>
+    <div className="space-y-3">
+      <p className={userLabelClass}>Weiterleitung aktiv?</p>
       <StepNav
         onBack={onBack}
         onNext={async () => {
@@ -328,19 +618,26 @@ function ConnectConfirmStep({
 }
 
 function DisconnectCodeStep({
+  customerNumber,
   deactivateCode,
   hint,
   onBack,
   onNext,
 }: {
+  customerNumber?: string;
   deactivateCode: string;
   hint: string;
   onBack: () => void;
   onNext: () => void;
 }) {
   return (
-    <div className="mt-3 space-y-3">
-      <p className="text-[13px] text-text-muted">{hint}</p>
+    <div className="space-y-3">
+      <p className={userLabelClass}>
+        {customerNumber
+          ? `Deaktivieren Sie die Weiterleitung auf ${customerNumber}.`
+          : "Deaktivieren Sie die Weiterleitung auf Ihrer Telefonnummer."}
+      </p>
+      <p className="text-[12px] text-[#525866]">{hint}</p>
       <CopyRow label="Code" value={deactivateCode} mono />
       <StepNav onBack={onBack} onNext={onNext} nextLabel="Weiter" />
     </div>
@@ -348,19 +645,25 @@ function DisconnectCodeStep({
 }
 
 function DisconnectConfirmStep({
+  customerNumber,
   disconnecting,
   onBack,
   onConfirm,
   onDone,
 }: {
+  customerNumber?: string;
   disconnecting: boolean;
   onBack: () => void;
   onConfirm: () => Promise<boolean>;
   onDone: () => void;
 }) {
   return (
-    <div className="mt-3 space-y-3">
-      <p className="text-[13px] text-text-muted">Entkoppelt?</p>
+    <div className="space-y-3">
+      <p className={userLabelClass}>
+        {customerNumber
+          ? `Weiterleitung auf ${customerNumber} deaktiviert?`
+          : "Weiterleitung deaktiviert?"}
+      </p>
       <StepNav
         onBack={onBack}
         onNext={async () => {
@@ -393,19 +696,18 @@ function StepNav({
 }) {
   return (
     <div className="flex flex-wrap gap-2 pt-2">
-      <Button type="button" size="sm" variant="outline" onClick={onBack}>
+      <button type="button" className={landingBtnSecondary} onClick={onBack}>
         Zurück
-      </Button>
-      <Button
+      </button>
+      <button
         type="button"
-        size="sm"
-        variant={nextVariant}
+        className={nextVariant === "outline" ? landingBtnSecondary : landingBtnPrimary}
         onClick={() => void onNext()}
         disabled={nextDisabled}
       >
-        {nextLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {nextLoading && <Loader2 className="h-4 w-4 animate-spin" />}
         {nextLabel}
-      </Button>
+      </button>
     </div>
   );
 }
@@ -423,8 +725,8 @@ function TypeChip({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors ${
-        active ? "bg-accent text-white" : "bg-bg text-text-muted"
+      className={`rounded px-3 py-1.5 text-[12px] font-normal transition-colors ${
+        active ? "bg-[#050f1f] text-white" : "border border-[#E1E4EA] bg-[#F5F7FA] text-[#525866]"
       }`}
     >
       {label}
@@ -452,18 +754,18 @@ function CopyRow({
 
   return (
     <div>
-      <p className="text-[11px] font-medium text-text-muted">{label}</p>
+      <p className="text-[11px] font-normal text-[#525866]">{label}</p>
       <div className="mt-2 flex items-center gap-2">
         <div
-          className={`min-w-0 flex-1 truncate rounded-btn border border-stroke bg-bg/50 px-3 py-2 ${
-            mono ? "font-mono text-caption" : "text-body"
+          className={`min-w-0 flex-1 truncate rounded border border-[#E1E4EA] bg-[#F5F7FA] px-3 py-2 ${
+            mono ? "font-mono text-[13px]" : "text-[14px]"
           }`}
         >
           {value}
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={copy}>
+        <button type="button" className={landingBtnGhost} onClick={copy}>
           {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-        </Button>
+        </button>
       </div>
     </div>
   );

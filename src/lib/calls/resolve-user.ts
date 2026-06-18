@@ -35,11 +35,18 @@ export async function resolveUserIdForIncomingCall(options: {
 
   if (options.phoneNumberId) {
     const { data } = await admin
-      .from("app_settings")
+      .from("user_phone_numbers")
       .select("user_id")
       .eq("elevenlabs_phone_number_id", options.phoneNumberId)
       .maybeSingle();
     if (data?.user_id) return data.user_id as string;
+
+    const { data: settingsRow } = await admin
+      .from("app_settings")
+      .select("user_id")
+      .eq("elevenlabs_phone_number_id", options.phoneNumberId)
+      .maybeSingle();
+    if (settingsRow?.user_id) return settingsRow.user_id as string;
 
     const { data: poolRow } = await admin
       .from("forwarding_number_pool")
@@ -51,6 +58,14 @@ export async function resolveUserIdForIncomingCall(options: {
 
   if (options.agentNumber) {
     const normalized = normalizePhoneNumber(options.agentNumber);
+
+    const { data: phoneRow } = await admin
+      .from("user_phone_numbers")
+      .select("user_id")
+      .eq("phone_number", normalized)
+      .maybeSingle();
+    if (phoneRow?.user_id) return phoneRow.user_id as string;
+
     const { data } = await admin
       .from("app_settings")
       .select("user_id")

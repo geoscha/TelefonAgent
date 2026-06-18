@@ -1,13 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { landingBtnPrimary } from "@/components/landing/landing-buttons";
+import {
+  userLabelClass,
+  userPanelClass,
+  userTitleClass,
+} from "@/components/user/user-styles";
 import type { CallQuotaView } from "@/lib/billing/quota-display";
 import { formatQuotaDuration } from "@/lib/billing/quota-display";
+import { cn } from "@/lib/utils";
 
 export function QuotaGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -51,7 +58,7 @@ export function QuotaGate({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-text-muted">
+      <div className="flex items-center justify-center py-24 text-[#525866]">
         <Loader2 className="h-5 w-5 animate-spin" />
       </div>
     );
@@ -61,35 +68,37 @@ export function QuotaGate({ children }: { children: React.ReactNode }) {
     <div className="relative min-h-[200px]">
       <div
         className={
-          exhausted
-            ? "pointer-events-none select-none blur-[6px] saturate-50"
-            : undefined
+          exhausted ? "pointer-events-none select-none opacity-40" : undefined
         }
       >
         {children}
       </div>
       {exhausted && quota && (
         <div className="absolute inset-0 z-20 flex items-start justify-center pt-16 sm:pt-24">
-          <div className="mx-4 max-w-sm rounded-card border border-stroke bg-surface p-6 shadow-lg">
-            <p className="font-medium text-navy">Kontingent aufgebraucht</p>
-            <p className="mt-2 text-body text-text-muted">
+          <div className={cn(userPanelClass, "mx-4 max-w-sm p-5 shadow-sm")}>
+            <p className={userTitleClass}>Kontingent aufgebraucht</p>
+            <p className={`${userLabelClass} mt-2`}>
               {quota.plan === "free"
                 ? `Ihre ${formatQuotaDuration(quota.limitSeconds)} Gratis-Zeit sind verbraucht.`
                 : "Ihre Monatsstunde ist verbraucht."}
             </p>
             {quota.plan === "free" ? (
-              <Button
-                className="mt-4 w-full"
+              <button
+                type="button"
+                className={cn(landingBtnPrimary, "mt-4 w-full justify-center")}
                 onClick={handleUpgrade}
                 disabled={upgrading}
               >
-                {upgrading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {upgrading && <Loader2 className="h-4 w-4 animate-spin" />}
                 Auf Pro upgraden
-              </Button>
+              </button>
             ) : (
-              <Button asChild className="mt-4 w-full">
-                <a href="/einstellungen#pricing">Plan verwalten</a>
-              </Button>
+              <Link
+                href="/billing"
+                className={cn(landingBtnPrimary, "mt-4 w-full justify-center")}
+              >
+                Plan verwalten
+              </Link>
             )}
           </div>
         </div>

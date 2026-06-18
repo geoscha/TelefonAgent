@@ -41,31 +41,41 @@ export async function syncNumberPoolFromEnv(): Promise<number> {
   return synced;
 }
 
-/** Returns the pool row already assigned to this user, if any. */
-export async function getAssignedPoolNumber(
+/** Returns pool rows assigned to this user. */
+export async function getAssignedPoolNumbers(
   userId: string
-): Promise<PoolNumber | null> {
+): Promise<PoolNumber[]> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("forwarding_number_pool")
     .select("*")
     .eq("assigned_user_id", userId)
-    .maybeSingle();
-  if (!data) return null;
-  return {
-    phoneNumber: data.phone_number,
-    elevenLabsPhoneNumberId: data.elevenlabs_phone_number_id,
-    assignedUserId: data.assigned_user_id ?? undefined,
-    assignedAt: data.assigned_at ?? undefined,
-  };
+    .order("assigned_at", { ascending: true });
+  return (data ?? []).map((row) => ({
+    phoneNumber: row.phone_number,
+    elevenLabsPhoneNumberId: row.elevenlabs_phone_number_id,
+    assignedUserId: row.assigned_user_id ?? undefined,
+    assignedAt: row.assigned_at ?? undefined,
+  }));
+}
+
+/** Returns the first pool row assigned to this user, if any. */
+export async function getAssignedPoolNumber(
+  userId: string
+): Promise<PoolNumber | null> {
+  const numbers = await getAssignedPoolNumbers(userId);
+  return numbers[0] ?? null;
 }
 
 /** Assigns the next free pool number to a user (atomic via admin client). */
 export async function assignNumberFromPool(
-  userId: string
+  userId: string,
+  options?: { allowExisting?: boolean }
 ): Promise<PoolNumber> {
-  const existing = await getAssignedPoolNumber(userId);
-  if (existing) return existing;
+  if (options?.allowExisting !== false) {
+    const existing = await getAssignedPoolNumber(userId);
+    if (existing) return existing;
+  }
 
   await syncNumberPoolFromEnv();
 

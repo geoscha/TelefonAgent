@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  userLabelClass,
+  userPanelClass,
+  userTitleClass,
+} from "@/components/user/user-styles";
 
 type Range = "tag" | "woche" | "monat";
 
@@ -177,12 +182,12 @@ export function CallVolumeChart() {
   const hoverBucket = hover != null ? buckets[hover] : null;
 
   return (
-    <div className="rounded-card border border-stroke bg-surface p-6">
+    <div className={`${userPanelClass} p-5`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="mt-1 font-sans text-[22px] font-semibold leading-tight text-navy">
+          <p className={userTitleClass}>
             {total} {total === 1 ? "Anruf" : "Anrufe"}
-            <span className="ml-2 text-body font-normal text-text-muted">
+            <span className={`${userLabelClass} ml-2`}>
               {range === "tag"
                 ? "heute"
                 : range === "woche"
@@ -191,23 +196,23 @@ export function CallVolumeChart() {
             </span>
           </p>
           {peak.count > 0 && (
-            <p className="mt-1 text-caption text-text-muted">
+            <p className={`${userLabelClass} mt-1`}>
               Spitze: {peak.count} {peak.count === 1 ? "Anruf" : "Anrufe"} ·{" "}
               {peak.full}
             </p>
           )}
         </div>
 
-        <div className="inline-flex rounded-full border border-stroke bg-bg p-1">
+        <div className="inline-flex rounded border border-[#E1E4EA] bg-[#F5F7FA] p-0.5">
           {RANGES.map((r) => (
             <button
               key={r.id}
               type="button"
               onClick={() => setRange(r.id)}
-              className={`rounded-full px-4 py-1.5 text-caption font-medium transition-colors ${
+              className={`landing-radius-sm px-3 py-1 text-[13px] font-normal transition-colors ${
                 range === r.id
-                  ? "bg-surface text-navy shadow-sm"
-                  : "text-text-muted hover:text-text"
+                  ? "bg-white text-[#0E121B] shadow-sm"
+                  : "text-[#525866] hover:text-[#0E121B]"
               }`}
             >
               {r.label}
@@ -231,8 +236,8 @@ export function CallVolumeChart() {
             >
               <defs>
                 <linearGradient id="callFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
-                  <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+                  <stop offset="0%" stopColor="#335cff" stopOpacity="0.08" />
+                  <stop offset="100%" stopColor="#335cff" stopOpacity="0" />
                 </linearGradient>
               </defs>
 
@@ -243,7 +248,7 @@ export function CallVolumeChart() {
                   x2={width - padR}
                   y1={padT + innerH * f}
                   y2={padT + innerH * f}
-                  stroke="var(--stroke)"
+                  stroke="#E1E4EA"
                   strokeDasharray="2 4"
                   strokeWidth={1}
                   opacity={0.6}
@@ -255,8 +260,8 @@ export function CallVolumeChart() {
                 <path
                   d={line}
                   fill="none"
-                  stroke="var(--accent)"
-                  strokeWidth={2.5}
+                  stroke="#335cff"
+                  strokeWidth={2}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -269,17 +274,17 @@ export function CallVolumeChart() {
                     x2={pts[hover].x}
                     y1={padT}
                     y2={padT + innerH}
-                    stroke="var(--accent)"
+                    stroke="#335cff"
                     strokeWidth={1}
-                    opacity={0.35}
+                    opacity={0.25}
                   />
                   <circle
                     cx={pts[hover].x}
                     cy={pts[hover].y}
-                    r={5}
-                    fill="var(--surface)"
-                    stroke="var(--accent)"
-                    strokeWidth={2.5}
+                    r={4}
+                    fill="#ffffff"
+                    stroke="#335cff"
+                    strokeWidth={2}
                   />
                 </>
               )}
@@ -291,7 +296,7 @@ export function CallVolumeChart() {
                     x={xAt(i)}
                     y={H - 6}
                     textAnchor="middle"
-                    className="fill-text-muted"
+                    className="fill-[#525866]"
                     style={{ fontSize: 11 }}
                   >
                     {b.axis}
@@ -301,24 +306,24 @@ export function CallVolumeChart() {
             </svg>
 
             {total === 0 && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-text-muted">
-                <p className="text-body">Noch keine Anrufe in diesem Zeitraum</p>
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[#525866]">
+                <p className="text-[14px]">Noch keine Anrufe in diesem Zeitraum</p>
               </div>
             )}
 
             {hoverBucket && hover != null && pts[hover] && total > 0 && (
               <div
-                className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-btn border border-stroke bg-surface px-3 py-2 shadow-md"
+                className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded border border-[#E1E4EA] bg-white px-3 py-2 shadow-sm"
                 style={{
                   left: `${(pts[hover].x / width) * 100}%`,
                   top: pts[hover].y - 10,
                 }}
               >
-                <p className="whitespace-nowrap text-caption font-semibold text-navy">
+                <p className="whitespace-nowrap text-[13px] text-[#0E121B]">
                   {hoverBucket.count}{" "}
                   {hoverBucket.count === 1 ? "Anruf" : "Anrufe"}
                 </p>
-                <p className="whitespace-nowrap text-caption text-text-muted">
+                <p className="whitespace-nowrap text-[13px] text-[#525866]">
                   {hoverBucket.full}
                 </p>
               </div>

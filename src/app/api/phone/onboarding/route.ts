@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getPhoneOnboardingState } from "@/lib/phone/onboarding";
+import { listUserPhoneNumbers } from "@/lib/phone/numbers";
 import { hasApiKey } from "@/lib/elevenlabs/client";
 import { buildSystemPrompt } from "@/lib/elevenlabs/prompt";
 import { isEnrichmentEnabled } from "@/lib/enrichment";
@@ -11,12 +12,15 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const state = await getPhoneOnboardingState();
   const settings = await getSettings();
+  const numbers = await listUserPhoneNumbers();
 
   return NextResponse.json({
     ok: true,
     phase: state.phase,
     pendingRequest: state.pendingRequest,
+    pendingRequests: state.pendingRequests,
     settings: state.settings,
+    numbers,
     capabilities: {
       hasApiKey: hasApiKey(),
       enrichmentEnabled: await isEnrichmentEnabled(),

@@ -1,6 +1,11 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import {
+  userLabelClass,
+  userPanelClass,
+  userTitleClass,
+} from "@/components/user/user-styles";
 
 interface AgentStatusHeroProps {
   isLive: boolean;
@@ -18,27 +23,20 @@ export function AgentStatusHero({
   return (
     <div
       className={cn(
-        "relative flex items-center gap-6 overflow-hidden rounded-card border border-stroke bg-surface px-8 py-6",
+        userPanelClass,
+        "flex items-center gap-4 px-5 py-4",
         className
       )}
     >
-      <div className="relative flex h-16 w-16 shrink-0 items-center justify-center">
-        <span className="absolute inset-0 animate-pulse-ring rounded-full border-2 border-accent/30" />
-        <span
-          className="absolute inset-1 animate-pulse-ring rounded-full border border-accent/20"
-          style={{ animationDelay: "0.4s" }}
-        />
-        <span className="relative flex h-10 w-10 items-center justify-center rounded-full bg-accent">
-          <span className="h-2.5 w-2.5 rounded-full bg-white" />
-        </span>
-      </div>
+      <span
+        className="h-2 w-2 shrink-0 rounded-full bg-[#22c55e]"
+        aria-hidden
+      />
       <div>
-        <p className="label-caps text-accent">Agent aktiv</p>
-        <p className="mt-1 font-sans font-semibold text-[24px] leading-tight text-navy">
-          Telefonagent ist live
-        </p>
+        <p className={userLabelClass}>Agent aktiv</p>
+        <p className={`${userTitleClass} mt-0.5`}>Telefonagent ist live</p>
         {phoneNumber && (
-          <p className="mt-1 text-body text-text-muted">{phoneNumber}</p>
+          <p className={`${userLabelClass} mt-1 tabular-nums`}>{phoneNumber}</p>
         )}
       </div>
     </div>

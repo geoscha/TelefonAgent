@@ -1,33 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { AgentCreateWizard, type AgentWizardDraft } from "@/components/telefonagent/AgentCreateWizard";
 import { AgentDetailModal } from "@/components/telefonagent/AgentDetailModal";
-import { AgentList } from "@/components/telefonagent/AgentList";
-import { AgentStatusHero } from "@/components/telefonagent/AgentStatusHero";
-import { CallVolumeChart } from "@/components/telefonagent/CallVolumeChart";
-import { PhoneNumberWizard } from "@/components/telefonagent/PhoneNumberWizard";
-import { CalendarIntegrations } from "@/components/integrations/CalendarIntegrations";
+import { AgentDetailPanel } from "@/components/telefonagent/AgentDetailPanel";
+import { RetellAgentSidebar } from "@/components/telefonagent/RetellAgentSidebar";
 import { QuotaGate } from "@/components/billing/QuotaGate";
 import { normalizeAgentLanguage } from "@/lib/elevenlabs/agent-config";
 import type { OnboardingPhase, StoredAgent } from "@/lib/onboarding-types";
@@ -35,6 +15,7 @@ import { mockAgentConfig } from "@/lib/mock/agent";
 
 type ForwardingType = "alle" | "bedingt";
 type ForwardingStatus = "nicht_eingerichtet" | "anleitung" | "aktiv";
+type CalendarProviderId = "google" | "microsoft" | "apple";
 
 interface Settings {
   connected: boolean;
@@ -59,20 +40,6 @@ interface Settings {
   forwardingInstructions?: string;
   agents?: StoredAgent[];
 }
-
-type CalendarProviderId = "google" | "microsoft" | "apple";
-
-interface ConnectedCalendar {
-  provider: CalendarProviderId;
-  connected: boolean;
-  accountLabel?: string;
-}
-
-const CALENDAR_LABELS: Record<CalendarProviderId, string> = {
-  google: "Google Kalender",
-  microsoft: "Microsoft Outlook",
-  apple: "Apple Kalender (iCloud)",
-};
 
 interface Capabilities {
   hasApiKey: boolean;
@@ -121,26 +88,18 @@ export default function TelefonagentPage() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [savingAgent, setSavingAgent] = useState(false);
 
-  const [forwardingType, setForwardingType] =
-    useState<ForwardingType>("bedingt");
-  const [forwardingStatus, setForwardingStatus] =
-    useState<ForwardingStatus>("nicht_eingerichtet");
   const [storedAgents, setStoredAgents] = useState<StoredAgent[]>([]);
+  const [phoneNumbers, setPhoneNumbers] = useState<
+    Array<{ id: string; phoneNumber: string; label?: string }>
+  >([]);
+  const [assigningPhone, setAssigningPhone] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [createNewAgent, setCreateNewAgent] = useState(false);
-  const [requestingNumber, setRequestingNumber] = useState(false);
-  const [confirmingForwarding, setConfirmingForwarding] = useState(false);
-  const [disconnectingPhone, setDisconnectingPhone] = useState(false);
   const [createWizardOpen, setCreateWizardOpen] = useState(false);
   const [detailAgentId, setDetailAgentId] = useState<string | null>(null);
   const [detailMode, setDetailMode] = useState<"view" | "edit">("view");
   const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
   const [activatingAgentId, setActivatingAgentId] = useState<string | null>(null);
-
-  const [calendars, setCalendars] = useState<ConnectedCalendar[]>([]);
-  const [apptEnabled, setApptEnabled] = useState(false);
-  const [apptProvider, setApptProvider] = useState<CalendarProviderId | "">("");
-  const [savingAppt, setSavingAppt] = useState(false);
 
   const applySettings = useCallback((s: Settings) => {
     setSettings(s);
@@ -150,8 +109,6 @@ export default function TelefonagentPage() {
     if (s.language) setLanguage(normalizeAgentLanguage(s.language));
     if (s.greeting) setGreeting(s.greeting);
     if (s.systemPrompt) setSystemPrompt(s.systemPrompt);
-    if (s.forwardingType) setForwardingType(s.forwardingType);
-    if (s.forwardingStatus) setForwardingStatus(s.forwardingStatus);
     if (s.agents?.length) {
       setStoredAgents(s.agents);
       if (s.agentId) setSelectedAgentId(s.agentId);
@@ -171,9 +128,6 @@ export default function TelefonagentPage() {
     } else if (s.agentId) {
       setSelectedAgentId(s.agentId);
     }
-    if (typeof s.appointmentBookingEnabled === "boolean")
-      setApptEnabled(s.appointmentBookingEnabled);
-    if (s.appointmentProvider) setApptProvider(s.appointmentProvider);
   }, []);
 
   const loadVoices = useCallback(async () => {
@@ -230,6 +184,15 @@ export default function TelefonagentPage() {
           applySettings(s);
           setOnboardingPhase(data.phase as OnboardingPhase);
           setSystemPrompt(s.systemPrompt || capabilities.defaultSystemPrompt);
+          setPhoneNumbers(
+            ((data.numbers as Array<{ id: string; phoneNumber: string; label?: string }>) ??
+              []
+            ).map((n) => ({
+              id: n.id,
+              phoneNumber: n.phoneNumber,
+              label: n.label,
+            }))
+          );
 
           const connectRes = await fetch("/api/elevenlabs/connect");
           const connectData = await connectRes.json();
@@ -293,23 +256,6 @@ export default function TelefonagentPage() {
   useEffect(() => {
     if (settings.connected) loadVoices();
   }, [settings.connected, loadVoices]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/integrations/status");
-        const data = await res.json();
-        if (res.ok && data.ok) {
-          const connected = (data.calendars as ConnectedCalendar[]).filter(
-            (c) => c.connected
-          );
-          setCalendars(connected);
-        }
-      } catch {
-        /* non-fatal */
-      }
-    })();
-  }, []);
 
   async function handleSaveAgent(
     override?: AgentWizardDraft & { agentId?: string; createNew?: boolean }
@@ -386,79 +332,6 @@ export default function TelefonagentPage() {
       return false;
     } finally {
       setSavingAgent(false);
-    }
-  }
-
-  async function handleRequestNumber() {
-    setRequestingNumber(true);
-    try {
-      const res = await fetch("/api/phone/request", { method: "POST" });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setOnboardingPhase(data.phase as OnboardingPhase);
-        applySettings(data.settings as Settings);
-        toast.success(
-          data.autoAssigned
-            ? "Ihre Nummer wurde zugewiesen"
-            : "Anfrage gesendet — Nummer folgt sobald verfügbar"
-        );
-      } else {
-        toast.error("Anfrage fehlgeschlagen");
-      }
-    } catch {
-      toast.error("Netzwerkfehler");
-    } finally {
-      setRequestingNumber(false);
-    }
-  }
-
-  async function handleConfirmForwarding() {
-    setConfirmingForwarding(true);
-    try {
-      const res = await fetch("/api/phone/confirm-forwarding", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ forwardingType }),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setOnboardingPhase(data.phase as OnboardingPhase);
-        applySettings(data.settings as Settings);
-        if (storedAgents.length === 0) {
-          setCreateWizardOpen(true);
-        }
-        toast.success("Weiterleitung bestätigt — richten Sie jetzt Ihren Agenten ein.");
-        return true;
-      }
-      toast.error("Speichern fehlgeschlagen");
-      return false;
-    } catch {
-      toast.error("Netzwerkfehler");
-      return false;
-    } finally {
-      setConfirmingForwarding(false);
-    }
-  }
-
-  async function handleDisconnectPhone() {
-    setDisconnectingPhone(true);
-    try {
-      const res = await fetch("/api/phone/disconnect", { method: "POST" });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setOnboardingPhase(data.phase as OnboardingPhase);
-        applySettings(data.settings as Settings);
-        setForwardingStatus("nicht_eingerichtet");
-        toast.success("Telefonnummer entkoppelt");
-        return true;
-      }
-      toast.error("Entkoppeln fehlgeschlagen");
-      return false;
-    } catch {
-      toast.error("Netzwerkfehler");
-      return false;
-    } finally {
-      setDisconnectingPhone(false);
     }
   }
 
@@ -539,6 +412,29 @@ export default function TelefonagentPage() {
     }
   }
 
+  async function handleAssignPhone(agentId: string, phoneNumberId: string) {
+    setAssigningPhone(true);
+    try {
+      const res = await fetch("/api/elevenlabs/agent/phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId, phoneNumberId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        applySettings(data.settings as Settings);
+        if (data.agents) setStoredAgents(data.agents as StoredAgent[]);
+        toast.success("Telefonnummer zugewiesen");
+      } else {
+        toast.error("Zuweisung fehlgeschlagen", { description: data.error });
+      }
+    } catch {
+      toast.error("Netzwerkfehler");
+    } finally {
+      setAssigningPhone(false);
+    }
+  }
+
   async function handleDeleteAgent(agentId: string) {
     setDeletingAgentId(agentId);
     try {
@@ -562,192 +458,84 @@ export default function TelefonagentPage() {
     }
   }
 
-  async function handleSaveAppointment() {
-    if (apptEnabled && !apptProvider) {
-      toast.error("Bitte einen verbundenen Kalender auswählen.");
-      return;
-    }
-    setSavingAppt(true);
-    try {
-      const res = await fetch("/api/appointment-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          enabled: apptEnabled,
-          provider: apptEnabled ? apptProvider : null,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        if (data.settings) applySettings(data.settings as Settings);
-        toast.success(
-          apptEnabled
-            ? "Terminvereinbarung aktiviert"
-            : "Terminvereinbarung deaktiviert"
-        );
-      } else {
-        toast.error("Speichern fehlgeschlagen", { description: data.error });
-      }
-    } catch {
-      toast.error("Netzwerkfehler beim Speichern");
-    } finally {
-      setSavingAppt(false);
-    }
-  }
-
   useEffect(() => {
-    if (forwardingStatus === "aktiv") return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch("/api/elevenlabs/connect");
-        const data = await res.json();
-        const s = data.settings as Settings;
-        if (s.forwardingStatus === "aktiv") {
-          setForwardingStatus("aktiv");
-          setSettings(s);
-          toast.success("Weiterleitung aktiv");
-        }
-      } catch {
-        /* keep polling */
+    if (storedAgents.length > 0 && detailAgentId === null) {
+      const preferred = settings.agentId ?? storedAgents[0]?.id;
+      if (preferred) {
+        setDetailAgentId(preferred);
+        setDetailMode("view");
       }
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [forwardingStatus]);
+    }
+  }, [storedAgents, detailAgentId, settings.agentId]);
 
-  const forwardingActive = forwardingStatus === "aktiv";
-  const curaNumber =
-    settings.curaForwardingNumber ?? caps.forwardingNumber ?? "";
-  const showAgentSection =
-    onboardingPhase === "agent" ||
-    onboardingPhase === "fertig" ||
-    storedAgents.length > 0;
   const detailAgent =
     storedAgents.find((a) => a.id === detailAgentId) ?? null;
 
   return (
     <>
-      <div className="space-y-8">
-        <CallVolumeChart />
-
-        <QuotaGate>
-          <div className="space-y-6">
-            {forwardingActive && (
-              <AgentStatusHero isLive phoneNumber={curaNumber || undefined} />
-            )}
-
-            {statusLoading ? (
-              <Skeleton className="h-40 w-full rounded-[18px]" />
-            ) : (
-              showAgentSection && (
-                <AgentList
-                    agents={storedAgents}
-                    activeAgentId={settings.agentId}
-                    selectedAgentId={detailAgentId ?? selectedAgentId}
-                    deletingId={deletingAgentId}
-                    activatingId={activatingAgentId}
-                    onActivate={handleActivateAgent}
-                    onSelect={handleSelectAgent}
-                    onEdit={handleEditAgent}
-                    onCreateNew={handleCreateNewAgent}
-                    onDelete={handleDeleteAgent}
-                  />
-              )
-            )}
-
-            <AgentCreateWizard
-              open={createWizardOpen}
-              onClose={() => setCreateWizardOpen(false)}
-              voices={voices}
-              voicesLoading={voicesLoading}
-              saving={savingAgent}
-              onSave={handleWizardSave}
-            />
-
-            <AgentDetailModal
-              open={detailAgentId !== null}
-              agent={detailAgent}
-              mode={detailMode}
-              voices={voices}
-              voicesLoading={voicesLoading}
-              saving={savingAgent}
-              onClose={() => setDetailAgentId(null)}
-              onCancelEdit={() => setDetailMode("view")}
-              onEdit={() => setDetailMode("edit")}
-              onSave={handleDetailSave}
-            />
-
-            {forwardingActive && (
-              <section className="space-y-4">
-                <h2>Kalender</h2>
-                <CalendarIntegrations />
-              </section>
-            )}
-
-            {forwardingActive && calendars.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Terminvereinbarung</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between gap-4 rounded-btn border border-stroke p-4">
-                    <p className="font-medium text-text">Termine durch den Agenten</p>
-                    <Switch checked={apptEnabled} onCheckedChange={setApptEnabled} />
-                  </div>
-                  {apptEnabled && (
-                    <div className="space-y-2">
-                      <Label>Kalender</Label>
-                      <Select
-                        value={apptProvider}
-                        onValueChange={(v) =>
-                          setApptProvider(v as CalendarProviderId)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Kalender auswählen" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {calendars.map((c) => (
-                            <SelectItem key={c.provider} value={c.provider}>
-                              {CALENDAR_LABELS[c.provider]}
-                              {c.accountLabel ? ` · ${c.accountLabel}` : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  <Button
-                    size="sm"
-                    onClick={handleSaveAppointment}
-                    disabled={savingAppt}
-                  >
-                    {savingAppt && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    Speichern
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {!statusLoading && (
-              <PhoneNumberWizard
-                phase={onboardingPhase}
-                curaNumber={curaNumber}
-                forwardingType={forwardingType}
-                forwardingStatus={forwardingStatus}
-                requesting={requestingNumber}
-                confirming={confirmingForwarding}
-                disconnecting={disconnectingPhone}
-                onRequestNumber={handleRequestNumber}
-                onConfirmForwarding={handleConfirmForwarding}
-                onDisconnect={handleDisconnectPhone}
-                onForwardingTypeChange={setForwardingType}
+      <QuotaGate>
+        <div className="flex min-h-[560px] gap-3">
+          {statusLoading ? (
+            <Skeleton className="h-[560px] w-full rounded" />
+          ) : (
+            <>
+              <RetellAgentSidebar
+                agents={storedAgents}
+                selectedAgentId={detailAgentId ?? selectedAgentId}
+                activeAgentId={settings.agentId}
+                onSelect={handleSelectAgent}
+                onCreateNew={handleCreateNewAgent}
               />
-            )}
-          </div>
-        </QuotaGate>
-      </div>
+              {detailAgent ? (
+                <AgentDetailPanel
+                  agent={detailAgent}
+                  isActive={settings.agentId === detailAgent.id}
+                  voices={voices}
+                  voicesLoading={voicesLoading}
+                  deleting={deletingAgentId === detailAgent.id}
+                  phoneNumbers={phoneNumbers}
+                  assigningPhone={assigningPhone}
+                  onAssignPhone={(phoneNumberId) =>
+                    void handleAssignPhone(detailAgent.id, phoneNumberId)
+                  }
+                  onEdit={() => handleEditAgent(detailAgent.id)}
+                  onDelete={() => void handleDeleteAgent(detailAgent.id)}
+                  onActivate={() => void handleActivateAgent(detailAgent.id)}
+                  activating={activatingAgentId === detailAgent.id}
+                />
+              ) : (
+                <div className="landing-panel flex flex-1 items-center justify-center border border-dashed border-[#E1E4EA] p-8">
+                  <p className="landing-body text-[#99A0AE]">
+                    Agent auswählen oder neuen Agent hinzufügen
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </QuotaGate>
+
+      <AgentCreateWizard
+        open={createWizardOpen}
+        onClose={() => setCreateWizardOpen(false)}
+        voices={voices}
+        voicesLoading={voicesLoading}
+        saving={savingAgent}
+        onSave={handleWizardSave}
+      />
+
+      <AgentDetailModal
+        open={detailAgentId !== null && detailMode === "edit"}
+        agent={detailAgent}
+        mode={detailMode}
+        voices={voices}
+        voicesLoading={voicesLoading}
+        saving={savingAgent}
+        onClose={() => setDetailMode("view")}
+        onCancelEdit={() => setDetailMode("view")}
+        onEdit={() => setDetailMode("edit")}
+        onSave={handleDetailSave}
+      />
     </>
   );
 }

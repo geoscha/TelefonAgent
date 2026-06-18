@@ -17,6 +17,7 @@ import {
   isLegacyAgentConfig,
 } from "@/lib/elevenlabs/defaults";
 import { assignAgentToPhoneNumber, listWorkspacePhones, normalizePhoneNumber } from "@/lib/elevenlabs/phone";
+import { listUserPhoneNumbers } from "@/lib/phone/numbers";
 import type { ElevenLabsSettings } from "@/lib/store";
 import { getSettingsForUser, updateSettingsForUser } from "@/lib/store";
 import { getAssignedPoolNumber, syncNumberPoolFromEnv } from "@/lib/store/number-pool";
@@ -145,9 +146,15 @@ export async function reconcileUserPhoneAgentLink(
 
   await syncNumberPoolFromEnv();
   const workspace = await listWorkspacePhones();
+  const userPhones = await listUserPhoneNumbers(userId);
+  const primaryPhone =
+    userPhones.find((p) => p.isPrimary) ??
+    userPhones.find((p) => p.validationStatus === "valid") ??
+    userPhones[0];
 
-  let phoneNumberId = settings.elevenLabsPhoneNumberId;
-  let phoneNumber = settings.curaForwardingNumber;
+  let phoneNumberId =
+    primaryPhone?.elevenLabsPhoneNumberId ?? settings.elevenLabsPhoneNumberId;
+  let phoneNumber = primaryPhone?.phoneNumber ?? settings.curaForwardingNumber;
 
   if (!phoneNumberId) {
     const pool = await getAssignedPoolNumber(userId);
@@ -192,6 +199,20 @@ export async function reconcileUserPhoneAgentLink(
     settings.agentName ?? "Cura Telefonagent"
   );
 
+  for (const extra of userPhones) {
+    if (
+      extra.elevenLabsPhoneNumberId &&
+      extra.elevenLabsPhoneNumberId !== phoneNumberId &&
+      extra.validationStatus === "valid"
+    ) {
+      await assignAgentToPhoneNumber(
+        extra.elevenLabsPhoneNumberId,
+        settings.agentId,
+        settings.agentName ?? "Cura Telefonagent"
+      );
+    }
+  }
+
   const afterList = await listWorkspacePhones();
   const after = afterList.find((w) => w.phoneNumberId === phoneNumberId);
   if (after?.assignedAgentId !== settings.agentId) {
@@ -210,8 +231,37 @@ export async function reconcileUserPhoneAgentLink(
   };
 }
 
+/** Links a specific agent to their assigned user phone number in ElevenLabs. */
+export async function linkAgentToPhone(
+  userId: string,
+  agentId: string,
+  userPhoneRecordId?: string
+): Promise<void> {
+  const phones = await listUserPhoneNumbers(userId);
+  if (phones.length === 0) return;
+
+  let phone = userPhoneRecordId
+    ? phones.find((p) => p.id === userPhoneRecordId)
+    : undefined;
+
+  if (!phone && phones.length === 1) {
+    phone = phones[0];
+  }
+
+  if (!phone?.elevenLabsPhoneNumberId) return;
+
+  const settings = await getSettingsForUser(userId);
+  await assignAgentToPhoneNumber(
+    phone.elevenLabsPhoneNumberId,
+    agentId,
+    settings.agentName ?? "Cura Telefonagent"
+  );
+}
+
 /** Links the user's assigned phone number to their agent in ElevenLabs. */
 export async function linkUserPhoneToAgent(userId: string): Promise<void> {
+  const settings = await getSettingsForUser(userId);
+  if (!settings.agentId) return;
   await reconcileUserPhoneAgentLink(userId);
 }
 

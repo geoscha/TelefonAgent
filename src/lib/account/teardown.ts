@@ -77,6 +77,30 @@ export async function teardownUserResources(userId: string): Promise<void> {
     .update({ assigned_user_id: null, assigned_at: null })
     .eq("assigned_user_id", userId);
 
+  const { data: userPhones } = await admin
+    .from("user_phone_numbers")
+    .select("elevenlabs_phone_number_id, source")
+    .eq("user_id", userId);
+
+  if (hasApiKey()) {
+    try {
+      const client = getElevenLabsClient();
+      for (const phone of userPhones ?? []) {
+        if (phone.source === "sip_trunk" && phone.elevenlabs_phone_number_id) {
+          try {
+            await client.conversationalAi.phoneNumbers.delete(
+              phone.elevenlabs_phone_number_id as string
+            );
+          } catch (err) {
+            console.warn("[teardown] sip delete failed:", err);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[teardown] sip cleanup skipped:", err);
+    }
+  }
+
   if (settings.curaForwardingNumber) {
     await admin
       .from("forwarding_number_pool")

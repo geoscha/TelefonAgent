@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
 import {
   Phone,
-  Bot,
   Settings,
   CalendarPlus,
   PhoneForwarded,
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
+import { USER_NAV_ITEMS } from "@/components/layout/user-nav";
 import { mockCalls } from "@/lib/mock/calls";
 
 const OPEN_EVENT = "cura:open-command";
@@ -22,8 +22,11 @@ export function openCommandPalette() {
 }
 
 const navItems = [
-  { href: "/anrufe", label: "Anrufe", icon: Phone },
-  { href: "/telefonagent", label: "Telefonagent", icon: Bot },
+  ...USER_NAV_ITEMS.map((item) => ({
+    href: item.href,
+    label: item.label,
+    icon: item.icon,
+  })),
   { href: "/einstellungen", label: "Profil", icon: Settings },
 ];
 

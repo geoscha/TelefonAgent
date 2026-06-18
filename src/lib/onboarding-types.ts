@@ -13,4 +13,6 @@ export interface StoredAgent {
   language: string;
   greeting: string;
   systemPrompt: string;
+  /** user_phone_numbers.id — which inbound number this agent handles. */
+  phoneNumberId?: string;
 }

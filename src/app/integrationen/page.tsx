@@ -13,5 +13,5 @@ export default function IntegrationenPage({
     else if (Array.isArray(value)) value.forEach((v) => qs.append(key, v));
   }
   const query = qs.toString();
-  redirect(query ? `/telefonagent?${query}` : "/telefonagent");
+  redirect(query ? `/phones?${query}` : "/phones");
 }

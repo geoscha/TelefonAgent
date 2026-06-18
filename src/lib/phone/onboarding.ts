@@ -15,11 +15,18 @@ import { isPhoneNumberRequest } from "@/lib/admin/request-types";
 import type { RequestStatus, UserRequest } from "@/lib/admin/request-types";
 import { assignNumberFromPool, syncNumberPoolFromEnv } from "@/lib/store/number-pool";
 import { requireUserId } from "@/lib/supabase/server";
+import {
+  addPoolPhoneNumber,
+  listUserPhoneNumbers,
+  requestAdditionalPoolNumber,
+  updatePhoneForwarding,
+} from "@/lib/phone/numbers";
 
 export interface PhoneOnboardingState {
   phase: OnboardingPhase;
   settings: ElevenLabsSettings;
   pendingRequest: UserRequest | null;
+  pendingRequests: UserRequest[];
 }
 
 const PHONE_REQUEST_TYPES = ["nummer_beantragen", "nummer_zuweisung"];
@@ -31,9 +38,7 @@ function defaultPhase(settings: ElevenLabsSettings): OnboardingPhase {
   return "nummer_anfragen";
 }
 
-async function findOpenPhoneRequest(
-  userId: string
-): Promise<UserRequest | null> {
+async function findOpenPhoneRequests(userId: string): Promise<UserRequest[]> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("requests")
@@ -41,21 +46,24 @@ async function findOpenPhoneRequest(
     .eq("user_id", userId)
     .in("type", PHONE_REQUEST_TYPES)
     .in("status", ["offen", "in_arbeit"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: true });
 
-  if (!data) return null;
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    userId: row.user_id as string,
+    type: row.type as string,
+    status: row.status as RequestStatus,
+    payload: (row.payload as Record<string, unknown>) ?? {},
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  }));
+}
 
-  return {
-    id: data.id as string,
-    userId: data.user_id as string,
-    type: data.type as string,
-    status: data.status as RequestStatus,
-    payload: (data.payload as Record<string, unknown>) ?? {},
-    createdAt: data.created_at as string,
-    updatedAt: data.updated_at as string,
-  };
+async function findOpenPhoneRequest(
+  userId: string
+): Promise<UserRequest | null> {
+  const requests = await findOpenPhoneRequests(userId);
+  return requests[0] ?? null;
 }
 
 export async function getPhoneOnboardingState(
@@ -63,36 +71,58 @@ export async function getPhoneOnboardingState(
 ): Promise<PhoneOnboardingState> {
   const id = userId ?? (await requireUserId());
   const settings = userId ? await getSettingsForUser(id) : await getSettings();
-  const pendingRequest = await findOpenPhoneRequest(id);
+  const phones = await listUserPhoneNumbers(id);
+  const primary = phones.find((p) => p.isPrimary) ?? phones[0];
+  const pendingRequests = await findOpenPhoneRequests(id);
+  const pendingRequest = pendingRequests[0] ?? null;
   let phase = defaultPhase(settings);
 
-  if (phase === "nummer_anfragen" && pendingRequest) {
+  if (primary && !settings.curaForwardingNumber) {
+    await updateSettingsForUser(id, {
+      curaForwardingNumber: primary.phoneNumber,
+      elevenLabsPhoneNumberId: primary.elevenLabsPhoneNumberId,
+      forwardingType: primary.forwardingType ?? settings.forwardingType,
+      forwardingStatus: primary.forwardingStatus ?? settings.forwardingStatus,
+      customerNumber: primary.customerNumber ?? settings.customerNumber,
+    });
+  }
+
+  if (phase === "nummer_anfragen" && pendingRequests.length > 0 && phones.length === 0) {
     phase = "nummer_warte";
   }
-  if (phase === "nummer_warte" && settings.curaForwardingNumber) {
+  if (phase === "nummer_warte" && phones.length > 0 && pendingRequests.length === 0) {
     phase = "weiterleitung";
   }
 
-  return { phase, settings, pendingRequest };
+  return { phase, settings, pendingRequest, pendingRequests };
 }
 
 export async function requestPhoneNumber(): Promise<
-  PhoneOnboardingState & { autoAssigned?: boolean }
+  PhoneOnboardingState & { autoAssigned?: boolean; phone?: { phoneNumber: string } }
 > {
   const userId = await requireUserId();
   const current = await getPhoneOnboardingState(userId);
+  const phones = await listUserPhoneNumbers(userId);
 
-  if (current.settings.curaForwardingNumber) {
+  if (current.pendingRequest && phones.length === 0) {
     return current;
   }
-  if (current.pendingRequest) {
+  if (current.pendingRequests.length > 0) {
     return current;
   }
 
-  const autoAssigned = await tryAutoAssignPhoneNumber(userId);
-  if (autoAssigned) {
+  const result = await requestAdditionalPoolNumber();
+  if (result.autoAssigned && result.phone) {
+    await completePhoneAssignment(userId, result.phone.phoneNumber, {
+      elevenLabsPhoneNumberId: result.phone.elevenLabsPhoneNumberId,
+      autoAssigned: true,
+    });
     const state = await getPhoneOnboardingState(userId);
-    return { ...state, autoAssigned: true };
+    return {
+      ...state,
+      autoAssigned: true,
+      phone: { phoneNumber: result.phone.phoneNumber },
+    };
   }
 
   await createUserRequest(userId, "nummer_beantragen", {
@@ -100,7 +130,7 @@ export async function requestPhoneNumber(): Promise<
   });
 
   const settings = await updateSettings({
-    onboardingPhase: "nummer_warte",
+    onboardingPhase: phones.length === 0 ? "nummer_warte" : current.settings.onboardingPhase,
   });
 
   return getPhoneOnboardingState(userId).then((s) => ({
@@ -113,9 +143,12 @@ export async function requestPhoneNumber(): Promise<
 export async function tryAutoAssignPhoneNumber(userId: string): Promise<boolean> {
   try {
     await syncNumberPoolFromEnv();
-    const pool = await assignNumberFromPool(userId);
+    const pool = await assignNumberFromPool(userId, { allowExisting: false });
     await assignPhoneNumberToUser(userId, pool.phoneNumber, {
       elevenLabsPhoneNumberId: pool.elevenLabsPhoneNumberId,
+    });
+    await addPoolPhoneNumber(userId, pool.phoneNumber, pool.elevenLabsPhoneNumberId, {
+      makePrimary: true,
     });
     await completePhoneAssignment(userId, pool.phoneNumber, {
       elevenLabsPhoneNumberId: pool.elevenLabsPhoneNumberId,
@@ -188,29 +221,75 @@ async function completePhoneAssignment(
 }
 
 export async function confirmForwardingSetup(
-  forwardingType: "alle" | "bedingt"
+  forwardingType: "alle" | "bedingt",
+  options?: { phoneId?: string; customerNumber?: string }
 ): Promise<PhoneOnboardingState> {
   const userId = await requireUserId();
+  const phones = await listUserPhoneNumbers(userId);
+  const target =
+    (options?.phoneId ? phones.find((p) => p.id === options.phoneId) : undefined) ??
+    phones.find((p) => p.isPrimary) ??
+    phones[0];
+
+  const customerNumber = options?.customerNumber?.trim();
+
+  if (target) {
+    await updatePhoneForwarding(target.id, {
+      forwardingType,
+      forwardingStatus: "aktiv",
+      ...(customerNumber ? { customerNumber } : {}),
+    });
+  }
+
   const settings = await updateSettings({
     forwardingType,
-    forwardingStatus: "anleitung",
-    onboardingPhase: "agent",
+    forwardingStatus: "aktiv",
+    forwardingActivatedAt: new Date().toISOString(),
+    onboardingPhase: "fertig",
+    ...(customerNumber ? { customerNumber } : {}),
   });
 
   return {
-    phase: "agent",
+    phase: "fertig",
     settings,
     pendingRequest: await findOpenPhoneRequest(userId),
+    pendingRequests: await findOpenPhoneRequests(userId),
   };
 }
 
+/** Withdraws an open phone number request. */
+export async function cancelPhoneRequest(requestId: string): Promise<PhoneOnboardingState> {
+  const userId = await requireUserId();
+  const requests = await findOpenPhoneRequests(userId);
+  const target = requests.find((r) => r.id === requestId);
+  if (!target) {
+    throw new Error("Anfrage nicht gefunden.");
+  }
+
+  await updateRequest(requestId, { status: "abgelehnt" });
+
+  const phones = await listUserPhoneNumbers(userId);
+  const remaining = await findOpenPhoneRequests(userId);
+  if (phones.length === 0 && remaining.length === 0) {
+    await updateSettings({ onboardingPhase: "nummer_anfragen" });
+  }
+
+  return getPhoneOnboardingState(userId);
+}
+
 /** Customer confirmed they deactivated forwarding on their phone. */
-export async function disconnectPhoneForwarding(): Promise<PhoneOnboardingState> {
-  await requireUserId();
+export async function disconnectPhoneForwarding(
+  phoneId?: string
+): Promise<PhoneOnboardingState> {
+  const userId = await requireUserId();
+  const { disconnectPhoneForwarding: disconnectPhone } = await import(
+    "@/lib/phone/numbers"
+  );
+  await disconnectPhone(phoneId);
   await updateSettings({
     forwardingStatus: "nicht_eingerichtet",
   });
-  return getPhoneOnboardingState();
+  return getPhoneOnboardingState(userId);
 }
 
 export async function assignPhoneNumberToUser(
