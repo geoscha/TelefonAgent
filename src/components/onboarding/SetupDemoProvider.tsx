@@ -19,7 +19,6 @@ import {
 } from "@/lib/setup-demo-steps";
 import { dispatchSetupDemoSkipped } from "@/lib/setup-demo-events";
 import type { SetupDemoStep } from "@/lib/setup-demo";
-import { readPendingStripeCheckout } from "@/lib/billing/pending-checkout-client";
 
 const DEMO_STARTED_KEY = "cura-setup-demo-started";
 
@@ -31,10 +30,6 @@ interface SetupDemoContextValue {
   loading: boolean;
   demoStarted: boolean;
   showWelcome: boolean;
-  /** Demo guide hidden during billing checkout (Apple Pay / Stripe). */
-  overlayPaused: boolean;
-  pauseOverlay: () => void;
-  resumeOverlay: () => void;
   skip: () => Promise<void>;
   startDemo: () => void;
   advance: () => void;
@@ -69,10 +64,6 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
   const [subStepId, setSubStepId] = useState<string | null>(null);
   const [subStepReady, setSubStepReady] = useState(false);
   const [demoStarted, setDemoStarted] = useState(false);
-  const [overlayPaused, setOverlayPaused] = useState(false);
-
-  const pauseOverlay = useCallback(() => setOverlayPaused(true), []);
-  const resumeOverlay = useCallback(() => setOverlayPaused(false), []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -121,84 +112,14 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
     if (!getGuideStepById(id)) return;
     setSubStepId(id);
     setSubStepReady(false);
-    if (id === "phone_billing") {
-      setOverlayPaused(true);
-    } else if (id === "phone_request") {
-      setOverlayPaused(false);
-    }
   }, []);
 
   useEffect(() => {
-    if (!active || step !== "phone") return;
-    if (subStepId === "phone_billing") {
-      setOverlayPaused(true);
-      return;
-    }
-    if (subStepId === "phone_request") {
-      setOverlayPaused(false);
-    }
-  }, [active, step, subStepId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    function syncCheckoutPause() {
-      if (readPendingStripeCheckout()) {
-        setOverlayPaused(true);
-        return;
-      }
-      if (subStepId !== "phone_billing") {
-        setOverlayPaused(false);
-      }
-    }
-
-    syncCheckoutPause();
-    window.addEventListener("pageshow", syncCheckoutPause);
-    function onVisibilityChange() {
-      if (document.visibilityState === "visible") syncCheckoutPause();
-    }
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      window.removeEventListener("pageshow", syncCheckoutPause);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [pathname, subStepId]);
-
-  useEffect(() => {
-    if (!active || !step) return;
-    if (step === "agent" && pathname !== "/telefonagent") {
+    if (!active || step !== "agent") return;
+    if (pathname !== "/telefonagent") {
       router.push("/telefonagent");
-      return;
     }
-    if (step !== "phone" || !subStepId) return;
-
-    if (subStepId === "phone_tokens" && pathname === "/billing") {
-      goToSubStep("phone_billing");
-      return;
-    }
-
-    if (subStepId === "phone_billing" && pathname !== "/billing") {
-      if (typeof window !== "undefined") {
-        const topup = new URLSearchParams(window.location.search).get("topup");
-        if (topup === "success") {
-          goToSubStep("phone_request");
-          return;
-        }
-        if (readPendingStripeCheckout()) {
-          return;
-        }
-      }
-      router.push("/billing");
-      return;
-    }
-
-    if (
-      (subStepId === "phone_tokens" || subStepId === "phone_request") &&
-      pathname !== "/phones"
-    ) {
-      router.push("/phones");
-    }
-  }, [active, step, subStepId, pathname, router, goToSubStep]);
+  }, [active, step, pathname, router]);
 
   const advance = useCallback(() => {
     if (!step || (step !== "agent" && step !== "phone") || !subStepId) return;
@@ -238,7 +159,10 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
     });
     const data = await res.json();
     if (res.ok && data.ok) {
-      applyPayload(data);
+      applyPayload({
+        ...data,
+        subStepId: getInitialSubStepId("phone"),
+      });
       router.push("/phones");
     }
   }, [applyPayload, router]);
@@ -250,7 +174,11 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ action: "complete_phone" }),
     });
     const data = await res.json();
-    if (res.ok && data.ok) applyPayload(data);
+    if (res.ok && data.ok) {
+      applyPayload(data);
+      sessionStorage.removeItem(DEMO_STARTED_KEY);
+      setDemoStarted(false);
+    }
   }, [applyPayload]);
 
   const restart = useCallback(async () => {
@@ -283,9 +211,6 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
       loading,
       demoStarted,
       showWelcome,
-      overlayPaused,
-      pauseOverlay,
-      resumeOverlay,
       skip,
       startDemo,
       advance,
@@ -304,9 +229,6 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
       loading,
       demoStarted,
       showWelcome,
-      overlayPaused,
-      pauseOverlay,
-      resumeOverlay,
       skip,
       startDemo,
       advance,

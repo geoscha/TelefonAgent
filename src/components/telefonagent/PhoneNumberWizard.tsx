@@ -200,8 +200,6 @@ interface PhoneNumberWizardProps {
   onRemove: (phoneId: string) => Promise<void>;
   onForwardingTypeChange: (v: ForwardingType) => void;
   canAffordPhoneNumber: boolean;
-  /** Demo guide sub-step on /phones — hides number request until token step is done. */
-  demoPhoneStep?: string | null;
 }
 
 export function PhoneNumberWizard({
@@ -222,7 +220,6 @@ export function PhoneNumberWizard({
   onRemove,
   onForwardingTypeChange,
   canAffordPhoneNumber,
-  demoPhoneStep,
 }: PhoneNumberWizardProps) {
   const [flow, setFlow] = useState<WizardFlow>("overview");
   const [connectStep, setConnectStep] = useState<ConnectStep>("type");
@@ -298,7 +295,6 @@ export function PhoneNumberWizard({
           onActivate={onActivate}
           onRemove={onRemove}
           canAffordPhoneNumber={canAffordPhoneNumber}
-          demoPhoneStep={demoPhoneStep}
         />
       )}
 
@@ -432,7 +428,6 @@ function OverviewStep({
   onActivate,
   onRemove,
   canAffordPhoneNumber,
-  demoPhoneStep,
 }: {
   phase: OnboardingPhase;
   numbers: UserPhoneNumberView[];
@@ -447,7 +442,6 @@ function OverviewStep({
   onActivate: (phoneId: string) => Promise<void>;
   onRemove: (phoneId: string) => Promise<void>;
   canAffordPhoneNumber: boolean;
-  demoPhoneStep?: string | null;
 }) {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
@@ -457,8 +451,6 @@ function OverviewStep({
   const infoPhone = numbers.find((n) => n.id === infoPhoneId) ?? null;
   const hasPending = pendingRequests.length > 0;
   const isEmpty = numbers.length === 0 && !hasPending;
-  const showRequestActions =
-    demoPhoneStep !== "phone_tokens" && demoPhoneStep !== "phone_billing";
 
   return (
     <div className="space-y-4">
@@ -477,37 +469,32 @@ function OverviewStep({
       )}
 
       <div className="flex flex-wrap gap-2">
-        {showRequestActions && (
-          <>
-            <button
-              type="button"
-              data-setup-demo="setup-demo-phone-request"
-              className={landingBtnPrimary}
-              onClick={onRequestNumber}
-              disabled={requesting || hasPending || !canAffordPhoneNumber}
-              title={
-                !canAffordPhoneNumber
-                  ? `Mindestens ${formatPhoneNumberCostLabel()} erforderlich`
-                  : undefined
-              }
-            >
-              {requesting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-              Nummer beantragen
-            </button>
-            <button
-              type="button"
-              className={landingBtnSecondary}
-              onClick={onStartSip}
-              disabled={addingSip}
-            >
-              Eigene Nummer (SIP)
-            </button>
-          </>
-        )}
+        <button
+          type="button"
+          className={landingBtnPrimary}
+          onClick={onRequestNumber}
+          disabled={requesting || hasPending || !canAffordPhoneNumber}
+          title={
+            !canAffordPhoneNumber
+              ? `Mindestens ${formatPhoneNumberCostLabel()} erforderlich`
+              : undefined
+          }
+        >
+          {requesting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Plus className="h-4 w-4" />
+          )}
+          Nummer beantragen
+        </button>
+        <button
+          type="button"
+          className={landingBtnSecondary}
+          onClick={onStartSip}
+          disabled={addingSip}
+        >
+          Eigene Nummer (SIP)
+        </button>
       </div>
 
       {(numbers.length > 0 || hasPending) && (

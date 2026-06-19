@@ -1,25 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 import {
   landingBtnPrimary,
   landingBtnSecondary,
 } from "@/components/landing/landing-buttons";
 import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
+import {
+  highlightRectsEqual,
+  measureDemoHighlight,
+  placeDemoTooltip,
+  type DemoHighlightRect,
+  type DemoTooltipPlacement,
+} from "@/lib/setup-demo-overlay-geometry";
 import { getGuideStepById, getGuideStepIdForElement } from "@/lib/setup-demo-steps";
 import { cn } from "@/lib/utils";
-
-function rectsEqual(a: DOMRect, b: DOMRect): boolean {
-  return (
-    Math.abs(a.top - b.top) < 1 &&
-    Math.abs(a.left - b.left) < 1 &&
-    Math.abs(a.width - b.width) < 1 &&
-    Math.abs(a.height - b.height) < 1
-  );
-}
 
 function readTextFieldValue(container: Element): string {
   if (
@@ -77,10 +75,12 @@ function submitWizardFormForTarget(target: string): boolean {
 export function SetupDemoOverlay() {
   const demo = useSetupDemoOptional();
   const pathname = usePathname();
-  const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [highlight, setHighlight] = useState<DemoHighlightRect | null>(null);
+  const [tooltipPlacement, setTooltipPlacement] =
+    useState<DemoTooltipPlacement | null>(null);
   const [fieldFilled, setFieldFilled] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const guideStep = demo?.subStepId
     ? getGuideStepById(demo.subStepId)
@@ -89,57 +89,110 @@ export function SetupDemoOverlay() {
   const [targetReady, setTargetReady] = useState(false);
 
   const weiterEnabled =
-    guideStep?.id === "phone_tokens" ||
+    guideStep?.dismissOnly ||
     guideStep?.textInputOptional ||
     (guideStep?.textInput && fieldFilled) ||
     (!guideStep?.textInput &&
       !guideStep?.textInputOptional &&
+      !guideStep?.dismissOnly &&
       targetReady);
 
-  const showWeiter = guideStep?.id !== "phone_billing";
-  const weiterLabel =
-    guideStep?.id === "phone_tokens" ? "Zur Abrechnung" : "Weiter";
-  const skipLabel =
-    guideStep?.id === "phone_tokens" || guideStep?.id === "phone_billing"
-      ? "Überspringen"
-      : "Demo abbrechen";
+  const showWeiter = true;
+  const showSkip = !guideStep?.dismissOnly;
+  const skipLabel = "Demo abbrechen";
 
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (!guideStep || guideStep.hidden) {
-      setRect(null);
+    if (!guideStep || guideStep.hidden || guideStep.dismissOnly) {
+      setHighlight(null);
       return;
     }
 
     const target = guideStep.target;
     let scrolled = false;
+    let observedEl: Element | null = null;
 
     function measure() {
       const el = document.querySelector(`[data-setup-demo="${target}"]`);
       if (!el) return;
-      const next = el.getBoundingClientRect();
-      if (!scrolled && next.width > 0 && next.height > 0) {
+
+      const next = measureDemoHighlight(el);
+      if (!next) return;
+
+      if (!scrolled) {
         scrolled = true;
-        el.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+        el.scrollIntoView({
+          block: "center",
+          inline: "nearest",
+          behavior: "smooth",
+        });
       }
-      setRect((prev) => {
-        if (prev && rectsEqual(prev, next)) return prev;
-        return next;
-      });
+
+      setHighlight((prev) =>
+        highlightRectsEqual(prev, next) ? prev : next
+      );
+    }
+
+    function attachObserver() {
+      const el = document.querySelector(`[data-setup-demo="${target}"]`);
+      if (!el || el === observedEl) return;
+      observedEl = el;
+      measure();
     }
 
     measure();
-    const interval = window.setInterval(measure, 250);
+    attachObserver();
+
+    const interval = window.setInterval(attachObserver, 400);
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => measure())
+        : null;
+
+    if (resizeObserver) {
+      const el = document.querySelector(`[data-setup-demo="${target}"]`);
+      if (el) resizeObserver.observe(el);
+      const pollAttach = window.setInterval(() => {
+        const current = document.querySelector(`[data-setup-demo="${target}"]`);
+        if (current && current !== observedEl) {
+          observedEl = current;
+          resizeObserver.disconnect();
+          resizeObserver.observe(current);
+          measure();
+        }
+      }, 400);
+      window.addEventListener("resize", measure);
+      window.addEventListener("scroll", measure, true);
+      return () => {
+        window.clearInterval(interval);
+        window.clearInterval(pollAttach);
+        resizeObserver.disconnect();
+        window.removeEventListener("resize", measure);
+        window.removeEventListener("scroll", measure, true);
+      };
+    }
+
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
-
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
   }, [guideStep]);
+
+  useLayoutEffect(() => {
+    if (!highlight || !panelRef.current) {
+      setTooltipPlacement(null);
+      return;
+    }
+    const panelHeight = panelRef.current.offsetHeight;
+    const panelWidth = panelRef.current.offsetWidth;
+    setTooltipPlacement(
+      placeDemoTooltip(highlight, panelHeight, panelWidth)
+    );
+  }, [highlight, guideStep?.title, guideStep?.body, showWeiter, weiterEnabled]);
 
   useEffect(() => {
     if (!guideStep?.textInput && !guideStep?.textInputOptional) {
@@ -275,9 +328,8 @@ export function SetupDemoOverlay() {
   const handleWeiter = useCallback(() => {
     if (!guideStep || !demo?.active) return;
 
-    if (guideStep.id === "phone_tokens") {
-      demo.goToSubStep("phone_billing");
-      router.push("/billing");
+    if (guideStep.dismissOnly) {
+      void demo.completePhoneStep();
       return;
     }
 
@@ -319,7 +371,7 @@ export function SetupDemoOverlay() {
     }
 
     demo.advance();
-  }, [weiterEnabled, guideStep, demo, router]);
+  }, [weiterEnabled, guideStep, demo]);
 
   useEffect(() => {
     if (
@@ -355,57 +407,73 @@ export function SetupDemoOverlay() {
     !mounted ||
     !demo?.active ||
     !demo.demoStarted ||
-    demo.overlayPaused ||
     !guideStep ||
     guideStep.hidden ||
     demo.loading ||
-    (guideStep.id === "phone_tokens" && pathname !== "/phones") ||
-    (guideStep.id === "phone_billing" && pathname !== "/billing")
+    (guideStep.phase === "phone" && pathname !== "/phones")
   ) {
     return null;
   }
 
-  const pad = 6;
+  const panelStyle =
+    guideStep.dismissOnly || !highlight
+      ? {
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          width: Math.min(360, window.innerWidth - 32),
+        }
+      : tooltipPlacement
+    ? {
+        top: tooltipPlacement.top,
+        left: tooltipPlacement.left,
+        width: tooltipPlacement.width,
+        visibility: "visible" as const,
+      }
+    : highlight
+      ? {
+          top: Math.min(highlight.top + highlight.height + 12, window.innerHeight - 180),
+          left: Math.max(16, Math.min(highlight.left, window.innerWidth - 316)),
+          width: 300,
+          visibility: "hidden" as const,
+        }
+      : {
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          width: 300,
+        };
 
   return createPortal(
     <div className="pointer-events-none fixed inset-0 z-[200]">
-      <div className="pointer-events-none absolute inset-0 bg-black/20" />
-
-      {rect && (
-        <div
-          className="pointer-events-none absolute rounded border-2 border-[#0E121B] bg-transparent shadow-[0_0_0_9999px_rgba(0,0,0,0.2)]"
-          style={{
-            top: rect.top - pad,
-            left: rect.left - pad,
-            width: rect.width + pad * 2,
-            height: rect.height + pad * 2,
-          }}
-        />
+      {guideStep.dismissOnly ? (
+        <div className="pointer-events-none absolute inset-0 bg-[rgba(14,18,27,0.42)]" />
+      ) : (
+        highlight && (
+          <div
+            className="pointer-events-none absolute border-2 border-[#0E121B]"
+            style={{
+              top: highlight.top,
+              left: highlight.left,
+              width: highlight.width,
+              height: highlight.height,
+              borderRadius: highlight.radius,
+              boxShadow: "0 0 0 9999px rgba(14, 18, 27, 0.42)",
+            }}
+          />
+        )
       )}
 
       <div
+        ref={panelRef}
         data-setup-demo-overlay
-        className="pointer-events-auto absolute max-w-[320px] rounded border-2 border-[#0E121B] bg-white p-3 shadow-lg"
-        style={
-          rect
-            ? {
-                top: Math.min(rect.bottom + 12, window.innerHeight - 160),
-                left: Math.min(
-                  Math.max(16, rect.left),
-                  window.innerWidth - 336
-                ),
-              }
-            : {
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-              }
-        }
+        className="pointer-events-auto absolute rounded-lg border-2 border-[#0E121B] bg-white p-3.5 shadow-[0_12px_40px_rgba(14,18,27,0.14)]"
+        style={panelStyle}
       >
-        <p className="text-[12px] font-medium text-[#0E121B]">
+        <p className="text-[13px] font-semibold leading-snug text-[#0E121B]">
           {guideStep.title}
         </p>
-        <p className="mt-1.5 text-[12px] leading-relaxed text-[#525866]">
+        <p className="mt-1.5 break-words text-[12px] leading-relaxed text-[#525866]">
           {guideStep.body}
         </p>
         <div className="mt-3 flex gap-2">
@@ -417,24 +485,23 @@ export function SetupDemoOverlay() {
                 "landing-caption landing-radius-sm inline-flex min-h-9 flex-1 items-center justify-center px-3 text-[12px] transition-colors",
                 weiterEnabled
                   ? landingBtnPrimary
-                  : "cursor-not-allowed bg-black/10 text-[#99A0AE]"
+                  : "cursor-not-allowed bg-black/10 text-[#99A0AE]",
+                guideStep.dismissOnly && "w-full"
               )}
               onClick={handleWeiter}
             >
-              {weiterLabel}
+              Weiter
             </button>
           )}
-          <button
-            type="button"
-            className={cn(
-              landingBtnSecondary,
-              "flex-1 text-[12px]",
-              !showWeiter && "w-full"
-            )}
-            onClick={() => void demo.skip()}
-          >
-            {skipLabel}
-          </button>
+          {showSkip && (
+            <button
+              type="button"
+              className={cn(landingBtnSecondary, "flex-1 text-[12px]")}
+              onClick={() => void demo.skip()}
+            >
+              {skipLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>,

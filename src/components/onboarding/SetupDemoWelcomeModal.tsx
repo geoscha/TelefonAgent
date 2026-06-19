@@ -39,7 +39,7 @@ export function SetupDemoWelcomeModal() {
         </p>
         <p className={`${userLabelClass} mt-2`}>
           In wenigen Schritten richten Sie Ihren ersten KI-Telefonagenten ein.
-          Starten Sie die geführte Demo oder wechseln Sie direkt zur App.
+          Danach weisen Sie ihm eine Telefonnummer zu.
         </p>
 
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-1.5">

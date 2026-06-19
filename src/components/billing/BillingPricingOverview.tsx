@@ -56,8 +56,8 @@ export function BillingPricingOverview() {
     <section className="space-y-3">
       <p className={userTitleClass}>Preisübersicht (Tokens)</p>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,300px)] lg:items-start">
-        <div className={cn(userPanelClass, "space-y-5 p-5 sm:p-6")}>
+      <div className="grid gap-5 lg:grid-cols-3 lg:items-start">
+        <div className={cn(userPanelClass, "space-y-5 p-5 sm:p-6 lg:col-span-2")}>
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-4">
               <p className={userTitleClass}>Gesprächszeit / Monat</p>

@@ -241,7 +241,6 @@ export function AgentCreateWizard({
 
         {step === "website" && (
           <StepBody
-            dataDemo="setup-demo-agent-website"
             onSubmit={() => {
               setStep("ziel");
               demoGoTo("agent_ziel");
@@ -250,6 +249,7 @@ export function AgentCreateWizard({
             <FieldRow label="Website (optional)">
               <input
                 autoFocus
+                data-setup-demo="setup-demo-agent-website"
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
                 className={fieldClass}

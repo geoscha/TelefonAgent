@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -9,7 +9,6 @@ import { BillingHistorySection } from "@/components/billing/BillingHistorySectio
 import { BillingPaygCard } from "@/components/billing/BillingPaygCard";
 import { BillingPricingOverview } from "@/components/billing/BillingPricingOverview";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
-import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import { landingBtnPrimary } from "@/components/landing/landing-buttons";
 import {
   userLabelClass,
@@ -47,9 +46,7 @@ export default function BillingPage() {
 }
 
 function BillingPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const setupDemo = useSetupDemoOptional();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loadingPack, setLoadingPack] = useState<string | null>(null);
   const [billingStatus, setBillingStatus] = useState<{
@@ -58,25 +55,6 @@ function BillingPageContent() {
   const [packs, setPacks] = useState<TokenPackConfig[]>([]);
   const [packsLoading, setPacksLoading] = useState(true);
   const [paygEnabled, setPaygEnabled] = useState(false);
-
-  const demoBillingStep =
-    setupDemo?.active &&
-    setupDemo.step === "phone" &&
-    setupDemo.subStepId === "phone_billing";
-
-  const finishDemoTokenPurchase = useCallback(() => {
-    if (!setupDemo?.active || setupDemo.step !== "phone") return;
-    setupDemo.goToSubStep("phone_request");
-    router.push("/phones");
-  }, [router, setupDemo]);
-
-  useEffect(() => {
-    if (!demoBillingStep || packsLoading) return;
-    const el = document.querySelector(
-      '[data-setup-demo="setup-demo-billing-pack-5k"]'
-    );
-    el?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [demoBillingStep, packsLoading]);
 
   useEffect(() => {
     fetch("/api/billing/packs")
@@ -106,11 +84,6 @@ function BillingPageContent() {
   useStripeCheckoutReturn({
     pathname: "/billing",
     onSuccess: () => {
-      setupDemo?.resumeOverlay();
-      if (setupDemo?.active && setupDemo.step === "phone") {
-        finishDemoTokenPurchase();
-        return;
-      }
       fetch("/api/profile")
         .then((r) => r.json())
         .then((data) => {
@@ -160,10 +133,7 @@ function BillingPageContent() {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          packId,
-          ...(demoBillingStep ? { returnTo: "phones" } : {}),
-        }),
+        body: JSON.stringify({ packId }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         url?: string;
@@ -187,17 +157,13 @@ function BillingPageContent() {
         toast.success(
           `${(data.tokens ?? 35_000).toLocaleString("de-CH")} Tokens gutgeschrieben (Test).`
         );
-        if (demoBillingStep) {
-          finishDemoTokenPurchase();
-        }
         return;
       }
       if (res.ok && data.url) {
-        setupDemo?.pauseOverlay();
         if (data.sessionId) {
           storePendingStripeCheckout({
             sessionId: data.sessionId,
-            returnTo: demoBillingStep ? "phones" : "billing",
+            returnTo: "billing",
           });
         }
         window.location.href = data.url;
@@ -267,26 +233,11 @@ function BillingPageContent() {
             <>
               {packs
                 .filter((pack) => pack.id !== "pack_100k")
-                .map((pack) => {
-                  const isDemoRecommended =
-                    demoBillingStep && pack.id === "pack_5k";
-                  return (
+                .map((pack) => (
               <div
                 key={pack.id}
-                data-setup-demo={
-                  isDemoRecommended ? "setup-demo-billing-pack-5k" : undefined
-                }
-                className={cn(
-                  userPanelClass,
-                  "flex flex-col p-6",
-                  isDemoRecommended && "border-2 border-[#0E121B]"
-                )}
+                className={cn(userPanelClass, "flex flex-col p-6")}
               >
-                {isDemoRecommended && (
-                  <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[#525866]">
-                    Empfohlen
-                  </p>
-                )}
                 <p className={userTitleClass}>{pack.label}</p>
                 <div className="mt-4 flex items-baseline gap-1">
                   <span className="text-[28px] font-normal leading-none text-[#0E121B]">
@@ -310,8 +261,7 @@ function BillingPageContent() {
                   </button>
                 </div>
               </div>
-            );
-                })}
+            ))}
               <BillingPaygCard onEnabledChange={setPaygEnabled} />
             </>
           )}

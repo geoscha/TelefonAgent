@@ -1,18 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { QuotaGate } from "@/components/billing/QuotaGate";
-import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import {
   PhoneNumberWizard,
   type PendingPhoneRequestView,
   type UserPhoneNumberView,
 } from "@/components/telefonagent/PhoneNumberWizard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useStripeCheckoutReturn } from "@/lib/billing/use-stripe-checkout-return";
 import { notifyTokenBalanceChanged, useTokenBalance } from "@/lib/hooks/useTokenBalance";
 import { useWorkspace } from "@/lib/hooks/useWorkspace";
 import { formatBillingDateTime, PHONE_NUMBER_MONTHLY_TOKENS } from "@/lib/billing/quota-display";
@@ -28,12 +25,9 @@ interface Settings {
 }
 
 export default function PhonesPage() {
-  const router = useRouter();
-  const setupDemo = useSetupDemoOptional();
   const { data: workspace, loading: workspaceLoading, revalidate: revalidateWorkspace } =
     useWorkspace();
-  const { tokenBalance, loading: tokenLoading, refresh: refreshTokenBalance } =
-    useTokenBalance({ syncOnMount: true });
+  const { tokenBalance, loading: tokenLoading } = useTokenBalance({ syncOnMount: true });
   const canAffordPhoneNumber =
     PHONE_NUMBER_MONTHLY_TOKENS <= 0 ||
     (!tokenLoading && (tokenBalance?.balance ?? 0) >= PHONE_NUMBER_MONTHLY_TOKENS);
@@ -77,44 +71,6 @@ export default function PhonesPage() {
     applyWorkspace(workspace);
   }, [workspace, applyWorkspace]);
 
-  useEffect(() => {
-    if (
-      !setupDemo?.active ||
-      setupDemo.step !== "phone" ||
-      setupDemo.subStepId !== "phone_tokens" ||
-      tokenLoading
-    ) {
-      return;
-    }
-    if (canAffordPhoneNumber) {
-      setupDemo.goToSubStep("phone_request");
-    }
-  }, [
-    canAffordPhoneNumber,
-    tokenLoading,
-    setupDemo?.active,
-    setupDemo?.step,
-    setupDemo?.subStepId,
-    setupDemo?.goToSubStep,
-  ]);
-
-  useStripeCheckoutReturn({
-    pathname: "/phones",
-    onCancel: () => {
-      if (setupDemo?.active && setupDemo.step === "phone") {
-        setupDemo.goToSubStep("phone_billing");
-        router.push("/billing");
-      }
-    },
-    onSuccess: () => {
-      void refreshTokenBalance(true);
-      setupDemo?.resumeOverlay();
-      if (setupDemo?.active && setupDemo.step === "phone") {
-        setupDemo.goToSubStep("phone_request");
-      }
-    },
-  });
-
   const loadOnboarding = useCallback(async () => {
     await revalidateWorkspace();
   }, [revalidateWorkspace]);
@@ -157,9 +113,6 @@ export default function PhonesPage() {
         setOnboardingPhase(data.phase as OnboardingPhase);
         applySettings(data.settings as Settings);
         await loadOnboarding();
-        if (setupDemo?.active && setupDemo.step === "phone") {
-          await setupDemo.completePhoneStep();
-        }
         toast.success(
           data.autoAssigned
             ? "Nummer zugewiesen"
@@ -330,7 +283,10 @@ export default function PhonesPage() {
 
   return (
     <QuotaGate>
-      <div className="mx-auto max-w-[820px] space-y-6">
+      <div
+        className="mx-auto max-w-[820px] space-y-6"
+        data-setup-demo="setup-demo-phone-intro"
+      >
         {statusLoading ? (
           <Skeleton className="h-48 w-full rounded" />
         ) : (
@@ -352,7 +308,6 @@ export default function PhonesPage() {
             onRemove={handleRemove}
             onForwardingTypeChange={setForwardingType}
             canAffordPhoneNumber={canAffordPhoneNumber}
-            demoPhoneStep={setupDemo?.subStepId ?? null}
           />
         )}
       </div>

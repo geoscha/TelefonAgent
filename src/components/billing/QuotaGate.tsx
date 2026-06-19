@@ -4,27 +4,20 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { landingBtnPrimary } from "@/components/landing/landing-buttons";
-import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import {
   userLabelClass,
   userPanelClass,
   userTitleClass,
 } from "@/components/user/user-styles";
+import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import { readPendingStripeCheckout } from "@/lib/billing/pending-checkout-client";
 import { useTokenBalance } from "@/lib/hooks/useTokenBalance";
 import { cn } from "@/lib/utils";
 
 export function QuotaGate({ children }: { children: React.ReactNode }) {
-  const setupDemo = useSetupDemoOptional();
+  const demo = useSetupDemoOptional();
   const { tokenBalance, loading } = useTokenBalance({ syncOnMount: true });
   const [pendingCheckout, setPendingCheckout] = useState(false);
-
-  const demoBuyingTokens =
-    setupDemo?.active &&
-    setupDemo.step === "phone" &&
-    (setupDemo.subStepId === "phone_tokens" ||
-      setupDemo.subStepId === "phone_billing" ||
-      setupDemo.overlayPaused);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -45,11 +38,11 @@ export function QuotaGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   const exhausted = Boolean(tokenBalance?.exhausted);
+  const demoOnPhoneStep = Boolean(
+    demo?.active && demo.demoStarted && demo.step === "phone"
+  );
   const showPaywall =
-    exhausted &&
-    !loading &&
-    !demoBuyingTokens &&
-    !pendingCheckout;
+    exhausted && !loading && !pendingCheckout && !demoOnPhoneStep;
 
   return (
     <div className="relative min-h-[200px]">

@@ -14,6 +14,8 @@ export interface SetupDemoGuideStep {
   textInput?: boolean;
   /** Optional text field — demo-panel "Weiter" always available. */
   textInputOptional?: boolean;
+  /** Centered panel only — no spotlight; Weiter ends the step. */
+  dismissOnly?: boolean;
 }
 
 export const SETUP_DEMO_GUIDE: SetupDemoGuideStep[] = [
@@ -109,27 +111,12 @@ export const SETUP_DEMO_GUIDE: SetupDemoGuideStep[] = [
     body: "Klicken Sie auf Speichern — Ihr Agent ist dann einsatzbereit.",
   },
   {
-    id: "phone_tokens",
+    id: "phone_intro",
     phase: "phone",
-    target: "setup-demo-billing-nav",
-    title: "Schritt 2 · Guthaben aufladen",
-    body: "Um eine Telefonnummer zu beantragen, benötigen Sie Tokens. Klicken Sie auf «Zur Abrechnung», um das empfohlene 5'000-Tokens-Paket zu kaufen.",
-    advanceOnClick: true,
-  },
-  {
-    id: "phone_billing",
-    phase: "phone",
-    target: "setup-demo-billing-pack-5k",
-    title: "Tokens kaufen",
-    body: "Wir empfehlen das Paket mit 5'000 Tokens — damit können Sie Ihre Telefonnummer beantragen und Anrufe empfangen.",
-  },
-  {
-    id: "phone_request",
-    phase: "phone",
-    target: "setup-demo-phone-request",
-    title: "Nummer beantragen",
-    body: "Beantragen Sie Ihre erste Cura-Telefonnummer für eingehende Anrufe.",
-    advanceOnClick: true,
+    target: "setup-demo-phone-intro",
+    title: "Schritt 2 · Telefonnummer",
+    body: "Um Anrufe an Ihren KI-Agenten weiterzuleiten, benötigen Sie eine Telefonnummer. Beantragen Sie hier eine Nummer und weisen Sie sie Ihrem Agenten zu — der Rest liegt bei Ihnen.",
+    dismissOnly: true,
   },
 ];
 
