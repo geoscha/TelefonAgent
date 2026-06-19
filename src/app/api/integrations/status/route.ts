@@ -6,7 +6,7 @@ import { getCalendars, getSettings, type CalendarProvider } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
-const PROVIDERS: CalendarProvider[] = ["google", "microsoft", "apple"];
+const PROVIDERS: CalendarProvider[] = ["apple"];
 
 export async function GET() {
   const [calendarsMap, settings] = await Promise.all([

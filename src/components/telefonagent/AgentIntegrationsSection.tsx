@@ -17,10 +17,8 @@ import type { StoredAgent } from "@/lib/onboarding-types";
 import type { CalendarProvider } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-const PROVIDER_LABELS: Record<CalendarProvider, string> = {
+const PROVIDER_LABELS: Record<"apple", string> = {
   apple: "Apple Kalender",
-  google: "Google Kalender",
-  microsoft: "Microsoft Outlook",
 };
 
 interface ConnectedCalendar {
@@ -100,7 +98,9 @@ export function AgentIntegrationsSection({
           accountLabel?: string;
         }>
       )
-        .filter((calendar) => calendar.connected)
+        .filter(
+          (calendar) => calendar.connected && calendar.provider === "apple"
+        )
         .map((calendar) => ({
           provider: calendar.provider,
           accountLabel: calendar.accountLabel,
@@ -250,7 +250,7 @@ export function AgentIntegrationsSection({
         <div className="min-w-0">
           <p className="text-[13px] font-medium text-[#0E121B]">
             {activeProvider
-              ? PROVIDER_LABELS[activeProvider]
+              ? PROVIDER_LABELS.apple
               : "Kalender-Integration"}
           </p>
           <p className="truncate text-[11px] text-[#99A0AE]">
@@ -289,7 +289,7 @@ export function AgentIntegrationsSection({
               >
                 {connectedCalendars.map((entry) => (
                   <option key={entry.provider} value={entry.provider}>
-                    {PROVIDER_LABELS[entry.provider]}
+                    {PROVIDER_LABELS.apple}
                     {entry.accountLabel ? ` (${entry.accountLabel})` : ""}
                   </option>
                 ))}
