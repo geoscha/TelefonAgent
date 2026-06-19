@@ -355,6 +355,7 @@ export function SetupDemoOverlay() {
     !mounted ||
     !demo?.active ||
     !demo.demoStarted ||
+    demo.overlayPaused ||
     !guideStep ||
     guideStep.hidden ||
     demo.loading ||

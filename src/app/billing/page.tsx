@@ -106,7 +106,8 @@ function BillingPageContent() {
   useStripeCheckoutReturn({
     pathname: "/billing",
     onSuccess: () => {
-      if (demoBillingStep) {
+      setupDemo?.resumeOverlay();
+      if (setupDemo?.active && setupDemo.step === "phone") {
         finishDemoTokenPurchase();
         return;
       }
@@ -192,6 +193,7 @@ function BillingPageContent() {
         return;
       }
       if (res.ok && data.url) {
+        setupDemo?.pauseOverlay();
         if (data.sessionId) {
           storePendingStripeCheckout({
             sessionId: data.sessionId,

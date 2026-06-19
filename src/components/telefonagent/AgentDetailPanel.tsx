@@ -112,6 +112,19 @@ function ToggleRow({
   );
 }
 
+function resolvePrimaryAgentNumber(
+  phoneNumbers: AgentPhoneNumber[],
+  agentPhoneNumberId?: string,
+  curaNumber?: string
+): string | null {
+  const assigned =
+    phoneNumbers.find((p) => p.id === agentPhoneNumberId) ??
+    phoneNumbers.find((p) => p.isPrimary) ??
+    phoneNumbers[0];
+
+  return assigned?.phoneNumber ?? curaNumber?.trim() ?? null;
+}
+
 function AgentReachability({
   isActive,
   curaNumber,
@@ -518,6 +531,12 @@ export function AgentDetailPanel({
     (phoneNumbers.length === 1 ? phoneNumbers[0]?.id : "") ??
     "";
 
+  const primaryAgentNumber = resolvePrimaryAgentNumber(
+    phoneNumbers,
+    selectedPhoneId || agent.phoneNumberId,
+    curaNumber
+  );
+
   const voiceOptions =
     voices.length > 0
       ? voices
@@ -534,13 +553,67 @@ export function AgentDetailPanel({
         )}
       >
         <div className="sticky top-0 z-10 -mx-5 border-b border-[#E1E4EA] bg-white px-5 pb-4 pt-0 sm:-mx-6 sm:px-6">
-          <LabeledField label="Name">
-            <input
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              className={cn(fieldClass, "text-[16px] font-medium")}
-            />
-          </LabeledField>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+            <div className="min-w-0 flex-1">
+              <input
+                value={name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                aria-label="Agentenname"
+                className={cn(
+                  fieldClass,
+                  "text-[18px] font-semibold leading-tight sm:text-[20px]"
+                )}
+              />
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center gap-3 sm:gap-4">
+              <div
+                className={cn(
+                  "flex items-center gap-2.5 rounded-lg border px-3 py-2",
+                  isActive
+                    ? "border-[#22c55e]/50 bg-[#f0fdf4]"
+                    : "border-[#E1E4EA] bg-[#FAFAFA]"
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-2.5 w-2.5 shrink-0 rounded-full",
+                    isActive ? "bg-[#22c55e]" : "bg-[#99A0AE]"
+                  )}
+                  aria-hidden
+                />
+                <span className="text-[13px] font-semibold text-[#0E121B]">
+                  {isActive ? "Aktiv" : "Inaktiv"}
+                </span>
+                <Switch
+                  checked={isActive}
+                  onCheckedChange={handleActiveToggle}
+                  aria-label="Agent aktivieren oder deaktivieren"
+                  disabled={activating || (!isActive && !canActivateAgent)}
+                />
+              </div>
+
+              <div className="flex min-w-0 items-baseline gap-2 border-[#E1E4EA] sm:border-l sm:pl-4">
+                <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-[#99A0AE]">
+                  Erreichbar
+                </span>
+                <span
+                  className={cn(
+                    "truncate font-mono text-[15px] font-semibold tabular-nums sm:text-[16px]",
+                    primaryAgentNumber ? "text-[#0E121B]" : "text-[#99A0AE]"
+                  )}
+                >
+                  {primaryAgentNumber ?? "Keine Nummer"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {!canActivateAgent && !isActive && (
+            <p className="mt-2 text-[12px] text-[#99A0AE]">
+              Aktivierung erst möglich, wenn eine Telefonnummer hinterlegt ist.
+            </p>
+          )}
 
           <p className={cn(userStatClass, "mt-3")}>
             {usageLoading
@@ -574,21 +647,13 @@ export function AgentDetailPanel({
 
         <div key={agent.id} className="mt-4 flex-1 space-y-2">
           <AgentDetailSection
-            title="Status"
-            subtitle={isActive ? "Agent ist aktiv" : "Agent ist inaktiv"}
+            title="Erreichbarkeit"
+            subtitle={
+              isActive
+                ? "Weitere Leitungen und Weiterleitungen"
+                : "Details zur Telefonnummer"
+            }
           >
-            <ToggleRow
-              label={isActive ? "Aktiv" : "Inaktiv"}
-              checked={isActive}
-              onCheckedChange={handleActiveToggle}
-              ariaLabel="Agent aktivieren oder deaktivieren"
-              disabled={activating || (!isActive && !canActivateAgent)}
-            />
-            {!canActivateAgent && !isActive && (
-              <p className="text-[12px] text-[#99A0AE]">
-                Aktivierung erst möglich, wenn eine Telefonnummer hinterlegt ist.
-              </p>
-            )}
             <AgentReachability
               isActive={isActive}
               curaNumber={curaNumber}

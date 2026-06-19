@@ -4,50 +4,63 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { landingBtnPrimary } from "@/components/landing/landing-buttons";
+import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import {
   userLabelClass,
   userPanelClass,
   userTitleClass,
 } from "@/components/user/user-styles";
-import type { TokenBalanceView } from "@/lib/billing/quota-display";
-import {
-  readStaleCache,
-  writeStaleCache,
-} from "@/lib/client/stale-cache";
+import { readPendingStripeCheckout } from "@/lib/billing/pending-checkout-client";
+import { useTokenBalance } from "@/lib/hooks/useTokenBalance";
 import { cn } from "@/lib/utils";
 
-const TOKEN_CACHE_KEY = "token-balance";
-
 export function QuotaGate({ children }: { children: React.ReactNode }) {
-  const [tokenBalance, setTokenBalance] = useState<TokenBalanceView | null>(
-    () => readStaleCache<TokenBalanceView>(TOKEN_CACHE_KEY, 120_000)
-  );
+  const setupDemo = useSetupDemoOptional();
+  const { tokenBalance, loading } = useTokenBalance({ syncOnMount: true });
+  const [pendingCheckout, setPendingCheckout] = useState(false);
+
+  const demoBuyingTokens =
+    setupDemo?.active &&
+    setupDemo.step === "phone" &&
+    (setupDemo.subStepId === "phone_tokens" ||
+      setupDemo.subStepId === "phone_billing" ||
+      setupDemo.overlayPaused);
 
   useEffect(() => {
-    fetch("/api/profile")
-      .then((r) => r.json())
-      .then((p) => {
-        if (p.tokenBalance) {
-          const balance = p.tokenBalance as TokenBalanceView;
-          setTokenBalance(balance);
-          writeStaleCache(TOKEN_CACHE_KEY, balance);
-        }
-      })
-      .catch(() => {});
+    if (typeof window === "undefined") return;
+
+    function syncPending() {
+      setPendingCheckout(Boolean(readPendingStripeCheckout()));
+    }
+
+    syncPending();
+    window.addEventListener("pageshow", syncPending);
+    document.addEventListener("visibilitychange", syncPending);
+    window.addEventListener("cura:token-balance-changed", syncPending);
+    return () => {
+      window.removeEventListener("pageshow", syncPending);
+      document.removeEventListener("visibilitychange", syncPending);
+      window.removeEventListener("cura:token-balance-changed", syncPending);
+    };
   }, []);
 
   const exhausted = Boolean(tokenBalance?.exhausted);
+  const showPaywall =
+    exhausted &&
+    !loading &&
+    !demoBuyingTokens &&
+    !pendingCheckout;
 
   return (
     <div className="relative min-h-[200px]">
       <div
         className={
-          exhausted ? "pointer-events-none select-none opacity-40" : undefined
+          showPaywall ? "pointer-events-none select-none opacity-40" : undefined
         }
       >
         {children}
       </div>
-      {exhausted && tokenBalance && (
+      {showPaywall && tokenBalance && (
         <div className="absolute inset-0 z-20 flex items-start justify-center pt-32 sm:pt-44">
           <div className={cn(userPanelClass, "mx-4 max-w-sm p-5 shadow-sm")}>
             <p className={userTitleClass}>Guthaben aufladen</p>

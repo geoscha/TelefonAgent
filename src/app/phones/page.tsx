@@ -108,6 +108,7 @@ export default function PhonesPage() {
     },
     onSuccess: () => {
       void refreshTokenBalance(true);
+      setupDemo?.resumeOverlay();
       if (setupDemo?.active && setupDemo.step === "phone") {
         setupDemo.goToSubStep("phone_request");
       }
