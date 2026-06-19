@@ -37,7 +37,7 @@ function DemoOrb() {
 }
 
 export function LiveDemoSection() {
-  const [useCaseId, setUseCaseId] = useState<DemoUseCaseId>("reception");
+  const [useCaseId, setUseCaseId] = useState<DemoUseCaseId>("cura");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);

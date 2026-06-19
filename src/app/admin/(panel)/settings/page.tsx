@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { adminPanelClass } from "@/components/admin/admin-ui";
+import { AdminDemoAgentSection } from "@/components/admin/AdminDemoAgentSection";
 import { AdminSecretsSection } from "@/components/admin/AdminSecretsSection";
 import { AdminTokenPacksSection } from "@/components/admin/AdminTokenPacksSection";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,8 @@ export default function AdminSettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-3">
       <AdminSecretsSection />
+
+      <AdminDemoAgentSection />
 
       <AdminTokenPacksSection />
 

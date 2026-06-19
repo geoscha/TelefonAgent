@@ -5,6 +5,7 @@ import {
   fallbackDemoReply,
   type DemoMessage,
 } from "@/lib/demo/responses";
+import { getDemoAgentConfig } from "@/lib/admin/demo-config";
 import { getDemoVoicePreset } from "@/lib/demo/voices";
 import type { AgentLanguageLabel } from "@/lib/elevenlabs/agent-config";
 
@@ -30,7 +31,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const reply = await generateReply(messages, lastUser.content, language);
+    const reply = await generateReply(
+      messages,
+      lastUser.content,
+      language,
+      preset.id
+    );
     return NextResponse.json({ ok: true, reply });
   } catch {
     return NextResponse.json(
@@ -43,10 +49,15 @@ export async function POST(req: Request) {
 async function generateReply(
   messages: DemoMessage[],
   userText: string,
-  language: AgentLanguageLabel
+  language: AgentLanguageLabel,
+  voicePresetId: string
 ): Promise<string> {
+  const agentConfig = await getDemoAgentConfig();
+  const preset = getDemoVoicePreset(voicePresetId);
+  const effectiveLanguage = language ?? preset.language;
+
   const apiKey = process.env.ENRICHMENT_API_KEY;
-  if (!apiKey) return fallbackDemoReply(userText, language);
+  if (!apiKey) return fallbackDemoReply(userText, effectiveLanguage);
 
   const baseUrl = (
     process.env.ENRICHMENT_BASE_URL ?? "https://api.openai.com/v1"
@@ -64,7 +75,13 @@ async function generateReply(
       temperature: 0.5,
       max_tokens: 200,
       messages: [
-        { role: "system", content: buildDemoSystemPrompt(language) },
+        {
+          role: "system",
+          content: buildDemoSystemPrompt(
+            effectiveLanguage,
+            agentConfig.context
+          ),
+        },
         ...messages.slice(-8).map((m) => ({
           role: m.role,
           content: m.content,
@@ -73,11 +90,11 @@ async function generateReply(
     }),
   });
 
-  if (!response.ok) return fallbackDemoReply(userText, language);
+  if (!response.ok) return fallbackDemoReply(userText, effectiveLanguage);
 
   const json = (await response.json()) as {
     choices?: { message?: { content?: string } }[];
   };
   const content = json.choices?.[0]?.message?.content?.trim();
-  return content || fallbackDemoReply(userText, language);
+  return content || fallbackDemoReply(userText, effectiveLanguage);
 }

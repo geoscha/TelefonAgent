@@ -1,4 +1,5 @@
 import type { AgentLanguageLabel } from "@/lib/elevenlabs/agent-config";
+import { buildDemoAgentContextBlock } from "@/lib/demo/cura-product-context";
 import { demoLanguageInstructions } from "@/lib/demo/voices";
 
 export type DemoMessage = {
@@ -6,21 +7,33 @@ export type DemoMessage = {
   content: string;
 };
 
-export const DEMO_GREETING_DE =
-  "Guten Tag. Ich bin Cura — Ihr KI-Telefonagent für Liegenschaftsverwaltungen. Ich nehme Anrufe entgegen, erfasse Schäden, kläre Mietfragen und buche Termine — auch nachts und am Wochenende. Sprechen Sie mich an oder tippen Sie eine Frage.";
+export const DEFAULT_DEMO_GREETING_DE =
+  "Guten Tag, hier ist Cura. Haben Sie Fragen zu unserem KI-Telefonagenten? Ich beantworte sie gern — zum Beispiel zu Preisen, Funktionen oder dem Setup.";
 
-export const DEMO_GREETING_CH =
-  "Grüezi, da isch de Telefonagänt vo Cura. Ich nimm Ahruuf für d'Liegenschaftsverwaltig a, erfass Schäde, klär Mietfrage und buch Termin — au nachts und am Wuchenänd. Red mit mir oder tipp e Nachricht.";
+export const DEFAULT_DEMO_GREETING_CH =
+  "Grüezi, da isch Cura. Hätsch Frage zu üsem KI-Telefonagänt? Gern beantwort ich sie — z. B. zu Priis, Funktione oder Setup.";
 
-export function demoGreeting(language: AgentLanguageLabel): string {
-  return language === "Schweizerdeutsch" ? DEMO_GREETING_CH : DEMO_GREETING_DE;
+/** @deprecated Use DEFAULT_DEMO_GREETING_DE */
+export const DEMO_GREETING_DE = DEFAULT_DEMO_GREETING_DE;
+
+/** @deprecated Use DEFAULT_DEMO_GREETING_CH */
+export const DEMO_GREETING_CH = DEFAULT_DEMO_GREETING_CH;
+
+export function demoGreeting(
+  language: AgentLanguageLabel,
+  customGreeting?: string | null
+): string {
+  if (customGreeting?.trim()) return customGreeting.trim();
+  return language === "Schweizerdeutsch"
+    ? DEFAULT_DEMO_GREETING_CH
+    : DEFAULT_DEMO_GREETING_DE;
 }
 
 const FALLBACK_REPLIES_DE: { match: RegExp; reply: string }[] = [
   {
-    match: /preis|kosten|gratis|pro|abo|tarif|chf/i,
+    match: /preis|kosten|gratis|abo|tarif|chf|token|guthaben|auflad/i,
     reply:
-      "Cura startet gratis mit inkludierten Gesprächsminuten. Mit Cura Pro erhalten Sie eine Stunde Telefonate pro Monat, Kalender-Integration und erweiterte Auswertungen — ab CHF 50 pro Monat.",
+      "Cura läuft über Tokens: Gesprächszeit kostet 600 Tokens pro Minute, eine Telefonnummer 1'800 Tokens pro Monat. Sie laden Pakete unter Abrechnung auf — ab CHF 0.50 — oder nutzen Pay as you Go mit hinterlegter Karte.",
   },
   {
     match: /vorteil|nutzen|warum|was bringt|funktion/i,
@@ -51,9 +64,9 @@ const FALLBACK_REPLIES_DE: { match: RegExp; reply: string }[] = [
 
 const FALLBACK_REPLIES_CH: { match: RegExp; reply: string }[] = [
   {
-    match: /preis|kosten|gratis|pro|abo|tarif|chf/i,
+    match: /preis|kosten|gratis|abo|tarif|chf|token|guthabe|uflad/i,
     reply:
-      "Cura startet gratis mit inkludierte Telefonminute. Mit Cura Pro hätsch e Stund pro Monet, Kalender-Integration und meh Uswertige — ab CHF 50 pro Monet.",
+      "Cura lauft über Tokens: Gspröchsziit chostet 600 Tokens pro Minute, e Telefonnummere 1'800 Tokens pro Monet. Du ladisch Paket unter Abrechnig uf — ab CHF 0.50 — oder nutzisch Pay as you Go mit hinterlegter Charte.",
   },
   {
     match: /vorteil|nutzen|warum|was bringt|funktion/i,
@@ -102,31 +115,26 @@ export function fallbackDemoReply(
     : FALLBACK_DEFAULT_DE;
 }
 
-export function buildDemoSystemPrompt(language: AgentLanguageLabel): string {
+export function buildDemoSystemPrompt(
+  language: AgentLanguageLabel,
+  adminContext?: string | null
+): string {
+  const knowledge = buildDemoAgentContextBlock(language, adminContext);
   const base =
     language === "Schweizerdeutsch"
-      ? `Du bisch de Cura-Verkaufsagent uf de Landingpage.
-Din Ziel: Interessente überzeuge, Cura uszprobiere und sich aazmälde.
-Erklär churz und überzeugend d'Vorteil:
-- KI-Telefonagent nimm Ahruuf 24/7 a (Schäde, Miete, Termin)
-- Transkript, Zämmefassige und Ufnahme in de App
-- Gratis-Start mit inkludierte Minute, Cura Pro mit Kalender-Integration
-- Einfaches Setup: Nummere wiiterleite, Agent konfiguriere, fertig
-Antwort in 1–3 Sätz, freundlich und professionell. Kei Emojis. Bezug uf Cura als Produkt.
+      ? `Du bisch de Cura-Demo-Telefonagänt uf de Landingpage.
+Din Ziel: Frage zuerst, ob öpper Frage zu Cura het, und beantworte sie klar und überzeugend.
+Antwort in 1–3 Sätz, freundlich und professionell. Kei Emojis.
 Verwende nie s Wort «Agent» alleine — immer «Telefonagänt».
 Wenn öpper überzeugt wirkt, lad zum gratis Test ii.`
-      : `Du bist der Cura-Verkaufsagent auf der Landingpage.
-Dein Ziel: Interessenten überzeugen, Cura auszuprobieren und sich anzumelden.
-Erkläre kurz und überzeugend die Vorteile:
-- KI-Telefonagent nimmt Anrufe 24/7 an (Schäden, Miete, Termine)
-- Transkripte, Zusammenfassungen und Aufzeichnungen in der App
-- Gratis-Start mit inkludierten Minuten, Cura Pro mit Kalender-Integration
-- Einfaches Setup: Nummer weiterleiten, Agent konfigurieren, fertig
-Antworte in 1–3 Sätzen, freundlich und professionell. Keine Emojis. Beziehe dich auf Cura als Produkt.
+      : `Du bist der Cura-Demo-Telefonagent auf der Landingpage.
+Dein Ziel: Frage zuerst, ob die Person Fragen zu Cura hat, und beantworte sie klar und überzeugend.
+Antworte in 1–3 Sätzen, freundlich und professionell. Keine Emojis.
 Verwende nie das Wort «Agent» allein — sage «Telefonagent».
 Wenn jemand überzeugt wirkt, lade zum kostenlosen Test ein.`;
 
-  return demoLanguageInstructions(language)
-    ? `${base}\n\n${demoLanguageInstructions(language)}`
-    : base;
+  const lang = demoLanguageInstructions(language);
+  const parts = [base, knowledge];
+  if (lang) parts.push(lang);
+  return parts.join("\n\n");
 }

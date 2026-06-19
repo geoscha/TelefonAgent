@@ -3,6 +3,7 @@ import "server-only";
 import {
   buildDemoOutboundSystemPrompt,
 } from "@/lib/demo/demo-agent-config";
+import { getDemoAgentConfig } from "@/lib/admin/demo-config";
 import {
   ensureDemoCallTarget,
   updateDemoAgentForOutbound,
@@ -60,10 +61,14 @@ export async function initiateDemoCallback(
   }
 
   try {
-    const greeting = buildDemoOutboundGreeting(name, useCase);
+    const agentConfig = await getDemoAgentConfig();
+    const greeting =
+      agentConfig.greeting ?? buildDemoOutboundGreeting(name, useCase);
     const systemPrompt = buildDemoOutboundSystemPrompt({
       name,
       scenario: useCase.scenario,
+      adminContext: agentConfig.context,
+      curaAgent: useCase.curaAgent,
     });
 
     const { agentId, agentPhoneNumberId, phoneProvider } =
@@ -106,7 +111,7 @@ export async function initiateDemoCallback(
 
     return {
       ok: true,
-      message: "Lea ruft Sie gleich an — bitte nehmen Sie Ihr Telefon entgegen.",
+      message: "Cura ruft Sie gleich an — bitte nehmen Sie Ihr Telefon entgegen.",
       conversationId: data.conversationId,
     };
   } catch (error) {

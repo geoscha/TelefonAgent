@@ -1,6 +1,7 @@
 import type { DemoVoicePresetId } from "@/lib/demo/voices";
 
 export type DemoUseCaseId =
+  | "cura"
   | "reception"
   | "appointment"
   | "lead"
@@ -13,9 +14,19 @@ export interface DemoUseCase {
   label: string;
   voice: DemoVoicePresetId;
   scenario: string;
+  /** Cura sales demo — answers product questions instead of role-play. */
+  curaAgent?: boolean;
 }
 
 export const DEMO_USE_CASES: DemoUseCase[] = [
+  {
+    id: "cura",
+    label: "Cura Agent",
+    voice: "female-de",
+    curaAgent: true,
+    scenario:
+      "Sie sind der Cura-Demo-Telefonagent. Fragen Sie zuerst, ob die Person Fragen zu Cura hat, und beantworten Sie diese zu Preisen, Funktionen und Setup.",
+  },
   {
     id: "reception",
     label: "Empfang",
@@ -64,7 +75,15 @@ export function getDemoUseCase(id: string): DemoUseCase {
   return DEMO_USE_CASES.find((c) => c.id === id) ?? DEMO_USE_CASES[0];
 }
 
-export function buildDemoOutboundGreeting(name: string, useCase: DemoUseCase): string {
+export function buildDemoOutboundGreeting(
+  name: string,
+  useCase: DemoUseCase
+): string {
   const salutation = name.trim() ? `Guten Tag ${name.trim()}` : "Guten Tag";
-  return `${salutation}, hier ist Lea von Cura. Schön, dass Sie unsere Live-Demo ausprobieren — Sie haben «${useCase.label}» gewählt. Haben Sie kurz Zeit? Ich zeige Ihnen, wie angenehm unsere Gespräche klingen.`;
+
+  if (useCase.curaAgent) {
+    return `${salutation}, hier ist Cura. Schön, dass Sie unsere Live-Demo ausprobieren. Haben Sie Fragen zu Cura — zum Beispiel zu Preisen, Funktionen oder dem Setup? Ich beantworte sie gern.`;
+  }
+
+  return `${salutation}, hier ist Cura. Schön, dass Sie unsere Live-Demo ausprobieren — Sie haben «${useCase.label}» gewählt. Haben Sie kurz Zeit? Ich zeige Ihnen, wie angenehm unsere Gespräche klingen.`;
 }

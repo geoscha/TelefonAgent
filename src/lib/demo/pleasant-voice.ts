@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getDemoAgentConfig } from "@/lib/admin/demo-config";
 import { pickAgentVoiceId } from "@/lib/elevenlabs/pick-voice";
 import {
   filterAgentVoices,
@@ -22,6 +23,10 @@ const PREFERRED_VOICE_NAME_HINTS = [
 
 let cachedVoiceId: string | null = null;
 
+export function resetDemoVoiceCache(): void {
+  cachedVoiceId = null;
+}
+
 async function fetchWorkspaceVoices(): Promise<RawElevenLabsVoice[]> {
   const client = getElevenLabsClient();
   const res = (await client.voices.getAll()) as {
@@ -30,9 +35,21 @@ async function fetchWorkspaceVoices(): Promise<RawElevenLabsVoice[]> {
   return res.voices ?? [];
 }
 
-/** Picks a warm, pleasant female Hochdeutsch voice for the live demo. */
+/** Resolves the ElevenLabs voice for landing-page and outbound demos. */
 export async function resolvePleasantDemoVoiceId(): Promise<string> {
   if (cachedVoiceId) return cachedVoiceId;
+
+  const { voicePreset } = await getDemoAgentConfig();
+  const apiKey = process.env.ELEVENLABS_API_KEY ?? "";
+  if (apiKey) {
+    try {
+      const fromPreset = await resolveDemoVoiceId(voicePreset, apiKey);
+      cachedVoiceId = fromPreset;
+      return fromPreset;
+    } catch {
+      /* fall through */
+    }
+  }
 
   const configured = process.env.DEMO_VOICE_FEMALE_DE?.trim();
   if (configured) {
@@ -63,10 +80,7 @@ export async function resolvePleasantDemoVoiceId(): Promise<string> {
     return picked;
   }
 
-  const fallback = await resolveDemoVoiceId(
-    "female-de",
-    process.env.ELEVENLABS_API_KEY ?? ""
-  );
+  const fallback = await resolveDemoVoiceId("female-de", apiKey);
   cachedVoiceId = fallback;
   return fallback;
 }

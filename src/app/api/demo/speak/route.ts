@@ -5,6 +5,7 @@ import {
   DEMO_TTS_VOICE_SETTINGS,
   prepareDemoTtsText,
 } from "@/lib/demo/tts-text";
+import { getDemoAgentConfig } from "@/lib/admin/demo-config";
 import { getDemoVoicePreset } from "@/lib/demo/voices";
 import { resolveDemoVoiceId } from "@/lib/demo/voices-server";
 import { hasApiKey } from "@/lib/elevenlabs/client";
@@ -129,7 +130,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const preset = getDemoVoicePreset(body.voice ?? "female-de");
+    const agentConfig = await getDemoAgentConfig();
+    const preset = getDemoVoicePreset(body.voice ?? agentConfig.voicePreset);
     const voiceId = await resolveDemoVoiceId(preset.id, apiKey);
     const spokenText = prepareDemoTtsText(text, preset.language);
 

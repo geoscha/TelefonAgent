@@ -2,12 +2,16 @@ import "server-only";
 
 import {
   getDemoOutboundConfig,
+  getDemoAgentConfig,
 } from "@/lib/admin/demo-config";
 import {
   buildDemoAgentConversationConfig,
+  buildDemoAgentSystemPrompt,
   DEMO_AGENT_NAME,
   DEMO_AGENT_TAG,
 } from "@/lib/demo/demo-agent-config";
+import { demoGreeting } from "@/lib/demo/responses";
+import { getDemoVoicePreset } from "@/lib/demo/voices";
 import { resolvePleasantDemoVoiceId } from "@/lib/demo/pleasant-voice";
 import { getElevenLabsClient } from "@/lib/elevenlabs/client";
 import {
@@ -54,7 +58,8 @@ function findDemoAgent(agents: ListedAgent[]): ListedAgent | undefined {
     (a) =>
       a.name === DEMO_AGENT_NAME ||
       a.tags?.includes(DEMO_AGENT_TAG) ||
-      a.name?.includes("Cura Live-Demo")
+      a.name?.includes("Cura Live-Demo") ||
+      a.name?.includes("Cura Agent")
   );
 }
 
@@ -120,7 +125,18 @@ async function resolveDemoPhoneTarget(): Promise<{
 async function createOrUpdateDemoAgent(existingId?: string): Promise<string> {
   const client = getElevenLabsClient();
   const voiceId = await resolvePleasantDemoVoiceId();
-  const conversationConfig = buildDemoAgentConversationConfig(voiceId);
+  const agentConfig = await getDemoAgentConfig();
+  const preset = getDemoVoicePreset(agentConfig.voicePreset);
+  const greeting =
+    agentConfig.greeting ?? demoGreeting(preset.language, null);
+  const conversationConfig = buildDemoAgentConversationConfig(voiceId, {
+    greeting,
+    systemPrompt: buildDemoAgentSystemPrompt(
+      agentConfig.context,
+      preset.language
+    ),
+    language: preset.language,
+  });
 
   if (existingId) {
     await client.conversationalAi.agents.update(existingId, {
@@ -148,10 +164,13 @@ export async function updateDemoAgentForOutbound(params: {
   systemPrompt: string;
 }): Promise<void> {
   const client = getElevenLabsClient();
+  const agentConfig = await getDemoAgentConfig();
   const voiceId = await resolvePleasantDemoVoiceId();
+  const preset = getDemoVoicePreset(agentConfig.voicePreset);
   const conversationConfig = buildDemoAgentConversationConfig(voiceId, {
     greeting: params.greeting,
     systemPrompt: params.systemPrompt,
+    language: preset.language,
   });
 
   const agentId =

@@ -73,6 +73,7 @@ function WaveBars({ active }: { active: boolean }) {
 export function DemoBot() {
   const router = useRouter();
   const [voiceId, setVoiceId] = useState<DemoVoicePresetId>("female-de");
+  const [customGreeting, setCustomGreeting] = useState<string | null>(null);
   const voice = DEMO_VOICE_PRESETS.find((v) => v.id === voiceId)!;
 
   const [messages, setMessages] = useState<ChatEntry[]>([]);
@@ -104,6 +105,20 @@ export function DemoBot() {
   const queueListen = (ms = 400) => {
     window.setTimeout(() => startListeningRef.current(), ms);
   };
+
+  useEffect(() => {
+    fetch("/api/demo/config")
+      .then((r) => r.json())
+      .then((data: { ok?: boolean; voicePreset?: DemoVoicePresetId; greeting?: string }) => {
+        if (data.ok && data.voicePreset) {
+          setVoiceId(data.voicePreset);
+        }
+        if (data.ok && data.greeting) {
+          setCustomGreeting(data.greeting);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     speakingRef.current = speaking;
@@ -393,7 +408,7 @@ export function DemoBot() {
     setVoiceError(null);
     startDemoTimer();
 
-    const greeting = demoGreeting(voice.language);
+    const greeting = demoGreeting(voice.language, customGreeting);
     const greetingId = "greeting";
     const initial: ChatEntry[] = [
       {
@@ -411,7 +426,7 @@ export function DemoBot() {
     if (inCallRef.current && !demoLocked && !inputFocusedRef.current) {
       startListeningRef.current();
     }
-  }, [demoLocked, speakText, startDemoTimer, voice.language]);
+  }, [demoLocked, speakText, startDemoTimer, voice.language, customGreeting]);
 
   const toggleCall = useCallback(() => {
     if (demoLocked) return;
