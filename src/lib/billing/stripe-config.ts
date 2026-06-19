@@ -43,10 +43,19 @@ export async function getStripeClient(): Promise<Stripe | null> {
 }
 
 export function appOriginFromRequest(req: Request): string {
+  const headers = new Headers(req.headers);
+  const forwardedHost = headers.get("x-forwarded-host");
+  const host = forwardedHost ?? headers.get("host");
+  if (host) {
+    const proto =
+      headers.get("x-forwarded-proto") ??
+      (host.includes("localhost") || host.startsWith("127.0.0.1")
+        ? "http"
+        : "https");
+    return `${proto}://${host}`;
+  }
   const url = new URL(req.url);
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || url.origin
-  );
+  return process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || url.origin;
 }
 
 /** Only prefill Checkout when the address passes Stripe's stricter validation. */

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 
 import { AuthOAuthError } from "@/components/auth/AuthOAuthError";
 import {
@@ -20,8 +20,17 @@ import { createClient } from "@/lib/supabase/client";
 
 type LoginStep = "email" | "password";
 
-export default function LoginPage() {
+function safeNextPath(raw: string | null): string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
+    return "/anrufe";
+  }
+  return raw;
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = safeNextPath(searchParams.get("next"));
   const [step, setStep] = useState<LoginStep>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -59,7 +68,7 @@ export default function LoginPage() {
         return;
       }
       await fetch("/api/provision", { method: "POST" }).catch(() => {});
-      router.push("/anrufe");
+      router.push(next);
       router.refresh();
     } catch {
       setError("Anmeldung fehlgeschlagen.");
@@ -238,5 +247,13 @@ export default function LoginPage() {
         )}
       </div>
     </AuthFrame>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

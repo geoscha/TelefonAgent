@@ -19,6 +19,7 @@ const PUBLIC_PREFIXES = [
   "/api/admin/login",
   "/api/auth/signup",
   "/api/demo",
+  "/api/billing/stripe-return",
 ];
 
 function isPublic(pathname: string): boolean {
@@ -85,6 +86,10 @@ export async function middleware(req: NextRequest) {
 
   const loginUrl = req.nextUrl.clone();
   loginUrl.pathname = "/login";
+  const returnPath = `${path}${req.nextUrl.search}`;
+  if (returnPath !== "/login") {
+    loginUrl.searchParams.set("next", returnPath);
+  }
   return NextResponse.redirect(loginUrl);
 }
 

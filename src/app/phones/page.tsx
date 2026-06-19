@@ -12,6 +12,7 @@ import {
   type UserPhoneNumberView,
 } from "@/components/telefonagent/PhoneNumberWizard";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useStripeCheckoutReturn } from "@/lib/billing/use-stripe-checkout-return";
 import { notifyTokenBalanceChanged, useTokenBalance } from "@/lib/hooks/useTokenBalance";
 import { useWorkspace } from "@/lib/hooks/useWorkspace";
 import { formatBillingDateTime, PHONE_NUMBER_MONTHLY_TOKENS } from "@/lib/billing/quota-display";
@@ -31,7 +32,8 @@ export default function PhonesPage() {
   const setupDemo = useSetupDemoOptional();
   const { data: workspace, loading: workspaceLoading, revalidate: revalidateWorkspace } =
     useWorkspace();
-  const { tokenBalance, loading: tokenLoading } = useTokenBalance();
+  const { tokenBalance, loading: tokenLoading, refresh: refreshTokenBalance } =
+    useTokenBalance({ syncOnMount: true });
   const canAffordPhoneNumber =
     PHONE_NUMBER_MONTHLY_TOKENS <= 0 ||
     (!tokenLoading && (tokenBalance?.balance ?? 0) >= PHONE_NUMBER_MONTHLY_TOKENS);
@@ -96,72 +98,21 @@ export default function PhonesPage() {
     setupDemo?.goToSubStep,
   ]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const topup = params.get("topup");
-    const sessionId = params.get("session_id");
-
-    if (topup === "cancel") {
-      toast.message("Aufladung abgebrochen.");
+  useStripeCheckoutReturn({
+    pathname: "/phones",
+    onCancel: () => {
       if (setupDemo?.active && setupDemo.step === "phone") {
         setupDemo.goToSubStep("phone_billing");
         router.push("/billing");
       }
-      window.history.replaceState({}, "", "/phones");
-      return;
-    }
-
-    if (topup !== "success") return;
-
-    if (!sessionId) {
-      toast.success("Zahlung erfolgreich. Guthaben wird in Kürze gutgeschrieben.");
-      window.history.replaceState({}, "", "/phones");
-      return;
-    }
-
-    fetch("/api/billing/verify-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-    })
-      .then(async (res) => {
-        const data = (await res.json()) as {
-          ok?: boolean;
-          tokens?: number;
-          duplicate?: boolean;
-          error?: string;
-        };
-        if (res.ok && data.ok) {
-          notifyTokenBalanceChanged();
-          if (data.duplicate) {
-            toast.success("Guthaben ist bereits gutgeschrieben.");
-          } else {
-            toast.success(
-              data.tokens
-                ? `${data.tokens.toLocaleString("de-CH")} Tokens gutgeschrieben.`
-                : "Guthaben erfolgreich aufgeladen."
-            );
-          }
-          if (setupDemo?.active && setupDemo.step === "phone") {
-            setupDemo.goToSubStep("phone_request");
-          }
-          return;
-        }
-        toast.error(data.error ?? "Guthaben konnte nicht bestätigt werden.");
-      })
-      .catch(() => {
-        toast.error("Zahlungsbestätigung fehlgeschlagen.");
-      })
-      .finally(() => {
-        window.history.replaceState({}, "", "/phones");
-      });
-  }, [
-    setupDemo?.active,
-    setupDemo?.step,
-    setupDemo?.goToSubStep,
-    router,
-  ]);
+    },
+    onSuccess: () => {
+      void refreshTokenBalance(true);
+      if (setupDemo?.active && setupDemo.step === "phone") {
+        setupDemo.goToSubStep("phone_request");
+      }
+    },
+  });
 
   const loadOnboarding = useCallback(async () => {
     await revalidateWorkspace();

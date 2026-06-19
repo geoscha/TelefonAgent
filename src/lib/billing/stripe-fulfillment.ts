@@ -159,3 +159,47 @@ export async function fulfillTokenPackCheckoutBySessionId(
 
   return fulfillTokenPackCheckout(session);
 }
+
+/** Fulfill checkout from Stripe session id (no logged-in user required). */
+export async function fulfillTokenPackCheckoutBySessionIdOnly(
+  sessionId: string
+): Promise<TokenCheckoutFulfillment & { returnTo?: string }> {
+  const stripe = await getStripeClient();
+  if (!stripe) {
+    return {
+      ok: false,
+      credited: false,
+      duplicate: false,
+      error: "stripe_not_configured",
+    };
+  }
+
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  const result = await fulfillTokenPackCheckout(session);
+  const returnTo = session.metadata?.returnTo;
+  return {
+    ...result,
+    returnTo: returnTo === "phones" || returnTo === "billing" ? returnTo : undefined,
+  };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Retry while Stripe still reports payment in progress (e.g. Apple Pay). */
+export async function fulfillTokenPackCheckoutBySessionIdOnlyWithRetry(
+  sessionId: string,
+  options?: { maxAttempts?: number; delayMs?: number }
+): Promise<TokenCheckoutFulfillment & { returnTo?: string }> {
+  const maxAttempts = options?.maxAttempts ?? 8;
+  const delayMs = options?.delayMs ?? 1500;
+
+  let last = await fulfillTokenPackCheckoutBySessionIdOnly(sessionId);
+  for (let attempt = 1; attempt < maxAttempts; attempt++) {
+    if (last.ok || last.error !== "not_paid") return last;
+    await sleep(delayMs);
+    last = await fulfillTokenPackCheckoutBySessionIdOnly(sessionId);
+  }
+  return last;
+}

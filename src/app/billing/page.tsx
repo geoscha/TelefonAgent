@@ -22,6 +22,8 @@ import {
 } from "@/lib/billing/quota-display";
 import { formatChf } from "@/lib/billing/billing-history-format";
 import type { TokenPackConfig } from "@/lib/billing/token-pack-types";
+import { storePendingStripeCheckout } from "@/lib/billing/pending-checkout-client";
+import { useStripeCheckoutReturn } from "@/lib/billing/use-stripe-checkout-return";
 import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +55,6 @@ function BillingPageContent() {
   const [billingStatus, setBillingStatus] = useState<{
     paymentsEnabled: boolean;
   } | null>(null);
-  const [verifying, setVerifying] = useState(false);
   const [packs, setPacks] = useState<TokenPackConfig[]>([]);
   const [packsLoading, setPacksLoading] = useState(true);
   const [paygEnabled, setPaygEnabled] = useState(false);
@@ -102,67 +103,25 @@ function BillingPageContent() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const topup = searchParams.get("topup");
-    const sessionId = searchParams.get("session_id");
-
-    if (topup === "cancel") {
-      toast.message("Aufladung abgebrochen.");
-      return;
-    }
-
-    if (topup !== "success") return;
-
-    if (!sessionId) {
-      toast.success("Zahlung erfolgreich. Guthaben wird in Kürze gutgeschrieben.");
-      return;
-    }
-
-    setVerifying(true);
-    fetch("/api/billing/verify-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-    })
-      .then(async (res) => {
-        const data = (await res.json()) as {
-          ok?: boolean;
-          tokens?: number;
-          tokenBalance?: TokenBalanceView;
-          duplicate?: boolean;
-          error?: string;
-        };
-        if (res.ok && data.ok) {
-          if (data.tokenBalance) {
+  useStripeCheckoutReturn({
+    pathname: "/billing",
+    onSuccess: () => {
+      if (demoBillingStep) {
+        finishDemoTokenPurchase();
+        return;
+      }
+      fetch("/api/profile")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.tokenBalance) {
             setProfile((prev) =>
               prev ? { ...prev, tokenBalance: data.tokenBalance } : prev
             );
           }
-          notifyTokenBalanceChanged();
-          if (data.duplicate) {
-            toast.success("Guthaben ist bereits gutgeschrieben.");
-          } else {
-            toast.success(
-              data.tokens
-                ? `${data.tokens.toLocaleString("de-CH")} Tokens gutgeschrieben.`
-                : "Guthaben erfolgreich aufgeladen."
-            );
-          }
-          if (demoBillingStep) {
-            finishDemoTokenPurchase();
-          }
-          return;
-        }
-        toast.error(data.error ?? "Guthaben konnte nicht bestätigt werden.");
-      })
-      .catch(() => {
-        toast.error("Zahlungsbestätigung fehlgeschlagen.");
-      })
-      .finally(() => {
-        setVerifying(false);
-        window.history.replaceState({}, "", "/billing");
-      });
-  }, [searchParams, demoBillingStep, finishDemoTokenPurchase]);
+        })
+        .catch(() => {});
+    },
+  });
 
   useEffect(() => {
     const payg = searchParams.get("payg");
@@ -207,6 +166,7 @@ function BillingPageContent() {
       });
       const data = (await res.json().catch(() => ({}))) as {
         url?: string;
+        sessionId?: string;
         ok?: boolean;
         test?: boolean;
         tokens?: number;
@@ -232,6 +192,12 @@ function BillingPageContent() {
         return;
       }
       if (res.ok && data.url) {
+        if (data.sessionId) {
+          storePendingStripeCheckout({
+            sessionId: data.sessionId,
+            returnTo: demoBillingStep ? "phones" : "billing",
+          });
+        }
         window.location.href = data.url;
         return;
       }
@@ -331,12 +297,11 @@ function BillingPageContent() {
                     onClick={() => buyPack(pack.id)}
                     disabled={
                       loadingPack === pack.id ||
-                      verifying ||
                       (billingStatus !== null && !billingStatus.paymentsEnabled)
                     }
                     className={cn(landingBtnPrimary, "w-full justify-center")}
                   >
-                    {(loadingPack === pack.id || verifying) && (
+                    {loadingPack === pack.id && (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     )}
                     Jetzt kaufen

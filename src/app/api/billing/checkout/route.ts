@@ -96,7 +96,6 @@ export async function POST(req: NextRequest) {
   const profile = await getProfile();
   const checkoutEmail = emailForStripeCheckout(profile.email);
   const returnToPhones = body.returnTo === "phones";
-  const returnPath = returnToPhones ? "/phones" : "/billing";
 
   if (!isValidStripeCheckoutPrice(pack.priceChf)) {
     return NextResponse.json(
@@ -131,6 +130,7 @@ export async function POST(req: NextRequest) {
         packId: pack.id,
         tokens: String(pack.tokens),
         priceChf: String(pack.priceChf),
+        returnTo: returnToPhones ? "phones" : "billing",
       },
       payment_intent_data: {
         metadata: {
@@ -140,8 +140,8 @@ export async function POST(req: NextRequest) {
           priceChf: String(pack.priceChf),
         },
       },
-      success_url: `${origin}${returnPath}?topup=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}${returnPath}?topup=cancel`,
+      success_url: `${origin}/api/billing/stripe-return?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/api/billing/stripe-return?topup=cancel&returnTo=${returnToPhones ? "phones" : "billing"}`,
     });
 
     if (!session.url) {
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ ok: true, url: session.url });
+    return NextResponse.json({ ok: true, url: session.url, sessionId: session.id });
   } catch (error) {
     return NextResponse.json(
       { error: checkoutErrorMessage(error) },
