@@ -8,12 +8,12 @@ import {
 
 export { CALL_SECOND_COST_TOKENS, calculateCallTokenCost };
 import { pauseUserPhones, releaseStalePausedPhones, resumeUserPhones } from "@/lib/billing/phone-pause";
+import { tryPaygTopUpForShortfall, isPaygActive } from "@/lib/billing/payg";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const TOKENS_PER_CHF = 1000;
 export const CHF_PER_USD = 0.8;
 export const PHONE_NUMBER_COST_TOKENS = 1800;
-export const WELCOME_TOKEN_BONUS = 2000;
 export const TOKEN_RELEASE_DAYS = 7;
 
 interface ProfileTokenRow {
@@ -268,33 +268,7 @@ async function callCreditRpc(
   return parsed;
 }
 
-/** Ensures welcome bonus exists (idempotent). Never lowers balance. */
-export async function grantWelcomeTokensIfNeeded(userId: string): Promise<void> {
-  const admin = createAdminClient();
-  const { error } = await admin.rpc("grant_welcome_tokens", {
-    p_user_id: userId,
-    p_amount: WELCOME_TOKEN_BONUS,
-  });
-
-  if (error && isRpcMissing(error)) {
-    const row = await loadProfileTokenRow(userId);
-    const current = row?.token_balance ?? 0;
-    if (current >= WELCOME_TOKEN_BONUS) return;
-
-    await admin
-      .from("profiles")
-      .update({ token_balance: WELCOME_TOKEN_BONUS })
-      .eq("id", userId);
-    return;
-  }
-
-  if (error) {
-    console.warn("[tokens] grant_welcome_tokens:", error.message);
-  }
-}
-
 export async function prepareTokenBalanceForBilling(userId: string): Promise<number> {
-  await grantWelcomeTokensIfNeeded(userId);
   return getTokenBalanceAmount(userId);
 }
 
@@ -306,10 +280,23 @@ export async function canAffordTokens(userId: string, amount: number): Promise<b
 export async function assertCanAffordPhoneNumber(
   userId: string
 ): Promise<{ ok: true; balance: number } | { ok: false; balance: number; error: string }> {
-  const balance = await prepareTokenBalanceForBilling(userId);
+  let balance = await prepareTokenBalanceForBilling(userId);
   if (PHONE_NUMBER_COST_TOKENS <= 0 || balance >= PHONE_NUMBER_COST_TOKENS) {
     return { ok: true, balance };
   }
+
+  const toppedUp = await tryPaygTopUpForShortfall(
+    userId,
+    PHONE_NUMBER_COST_TOKENS - balance,
+    { source: "phone_purchase" }
+  );
+  if (toppedUp) {
+    balance = await getTokenBalanceAmount(userId);
+    if (balance >= PHONE_NUMBER_COST_TOKENS) {
+      return { ok: true, balance };
+    }
+  }
+
   return {
     ok: false,
     balance,
@@ -349,6 +336,31 @@ export async function debitTokens(
 
   const balance = await getTokenBalanceAmount(userId);
   if (balance < amount) {
+    const shortfall = amount - balance;
+    const toppedUp = await tryPaygTopUpForShortfall(userId, shortfall, {
+      source,
+      referenceId,
+      ...metadata,
+    });
+    if (toppedUp) {
+      const retry = await callDebitRpc(
+        userId,
+        amount,
+        source,
+        referenceId ?? null,
+        metadata ?? {}
+      );
+      if (retry.ok || retry.duplicate) {
+        if (retry.balance <= 0) {
+          try {
+            await pauseUserPhones(userId);
+          } catch (err) {
+            console.error("[tokens] pause after payg debit:", err);
+          }
+        }
+        return retry;
+      }
+    }
     return { ok: false, balance, error: "insufficient" };
   }
 
@@ -443,13 +455,15 @@ export async function chargeCallTokens(
   }
 
   const row = await loadProfileTokenRow(userId);
-  if ((row?.token_balance ?? 0) <= 0 && row?.phone_paused_at) {
-    return {
-      cost,
-      ok: false,
-      duplicate: false,
-      balance: row?.token_balance ?? 0,
-    };
+  const balance = row?.token_balance ?? 0;
+  if (balance <= 0 && row?.phone_paused_at) {
+    const paygActive = await isPaygActive(userId);
+    if (paygActive && cost > 0) {
+      await tryPaygTopUpForShortfall(userId, cost, {
+        source: "call",
+        callId,
+      });
+    }
   }
 
   const result = await debitTokens(userId, cost, "call", `call:${callId}`, {
@@ -475,12 +489,6 @@ export async function chargeCallTokens(
 }
 
 export async function enforceTokenState(userId: string): Promise<void> {
-  try {
-    await grantWelcomeTokensIfNeeded(userId);
-  } catch (err) {
-    console.error("[tokens] welcome grant:", err);
-  }
-
   try {
     await releaseStalePausedPhones(userId);
   } catch (err) {

@@ -226,7 +226,6 @@ export function AgentCreateWizard({
             <FieldRow
               label="In welcher Branche sind Sie tätig?"
               nextDisabled={!industry.trim()}
-              nextDataDemo="setup-demo-agent-branche-next"
             >
               <input
                 autoFocus
@@ -283,7 +282,6 @@ export function AgentCreateWizard({
               label="Wofür soll der Agent eingesetzt werden?"
               align="start"
               nextDisabled={!goal.trim()}
-              nextDataDemo="setup-demo-agent-ziel-next"
               grow
             >
               <textarea
@@ -309,10 +307,7 @@ export function AgentCreateWizard({
               demoGoTo("agent_language");
             }}
           >
-            <FieldRow
-              label="Stimmgeschlecht"
-              nextDataDemo="setup-demo-agent-gender-next"
-            >
+            <FieldRow label="Stimmgeschlecht">
               <div
                 className="flex flex-wrap gap-2"
                 data-setup-demo="setup-demo-agent-gender"

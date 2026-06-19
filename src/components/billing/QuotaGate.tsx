@@ -48,19 +48,19 @@ export function QuotaGate({ children }: { children: React.ReactNode }) {
         {children}
       </div>
       {exhausted && tokenBalance && (
-        <div className="absolute inset-0 z-20 flex items-start justify-center pt-16 sm:pt-24">
+        <div className="absolute inset-0 z-20 flex items-start justify-center pt-32 sm:pt-44">
           <div className={cn(userPanelClass, "mx-4 max-w-sm p-5 shadow-sm")}>
-            <p className={userTitleClass}>Guthaben aufgebraucht</p>
+            <p className={userTitleClass}>Guthaben aufladen</p>
             <p className={`${userLabelClass} mt-2`}>
               {tokenBalance.phonePaused
-                ? "Ihre Telefonnummer ist pausiert. Laden Sie Tokens auf, um weiterzumachen."
-                : "Bitte laden Sie Ihr Token-Guthaben auf, um fortzufahren."}
+                ? "Ihre Nummer ist vorübergehend pausiert. Mit frischem Guthaben sind Sie sofort wieder erreichbar."
+                : "Laden Sie Tokens auf, um Ihre Telefonnummer zu aktivieren und Anrufe zu empfangen."}
             </p>
             <Link
               href="/billing"
               className={cn(landingBtnPrimary, "mt-4 w-full justify-center")}
             >
-              Guthaben aufladen
+              Jetzt aufladen
             </Link>
           </div>
         </div>

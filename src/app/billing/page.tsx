@@ -6,6 +6,8 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { BillingHistorySection } from "@/components/billing/BillingHistorySection";
+import { BillingPaygCard } from "@/components/billing/BillingPaygCard";
+import { BillingPricingOverview } from "@/components/billing/BillingPricingOverview";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
 import { landingBtnPrimary } from "@/components/landing/landing-buttons";
 import {
@@ -46,13 +48,12 @@ function BillingPageContent() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loadingPack, setLoadingPack] = useState<string | null>(null);
   const [billingStatus, setBillingStatus] = useState<{
-    stripeConfigured: boolean;
-    testMode: boolean;
     paymentsEnabled: boolean;
   } | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [packs, setPacks] = useState<TokenPackConfig[]>([]);
   const [packsLoading, setPacksLoading] = useState(true);
+  const [paygEnabled, setPaygEnabled] = useState(false);
 
   useEffect(() => {
     fetch("/api/billing/packs")
@@ -72,8 +73,6 @@ function BillingPageContent() {
       .then((data) => {
         if (data.ok) {
           setBillingStatus({
-            stripeConfigured: Boolean(data.stripeConfigured),
-            testMode: Boolean(data.testMode),
             paymentsEnabled: Boolean(data.paymentsEnabled),
           });
         }
@@ -141,10 +140,33 @@ function BillingPageContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    const payg = searchParams.get("payg");
+    if (payg === "cancel") {
+      toast.message("Karten-Setup abgebrochen.");
+      window.history.replaceState({}, "", "/billing");
+      return;
+    }
+    if (payg === "success") {
+      setPaygEnabled(true);
+      toast.success("Pay as you go aktiviert — Ihre Karte ist hinterlegt.");
+      window.history.replaceState({}, "", "/billing");
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     fetch("/api/profile")
       .then((r) => r.json())
       .then((p: Profile) => setProfile(p))
       .catch(() => toast.error("Profil konnte nicht geladen werden."));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/billing/payg")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok) setPaygEnabled(Boolean(data.enabled));
+      })
+      .catch(() => {});
   }, []);
 
   async function buyPack(packId: string) {
@@ -194,33 +216,41 @@ function BillingPageContent() {
   const balanceHighlight = profile?.tokenBalance
     ? tokenBalanceHighlight(profile.tokenBalance)
     : { value: "—", suffix: "Tokens" };
+  const bannerHighlight = paygEnabled
+    ? { value: "Pay as you go", suffix: "aktiv" }
+    : balanceHighlight;
 
   return (
     <div className="mx-auto max-w-[900px] space-y-8 pb-4">
         <WelcomeBanner
           name={firstName}
-          highlight={balanceHighlight.value}
-          highlightSuffix={balanceHighlight.suffix}
+          highlight={bannerHighlight.value}
+          highlightSuffix={bannerHighlight.suffix}
         />
+
+        {profile?.tokenBalance?.phonePaused && (
+          <div className={cn(userPanelClass, "border-amber-200 bg-amber-50/50 p-5")}>
+            <p className={userTitleClass}>Nummer vorübergehend pausiert</p>
+            <p className={`${userLabelClass} mt-2`}>
+              Tokens aufladen, um Ihre Nummer wieder zu aktivieren. Agenten bleiben
+              erhalten. Ohne Aufladung innerhalb von 7 Tagen wird die Nummer
+              freigegeben.
+            </p>
+          </div>
+        )}
 
         <div>
           <p className={userTitleClass}>Guthaben aufladen</p>
           <p className={`${userLabelClass} mt-1`}>
             Wählen Sie ein Paket, um Tokens für Telefonate und Nummern zu kaufen.
-            {billingStatus?.stripeConfigured && !billingStatus.testMode
-              ? " Bezahlung per Karte, Apple Pay oder Google Pay über Stripe."
+            {billingStatus?.paymentsEnabled
+              ? " Bezahlung per Karte, Apple Pay oder Google Pay."
               : null}
           </p>
           {billingStatus && !billingStatus.paymentsEnabled && (
             <p className="mt-2 text-[13px] text-amber-700">
-              Stripe ist noch nicht konfiguriert. Bitte Stripe Secret Key und
-              Webhook Secret im Admin unter Einstellungen hinterlegen.
-            </p>
-          )}
-          {billingStatus?.testMode && (
-            <p className="mt-2 text-[13px] text-amber-700">
-              Testmodus aktiv (BILLING_TEST_MODE) — es wird keine echte Zahlung
-              ausgeführt.
+              Aufladung ist derzeit nicht verfügbar. Bitte versuchen Sie es später
+              erneut.
             </p>
           )}
         </div>
@@ -235,7 +265,10 @@ function BillingPageContent() {
               Keine Token-Pakete verfügbar.
             </p>
           ) : (
-            packs.map((pack) => (
+            <>
+              {packs
+                .filter((pack) => pack.id !== "pack_100k")
+                .map((pack) => (
               <div key={pack.id} className={cn(userPanelClass, "flex flex-col p-6")}>
                 <p className={userTitleClass}>{pack.label}</p>
                 <div className="mt-4 flex items-baseline gap-1">
@@ -261,23 +294,15 @@ function BillingPageContent() {
                   </button>
                 </div>
               </div>
-            ))
+            ))}
+              <BillingPaygCard onEnabledChange={setPaygEnabled} />
+            </>
           )}
         </div>
 
-        <BillingHistorySection />
+        <BillingPricingOverview />
 
-        {profile?.tokenBalance?.phonePaused && (
-          <div className={cn(userPanelClass, "border-amber-200 bg-amber-50/50 p-5")}>
-            <p className={userTitleClass}>Telefonnummer pausiert</p>
-            <p className={`${userLabelClass} mt-2`}>
-              Ihr Guthaben ist aufgebraucht. Laden Sie Tokens auf, um Ihre Nummer
-              wieder zu aktivieren. Wird innerhalb von 7 Tagen kein Guthaben
-              aufgeladen, wird die Nummer freigegeben — Ihre Agenten bleiben
-              erhalten.
-            </p>
-          </div>
-        )}
+        <BillingHistorySection />
     </div>
   );
 }

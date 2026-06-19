@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
 import { fulfillTokenPackCheckout } from "@/lib/billing/stripe-fulfillment";
+import { fulfillPaygSetup } from "@/lib/billing/payg";
 import {
   getStripeSecretKey,
   getStripeWebhookSecret,
@@ -34,10 +35,18 @@ export async function POST(req: Request) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
-    const result = await fulfillTokenPackCheckout(session);
-    if (!result.ok && result.error !== "not_paid") {
-      console.error("[stripe webhook] fulfillment failed:", result);
-      return NextResponse.json({ error: "Fulfillment failed" }, { status: 500 });
+    if (session.mode === "setup") {
+      const setupResult = await fulfillPaygSetup(session);
+      if (!setupResult.ok && setupResult.error !== "invalid_metadata") {
+        console.error("[stripe webhook] payg setup failed:", setupResult);
+        return NextResponse.json({ error: "Setup failed" }, { status: 500 });
+      }
+    } else {
+      const result = await fulfillTokenPackCheckout(session);
+      if (!result.ok && result.error !== "not_paid") {
+        console.error("[stripe webhook] fulfillment failed:", result);
+        return NextResponse.json({ error: "Fulfillment failed" }, { status: 500 });
+      }
     }
   }
 

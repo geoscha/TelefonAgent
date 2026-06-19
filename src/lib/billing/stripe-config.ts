@@ -9,9 +9,21 @@ export function isBillingTestMode(): boolean {
   return process.env.BILLING_TEST_MODE === "true";
 }
 
+/** Stripe Secret Key present (checkout can start). */
+export async function isStripeSecretConfigured(): Promise<boolean> {
+  const { secretKey } = await resolveStripeCredentials();
+  return Boolean(secretKey);
+}
+
+/** Webhook signing secret present (automatic fulfillment after payment). */
+export async function isStripeWebhookConfigured(): Promise<boolean> {
+  const { webhookSecret } = await resolveStripeCredentials();
+  return Boolean(webhookSecret);
+}
+
+/** Checkout / payments — only the secret key is required. */
 export async function isStripeConfigured(): Promise<boolean> {
-  const { secretKey, webhookSecret } = await resolveStripeCredentials();
-  return Boolean(secretKey && webhookSecret);
+  return isStripeSecretConfigured();
 }
 
 export async function getStripeSecretKey(): Promise<string | null> {
@@ -35,4 +47,23 @@ export function appOriginFromRequest(req: Request): string {
   return (
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || url.origin
   );
+}
+
+/** Only prefill Checkout when the address passes Stripe's stricter validation. */
+export function emailForStripeCheckout(
+  email: string | undefined | null
+): string | undefined {
+  const trimmed = email?.trim();
+  if (!trimmed) return undefined;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(trimmed)) return undefined;
+  return trimmed;
+}
+
+export function checkoutErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    console.error("[billing] checkout failed:", error.message);
+  } else {
+    console.error("[billing] checkout failed:", error);
+  }
+  return "Checkout konnte nicht gestartet werden.";
 }

@@ -62,54 +62,15 @@ function isTargetActionReady(el: Element): boolean {
   return true;
 }
 
-/** Sync wizard UI when demo Weiter / Enter is used on text steps. */
-function triggerWizardContinue(stepId: string, container: Element | null): boolean {
-  if (!container) return false;
-
-  switch (stepId) {
-    case "agent_branche": {
-      const next = document.querySelector(
-        '[data-setup-demo="setup-demo-agent-branche-next"]'
-      );
-      if (next instanceof HTMLButtonElement && !next.disabled) {
-        next.click();
-        return true;
-      }
-      return false;
-    }
-    case "agent_website": {
-      const input = container.querySelector("input");
-      const hasWebsite =
-        input instanceof HTMLInputElement && input.value.trim().length > 0;
-      const buttons = container.querySelectorAll("button");
-      const weiter = buttons[0];
-      const skip = buttons[1];
-      if (hasWebsite && weiter instanceof HTMLButtonElement) {
-        weiter.click();
-        return true;
-      }
-      if (skip instanceof HTMLButtonElement) {
-        skip.click();
-        return true;
-      }
-      return false;
-    }
-    case "agent_ziel": {
-      const next = document.querySelector(
-        '[data-setup-demo="setup-demo-agent-ziel-next"]'
-      );
-      if (next instanceof HTMLButtonElement && !next.disabled) {
-        next.click();
-        return true;
-      }
-      return false;
-    }
-    case "agent_review_name":
-    case "agent_review_greeting":
-      return false;
-    default:
-      return false;
+/** Sync wizard UI when demo Weiter / Enter is used on optional website step. */
+function submitWizardFormForTarget(target: string): boolean {
+  const el = document.querySelector(`[data-setup-demo="${target}"]`);
+  const form = el?.closest("form");
+  if (form instanceof HTMLFormElement) {
+    form.requestSubmit();
+    return true;
   }
+  return false;
 }
 
 export function SetupDemoOverlay() {
@@ -300,17 +261,22 @@ export function SetupDemoOverlay() {
   }, [demo, guideStep]);
 
   const handleWeiter = useCallback(() => {
-    if (!weiterEnabled || !guideStep || !demo?.active) return;
+    if (!guideStep || !demo?.active) return;
 
     const el = document.querySelector(
       `[data-setup-demo="${guideStep.target}"]`
     );
 
     if (guideStep.textInput || guideStep.textInputOptional) {
-      if (triggerWizardContinue(guideStep.id, el)) return;
+      if (guideStep.textInput && !weiterEnabled) return;
+      if (submitWizardFormForTarget(guideStep.target)) return;
       demo.advance();
       return;
     }
+
+    if (!weiterEnabled) return;
+
+    if (submitWizardFormForTarget(guideStep.target)) return;
 
     if (!el) {
       demo.advance();

@@ -28,14 +28,6 @@ export const DEFAULT_TOKEN_PACKS: TokenPackConfig[] = [
     enabled: true,
     sortOrder: 1,
   },
-  {
-    id: "pack_100k",
-    tokens: 100_000,
-    priceChf: 1.3,
-    label: "100'000 Tokens",
-    enabled: true,
-    sortOrder: 2,
-  },
 ];
 
 /** @deprecated Use fetched packs from /api/billing/packs — defaults for legacy fallbacks. */

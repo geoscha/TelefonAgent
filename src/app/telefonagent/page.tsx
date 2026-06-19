@@ -10,7 +10,6 @@ import {
   type AgentDetailUpdate,
 } from "@/components/telefonagent/AgentDetailPanel";
 import { RetellAgentSidebar } from "@/components/telefonagent/RetellAgentSidebar";
-import { QuotaGate } from "@/components/billing/QuotaGate";
 import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import { normalizeAgentLanguage } from "@/lib/elevenlabs/agent-config";
 import type { OnboardingPhase, StoredAgent } from "@/lib/onboarding-types";
@@ -627,8 +626,7 @@ export default function TelefonagentPage() {
 
   return (
     <>
-      <QuotaGate>
-        <div className="flex min-h-[calc(100dvh-3.5rem-2rem)] gap-3 sm:min-h-[calc(100dvh-3.5rem-2.5rem)] lg:min-h-[calc(100dvh-3.5rem-3rem)]">
+      <div className="flex min-h-[calc(100dvh-3.5rem-2rem)] gap-3 sm:min-h-[calc(100dvh-3.5rem-2.5rem)] lg:min-h-[calc(100dvh-3.5rem-3rem)]">
           <RetellAgentSidebar
             agents={storedAgents}
             selectedAgentId={detailAgentId ?? selectedAgentId}
@@ -679,7 +677,6 @@ export default function TelefonagentPage() {
             </div>
           )}
         </div>
-      </QuotaGate>
     </>
   );
 }

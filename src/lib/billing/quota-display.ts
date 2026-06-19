@@ -86,6 +86,13 @@ export function formatCallTokenRateLabel(): string {
   return `${formatTokenCount(CALL_SECOND_COST_TOKENS)} Tokens/Sek.`;
 }
 
+/** Token cost for one minute of call time at the flat per-second rate. */
+export const CALL_MINUTE_COST_TOKENS = CALL_SECOND_COST_TOKENS * 60;
+
+export function formatCallMinuteCostLabel(): string {
+  return `${formatTokenCount(CALL_MINUTE_COST_TOKENS)} Tokens/Min.`;
+}
+
 /** Shown on billing UI — one-time cost to order a phone number (0 = free). */
 export const PHONE_NUMBER_MONTHLY_TOKENS = 1800;
 
@@ -100,10 +107,10 @@ export function formatPhoneNumberBillingAmount(): string | null {
 }
 
 /** Start bonus for new accounts (welcome modal). */
-export const WELCOME_TOKEN_AMOUNT = 2_000;
+export const WELCOME_TOKEN_AMOUNT = 0;
 
-/** Header warning styling when balance falls below the welcome amount. */
-export const TOKEN_LOW_BALANCE_THRESHOLD = WELCOME_TOKEN_AMOUNT;
+/** Warn in header when balance falls below this amount. */
+export const TOKEN_LOW_BALANCE_THRESHOLD = 500;
 
 export function getTokenPack(packId: string): TokenPackConfig | undefined {
   return findTokenPack(DEFAULT_TOKEN_PACKS, packId);

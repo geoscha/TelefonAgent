@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   if (!(await isStripeConfigured())) {
     return NextResponse.json(
-      { ok: false, error: "Stripe ist nicht konfiguriert." },
+      { ok: false, error: "Zahlung konnte nicht bestätigt werden." },
       { status: 503 }
     );
   }

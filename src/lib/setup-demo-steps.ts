@@ -34,13 +34,6 @@ export const SETUP_DEMO_GUIDE: SetupDemoGuideStep[] = [
     textInput: true,
   },
   {
-    id: "agent_branche_next",
-    phase: "agent",
-    target: "setup-demo-agent-branche-next",
-    title: "Weiter",
-    body: "Klicken Sie auf Weiter, wenn die Branche eingetragen ist.",
-  },
-  {
     id: "agent_website",
     phase: "agent",
     target: "setup-demo-agent-website",
@@ -57,25 +50,11 @@ export const SETUP_DEMO_GUIDE: SetupDemoGuideStep[] = [
     textInput: true,
   },
   {
-    id: "agent_ziel_next",
-    phase: "agent",
-    target: "setup-demo-agent-ziel-next",
-    title: "Weiter",
-    body: "Klicken Sie auf Weiter, wenn das Ziel formuliert ist.",
-  },
-  {
     id: "agent_gender",
     phase: "agent",
     target: "setup-demo-agent-gender",
     title: "Stimme wählen",
     body: "Wählen Sie, ob der Agent mit männlicher oder weiblicher Stimme sprechen soll.",
-  },
-  {
-    id: "agent_gender_next",
-    phase: "agent",
-    target: "setup-demo-agent-gender-next",
-    title: "Weiter",
-    body: "Klicken Sie auf Weiter.",
   },
   {
     id: "agent_language",

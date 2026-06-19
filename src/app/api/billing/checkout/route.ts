@@ -9,6 +9,8 @@ import { getTokenPackById } from "@/lib/billing/token-packs";
 import { notifyTokenPurchaseEmail } from "@/lib/billing/token-purchase-notify";
 import {
   appOriginFromRequest,
+  checkoutErrorMessage,
+  emailForStripeCheckout,
   getStripeClient,
   isBillingTestMode,
   isStripeConfigured,
@@ -76,8 +78,7 @@ export async function POST(req: NextRequest) {
   if (!(await isStripeConfigured())) {
     return NextResponse.json(
       {
-        error:
-          "Stripe ist noch nicht konfiguriert. Bitte Stripe Secret Key und Webhook Secret im Admin hinterlegen.",
+        error: "Aufladung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.",
       },
       { status: 503 }
     );
@@ -86,18 +87,19 @@ export async function POST(req: NextRequest) {
   const stripe = await getStripeClient();
   if (!stripe) {
     return NextResponse.json(
-      { error: "Stripe konnte nicht initialisiert werden." },
+      { error: "Checkout konnte nicht gestartet werden." },
       { status: 503 }
     );
   }
 
   const origin = appOriginFromRequest(req);
   const profile = await getProfile();
+  const checkoutEmail = emailForStripeCheckout(profile.email);
 
   if (!isValidStripeCheckoutPrice(pack.priceChf)) {
     return NextResponse.json(
       {
-        error: `Mindestbetrag für Stripe ist CHF ${STRIPE_MIN_PRICE_CHF.toFixed(2)}. Dieses Paket ist zu günstig (CHF ${pack.priceChf}).`,
+        error: `Dieses Paket kann derzeit nicht gekauft werden (Mindestpreis CHF ${STRIPE_MIN_PRICE_CHF.toFixed(2)}).`,
       },
       { status: 400 }
     );
@@ -107,7 +109,7 @@ export async function POST(req: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       locale: "de",
-      customer_email: profile.email || undefined,
+      ...(checkoutEmail ? { customer_email: checkoutEmail } : {}),
       payment_method_types: ["card"],
       line_items: [
         {
@@ -149,19 +151,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, url: session.url });
   } catch (error) {
-    console.error("[billing] checkout failed:", error);
-    const stripeMessage =
-      error instanceof Error &&
-      "type" in error &&
-      typeof (error as { type?: string }).type === "string"
-        ? error.message
-        : null;
     return NextResponse.json(
-      {
-        error:
-          stripeMessage ??
-          "Checkout konnte nicht gestartet werden.",
-      },
+      { error: checkoutErrorMessage(error) },
       { status: 502 }
     );
   }

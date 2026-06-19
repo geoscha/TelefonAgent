@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 import { mapSignupError } from "@/lib/auth/errors";
-import { grantWelcomeTokensIfNeeded } from "@/lib/billing/tokens";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +51,7 @@ export async function POST(request: Request) {
 
   try {
     const admin = createAdminClient();
-    const { data, error } = await admin.auth.admin.createUser({
+    const { error } = await admin.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
@@ -64,12 +63,6 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { ok: false, error: mapSignupError(error.message) },
         { status: 400 }
-      );
-    }
-
-    if (data.user?.id) {
-      await grantWelcomeTokensIfNeeded(data.user.id).catch((err) =>
-        console.error("[auth/signup] welcome tokens failed:", err)
       );
     }
 
