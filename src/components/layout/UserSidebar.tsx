@@ -8,6 +8,7 @@ import {
   isUserNavActive,
   USER_NAV_ITEMS,
 } from "@/components/layout/user-nav";
+import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import {
   SidebarSupportButton,
   SidebarSupportIcon,
@@ -16,6 +17,11 @@ import { cn } from "@/lib/utils";
 
 export function UserSidebar() {
   const pathname = usePathname();
+  const setupDemo = useSetupDemoOptional();
+  const highlightBillingNav =
+    setupDemo?.active &&
+    setupDemo.step === "phone" &&
+    setupDemo.subStepId === "phone_tokens";
 
   return (
     <aside className="flex w-[220px] shrink-0 flex-col border-r border-[#E1E4EA] bg-white px-3 py-4 lg:w-[240px]">
@@ -27,10 +33,15 @@ export function UserSidebar() {
         {USER_NAV_ITEMS.map((item) => {
           const active = isUserNavActive(pathname, item.href);
           const Icon = item.icon;
+          const demoTarget =
+            item.href === "/billing" && highlightBillingNav
+              ? "setup-demo-billing-nav"
+              : undefined;
           return (
             <Link
               key={item.href}
               href={item.href}
+              data-setup-demo={demoTarget}
               className={cn(
                 "landing-body flex items-center gap-2.5 landing-radius-sm px-3 py-2.5 transition-colors",
                 active

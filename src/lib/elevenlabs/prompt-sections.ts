@@ -1,3 +1,27 @@
+export const MAX_AGENT_INSTRUCTION_WORDS = 200;
+export const MAX_AGENT_INSTRUCTION_PARAGRAPHS = 4;
+
+export function countInstructionWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/** Keeps generated agent instructions concise (max paragraphs + word count). */
+export function enforceInstructionLimits(prompt: string): string {
+  const paragraphs = prompt
+    .trim()
+    .split(/\n\s*\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, MAX_AGENT_INSTRUCTION_PARAGRAPHS);
+
+  const text = paragraphs.join("\n\n");
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length <= MAX_AGENT_INSTRUCTION_WORDS) {
+    return text;
+  }
+  return `${words.slice(0, MAX_AGENT_INSTRUCTION_WORDS).join(" ")}…`;
+}
+
 export type PromptSections = {
   rolle: string;
   leistungen: string;

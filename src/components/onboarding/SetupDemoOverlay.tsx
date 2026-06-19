@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePathname, useRouter } from "next/navigation";
 
 import {
   landingBtnPrimary,
@@ -75,6 +76,8 @@ function submitWizardFormForTarget(target: string): boolean {
 
 export function SetupDemoOverlay() {
   const demo = useSetupDemoOptional();
+  const pathname = usePathname();
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [fieldFilled, setFieldFilled] = useState(false);
@@ -86,11 +89,20 @@ export function SetupDemoOverlay() {
   const [targetReady, setTargetReady] = useState(false);
 
   const weiterEnabled =
+    guideStep?.id === "phone_tokens" ||
     guideStep?.textInputOptional ||
     (guideStep?.textInput && fieldFilled) ||
     (!guideStep?.textInput &&
       !guideStep?.textInputOptional &&
       targetReady);
+
+  const showWeiter = guideStep?.id !== "phone_billing";
+  const weiterLabel =
+    guideStep?.id === "phone_tokens" ? "Zur Abrechnung" : "Weiter";
+  const skipLabel =
+    guideStep?.id === "phone_tokens" || guideStep?.id === "phone_billing"
+      ? "Überspringen"
+      : "Demo abbrechen";
 
   useEffect(() => setMounted(true), []);
 
@@ -263,6 +275,12 @@ export function SetupDemoOverlay() {
   const handleWeiter = useCallback(() => {
     if (!guideStep || !demo?.active) return;
 
+    if (guideStep.id === "phone_tokens") {
+      demo.goToSubStep("phone_billing");
+      router.push("/billing");
+      return;
+    }
+
     const el = document.querySelector(
       `[data-setup-demo="${guideStep.target}"]`
     );
@@ -301,7 +319,7 @@ export function SetupDemoOverlay() {
     }
 
     demo.advance();
-  }, [weiterEnabled, guideStep, demo]);
+  }, [weiterEnabled, guideStep, demo, router]);
 
   useEffect(() => {
     if (
@@ -339,7 +357,9 @@ export function SetupDemoOverlay() {
     !demo.demoStarted ||
     !guideStep ||
     guideStep.hidden ||
-    demo.loading
+    demo.loading ||
+    (guideStep.id === "phone_tokens" && pathname !== "/phones") ||
+    (guideStep.id === "phone_billing" && pathname !== "/billing")
   ) {
     return null;
   }
@@ -388,25 +408,31 @@ export function SetupDemoOverlay() {
           {guideStep.body}
         </p>
         <div className="mt-3 flex gap-2">
+          {showWeiter && (
+            <button
+              type="button"
+              disabled={!weiterEnabled}
+              className={cn(
+                "landing-caption landing-radius-sm inline-flex min-h-9 flex-1 items-center justify-center px-3 text-[12px] transition-colors",
+                weiterEnabled
+                  ? landingBtnPrimary
+                  : "cursor-not-allowed bg-black/10 text-[#99A0AE]"
+              )}
+              onClick={handleWeiter}
+            >
+              {weiterLabel}
+            </button>
+          )}
           <button
             type="button"
-            disabled={!weiterEnabled}
             className={cn(
-              "landing-caption landing-radius-sm inline-flex min-h-9 flex-1 items-center justify-center px-3 text-[12px] transition-colors",
-              weiterEnabled
-                ? landingBtnPrimary
-                : "cursor-not-allowed bg-black/10 text-[#99A0AE]"
+              landingBtnSecondary,
+              "flex-1 text-[12px]",
+              !showWeiter && "w-full"
             )}
-            onClick={handleWeiter}
-          >
-            Weiter
-          </button>
-          <button
-            type="button"
-            className={cn(landingBtnSecondary, "flex-1 text-[12px]")}
             onClick={() => void demo.skip()}
           >
-            Demo abbrechen
+            {skipLabel}
           </button>
         </div>
       </div>

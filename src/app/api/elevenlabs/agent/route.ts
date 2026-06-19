@@ -202,6 +202,21 @@ export async function POST(req: NextRequest) {
 
   try {
     const userId = await requireUserId();
+
+    if (body.activate === true) {
+      const phones = await listUserPhoneNumbers(userId);
+      if (phones.length === 0) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Ohne Telefonnummer kann kein Agent aktiviert werden. Richten Sie zuerst eine Nummer unter Telefonnummern ein.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const settings = await getSettings();
     const targetAgentId =
       body.agentId?.trim() || (body.createNew ? undefined : settings.agentId);

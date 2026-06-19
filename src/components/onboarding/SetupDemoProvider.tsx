@@ -26,6 +26,7 @@ interface SetupDemoContextValue {
   active: boolean;
   step: SetupDemoStep | null;
   subStepId: string | null;
+  subStepReady: boolean;
   loading: boolean;
   demoStarted: boolean;
   showWelcome: boolean;
@@ -33,6 +34,7 @@ interface SetupDemoContextValue {
   startDemo: () => void;
   advance: () => void;
   goToSubStep: (subStepId: string) => void;
+  setSubStepReady: (ready: boolean) => void;
   completeAgentStep: () => Promise<void>;
   completePhoneStep: () => Promise<void>;
   restart: () => Promise<void>;
@@ -60,6 +62,7 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState(false);
   const [step, setStep] = useState<SetupDemoStep | null>(null);
   const [subStepId, setSubStepId] = useState<string | null>(null);
+  const [subStepReady, setSubStepReady] = useState(false);
   const [demoStarted, setDemoStarted] = useState(false);
 
   useEffect(() => {
@@ -105,25 +108,45 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  const goToSubStep = useCallback((id: string) => {
+    if (!getGuideStepById(id)) return;
+    setSubStepId(id);
+    setSubStepReady(false);
+  }, []);
+
   useEffect(() => {
     if (!active || !step) return;
     if (step === "agent" && pathname !== "/telefonagent") {
       router.push("/telefonagent");
+      return;
     }
-    if (step === "phone" && pathname !== "/phones") {
+    if (step !== "phone" || !subStepId) return;
+
+    if (subStepId === "phone_tokens" && pathname === "/billing") {
+      goToSubStep("phone_billing");
+      return;
+    }
+
+    if (subStepId === "phone_billing" && pathname !== "/billing") {
+      router.push("/billing");
+      return;
+    }
+
+    if (
+      (subStepId === "phone_tokens" || subStepId === "phone_request") &&
+      pathname !== "/phones"
+    ) {
       router.push("/phones");
     }
-  }, [active, step, pathname, router]);
-
-  const goToSubStep = useCallback((id: string) => {
-    if (!getGuideStepById(id)) return;
-    setSubStepId(id);
-  }, []);
+  }, [active, step, subStepId, pathname, router, goToSubStep]);
 
   const advance = useCallback(() => {
     if (!step || (step !== "agent" && step !== "phone") || !subStepId) return;
     const next = getNextSubStepId(step, subStepId);
-    if (next) setSubStepId(next);
+    if (next) {
+      setSubStepId(next);
+      setSubStepReady(false);
+    }
   }, [step, subStepId]);
 
   const skip = useCallback(async () => {
@@ -196,6 +219,7 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
       active,
       step,
       subStepId,
+      subStepReady,
       loading,
       demoStarted,
       showWelcome,
@@ -203,6 +227,7 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
       startDemo,
       advance,
       goToSubStep,
+      setSubStepReady,
       completeAgentStep,
       completePhoneStep,
       restart,
@@ -212,6 +237,7 @@ export function SetupDemoProvider({ children }: { children: ReactNode }) {
       active,
       step,
       subStepId,
+      subStepReady,
       loading,
       demoStarted,
       showWelcome,

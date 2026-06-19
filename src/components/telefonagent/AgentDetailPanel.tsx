@@ -25,6 +25,8 @@ import {
 import { applyEuComplianceGreeting } from "@/lib/elevenlabs/compliance";
 import {
   composeSystemPrompt,
+  countInstructionWords,
+  MAX_AGENT_INSTRUCTION_WORDS,
   parseSystemPrompt,
 } from "@/lib/elevenlabs/prompt-sections";
 import type { StoredAgent } from "@/lib/onboarding-types";
@@ -457,9 +459,18 @@ export function AgentDetailPanel({
     scheduleSave({ euComplianceEnabled: enabled }, true);
   }
 
+  const canActivateAgent = phoneNumbers.length > 0;
+
   function handleActiveToggle(active: boolean) {
     if (activating) return;
     if (active) {
+      if (!canActivateAgent) {
+        toast.error("Keine Telefonnummer", {
+          description:
+            "Richten Sie zuerst eine Nummer unter Telefonnummern ein, bevor Sie den Agenten aktivieren.",
+        });
+        return;
+      }
       onActivate?.();
     } else {
       onDeactivate?.();
@@ -571,8 +582,13 @@ export function AgentDetailPanel({
               checked={isActive}
               onCheckedChange={handleActiveToggle}
               ariaLabel="Agent aktivieren oder deaktivieren"
-              disabled={activating}
+              disabled={activating || (!isActive && !canActivateAgent)}
             />
+            {!canActivateAgent && !isActive && (
+              <p className="text-[12px] text-[#99A0AE]">
+                Aktivierung erst möglich, wenn eine Telefonnummer hinterlegt ist.
+              </p>
+            )}
             <AgentReachability
               isActive={isActive}
               curaNumber={curaNumber}
@@ -686,6 +702,10 @@ export function AgentDetailPanel({
                 rows={8}
                 className={cn(textareaClass, "font-mono text-[13px]")}
               />
+              <p className="text-[11px] text-[#99A0AE]">
+                Max. {MAX_AGENT_INSTRUCTION_WORDS} Wörter ·{" "}
+                {countInstructionWords(systemPrompt)} Wörter
+              </p>
             </LabeledField>
           </AgentDetailSection>
 

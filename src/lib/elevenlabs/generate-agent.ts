@@ -7,6 +7,9 @@ import {
 } from "@/lib/elevenlabs/agent-config";
 import {
   composeSystemPrompt,
+  enforceInstructionLimits,
+  MAX_AGENT_INSTRUCTION_PARAGRAPHS,
+  MAX_AGENT_INSTRUCTION_WORDS,
   parseSystemPrompt,
   type PromptSections,
 } from "@/lib/elevenlabs/prompt-sections";
@@ -54,11 +57,7 @@ function buildFallbackSections(
 
   const typischeAnfragen =
     parsed.typischeAnfragen.trim() ||
-    [
-      `- Anfragen zu Leistungen und Abläufen in ${industry}`,
-      "- Termin- und Rückrufwünsche",
-      "- Allgemeine Kundenanliegen und Statusfragen",
-    ].join("\n");
+    `- Anfragen zu ${industry}, Termine und Rückrufwünsche`;
 
   const sonstigesParts: string[] = [];
   if (parsed.sonstiges.trim()) sonstigesParts.push(parsed.sonstiges.trim());
@@ -101,6 +100,7 @@ function finalizeDraft(
 
   let systemPrompt = composeSystemPrompt(sections);
   systemPrompt = applyLanguageInstructions(systemPrompt, params.language);
+  systemPrompt = enforceInstructionLimits(systemPrompt);
 
   return {
     name: params.name,
@@ -191,21 +191,21 @@ Antworte NUR als JSON:
   }
 }
 
-Pflicht — fülle JEDEN sections-Eintrag mit 2–5 konkreten Bulletpoints oder kurzen Absätzen (nicht leer lassen):
-- rolle: wer der Agent ist und für wen er spricht
-- leistungen: was der Agent für Anrufer tun darf / Services des Unternehmens
-- typischeAnfragen: häufige Anliegen und FAQ${hasWebsite ? " (auch aus Website)" : ""}
-- gespraechsfuehrung: Ton, Rückfragen, Datenerfassung, was nicht versprochen werden darf
-- eskalation: wann und wie an Menschen übergeben
-- abschluss: Gespräch beenden, Zusammenfassung, Verabschiedung
-- branche: Branche / Unternehmenskontext
-- ziel: Hauptziel des Agenten
-- sonstiges: Grenzen, Tabus, Website-Hinweise, was der Agent nicht darf
+Fülle die sections knapp aus — insgesamt höchstens ${MAX_AGENT_INSTRUCTION_PARAGRAPHS} Absätze und ${MAX_AGENT_INSTRUCTION_WORDS} Wörter im fertigen Anweisungstext:
+- rolle: 1 kurzer Satz, wer der Agent ist
+- leistungen: 2–3 Bulletpoints, was der Agent darf
+- typischeAnfragen: 2–3 häufige Anliegen${hasWebsite ? " (nur Wesentliches aus Website)" : ""}
+- gespraechsfuehrung: Ton, Rückfragen, keine verbindlichen Zusagen
+- eskalation: wann an Menschen übergeben
+- abschluss: kurz Verabschiedung
+- branche: 1 Satz Kontext
+- ziel: 1 Satz Hauptziel
+- sonstiges: nur wenn nötig, 1 kurzer Hinweis
 
 Regeln:
 - Sprache: ${language}
-- Keine Emojis
-- Konkrete Firmen-/Brancheninfos aus der Website wenn vorhanden`;
+- Keine Emojis, keine langen Texte, kein Marketing-Floskeln
+- Nur das Nötigste — wenig Kontext, telefonisch umsetzbar`;
 
 export async function generateAgentDraft(
   input: GenerateAgentInput
@@ -234,7 +234,7 @@ export async function generateAgentDraft(
     `Ziel des Agenten: ${input.goal.trim()}`,
     input.website?.trim() ? `Website-URL: ${input.website.trim()}` : null,
     websiteContext
-      ? `\n--- Auszug von ${websiteContext.url} ---\n${websiteContext.excerpt}`
+      ? `\n--- Kurzauszug von ${websiteContext.url} ---\n${websiteContext.excerpt.slice(0, 2500)}`
       : input.website?.trim()
         ? "\n(Hinweis: Website konnte nicht gelesen werden — nutze Branche und URL.)"
         : null,
@@ -252,8 +252,8 @@ export async function generateAgentDraft(
     },
     body: JSON.stringify({
       model: config.model,
-      temperature: 0.55,
-      max_tokens: 2400,
+      temperature: 0.45,
+      max_tokens: 900,
       response_format: { type: "json_object" },
       messages: [
         {

@@ -515,6 +515,14 @@ export default function TelefonagentPage() {
     const agent = storedAgents.find((a) => a.id === agentId);
     if (!agent) return;
 
+    if (phoneNumbers.length === 0) {
+      toast.error("Keine Telefonnummer", {
+        description:
+          "Richten Sie zuerst eine Nummer unter Telefonnummern ein, bevor Sie einen Agenten aktivieren.",
+      });
+      return;
+    }
+
     const previousAgentId = settings.agentId;
     setSettings((s) => ({ ...s, agentId }));
     setActivatingAgentId(agentId);

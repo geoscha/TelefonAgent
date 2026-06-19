@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { QuotaGate } from "@/components/billing/QuotaGate";
@@ -26,6 +27,7 @@ interface Settings {
 }
 
 export default function PhonesPage() {
+  const router = useRouter();
   const setupDemo = useSetupDemoOptional();
   const { data: workspace, loading: workspaceLoading, revalidate: revalidateWorkspace } =
     useWorkspace();
@@ -72,6 +74,94 @@ export default function PhonesPage() {
     if (!workspace) return;
     applyWorkspace(workspace);
   }, [workspace, applyWorkspace]);
+
+  useEffect(() => {
+    if (
+      !setupDemo?.active ||
+      setupDemo.step !== "phone" ||
+      setupDemo.subStepId !== "phone_tokens" ||
+      tokenLoading
+    ) {
+      return;
+    }
+    if (canAffordPhoneNumber) {
+      setupDemo.goToSubStep("phone_request");
+    }
+  }, [
+    canAffordPhoneNumber,
+    tokenLoading,
+    setupDemo?.active,
+    setupDemo?.step,
+    setupDemo?.subStepId,
+    setupDemo?.goToSubStep,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const topup = params.get("topup");
+    const sessionId = params.get("session_id");
+
+    if (topup === "cancel") {
+      toast.message("Aufladung abgebrochen.");
+      if (setupDemo?.active && setupDemo.step === "phone") {
+        setupDemo.goToSubStep("phone_billing");
+        router.push("/billing");
+      }
+      window.history.replaceState({}, "", "/phones");
+      return;
+    }
+
+    if (topup !== "success") return;
+
+    if (!sessionId) {
+      toast.success("Zahlung erfolgreich. Guthaben wird in Kürze gutgeschrieben.");
+      window.history.replaceState({}, "", "/phones");
+      return;
+    }
+
+    fetch("/api/billing/verify-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    })
+      .then(async (res) => {
+        const data = (await res.json()) as {
+          ok?: boolean;
+          tokens?: number;
+          duplicate?: boolean;
+          error?: string;
+        };
+        if (res.ok && data.ok) {
+          notifyTokenBalanceChanged();
+          if (data.duplicate) {
+            toast.success("Guthaben ist bereits gutgeschrieben.");
+          } else {
+            toast.success(
+              data.tokens
+                ? `${data.tokens.toLocaleString("de-CH")} Tokens gutgeschrieben.`
+                : "Guthaben erfolgreich aufgeladen."
+            );
+          }
+          if (setupDemo?.active && setupDemo.step === "phone") {
+            setupDemo.goToSubStep("phone_request");
+          }
+          return;
+        }
+        toast.error(data.error ?? "Guthaben konnte nicht bestätigt werden.");
+      })
+      .catch(() => {
+        toast.error("Zahlungsbestätigung fehlgeschlagen.");
+      })
+      .finally(() => {
+        window.history.replaceState({}, "", "/phones");
+      });
+  }, [
+    setupDemo?.active,
+    setupDemo?.step,
+    setupDemo?.goToSubStep,
+    router,
+  ]);
 
   const loadOnboarding = useCallback(async () => {
     await revalidateWorkspace();
@@ -310,6 +400,7 @@ export default function PhonesPage() {
             onRemove={handleRemove}
             onForwardingTypeChange={setForwardingType}
             canAffordPhoneNumber={canAffordPhoneNumber}
+            demoPhoneStep={setupDemo?.subStepId ?? null}
           />
         )}
       </div>

@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
 const TEST_TOPUP_TOKENS = 35_000;
 
 export async function POST(req: NextRequest) {
-  let body: { packId?: string };
+  let body: { packId?: string; returnTo?: string };
   try {
     body = await req.json();
   } catch {
@@ -95,6 +95,8 @@ export async function POST(req: NextRequest) {
   const origin = appOriginFromRequest(req);
   const profile = await getProfile();
   const checkoutEmail = emailForStripeCheckout(profile.email);
+  const returnToPhones = body.returnTo === "phones";
+  const returnPath = returnToPhones ? "/phones" : "/billing";
 
   if (!isValidStripeCheckoutPrice(pack.priceChf)) {
     return NextResponse.json(
@@ -138,8 +140,8 @@ export async function POST(req: NextRequest) {
           priceChf: String(pack.priceChf),
         },
       },
-      success_url: `${origin}/billing?topup=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/billing?topup=cancel`,
+      success_url: `${origin}${returnPath}?topup=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}${returnPath}?topup=cancel`,
     });
 
     if (!session.url) {
