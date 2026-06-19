@@ -93,10 +93,24 @@ export function buildConversationDefaults() {
   };
 }
 
+export function normalizeKnowledgeBase(value: unknown): KnowledgeBaseLocator[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is KnowledgeBaseLocator =>
+      Boolean(
+        item &&
+          typeof item === "object" &&
+          typeof (item as KnowledgeBaseLocator).id === "string" &&
+          typeof (item as KnowledgeBaseLocator).name === "string" &&
+          typeof (item as KnowledgeBaseLocator).type === "string"
+      )
+  );
+}
+
 export function buildAgentPromptDefaults(
   systemPrompt: string,
   options?: {
-    knowledgeBase?: KnowledgeBaseLocator[];
+    knowledgeBase?: KnowledgeBaseLocator[] | unknown;
     builtInTools?: BuiltInToolsInput | null;
   }
 ) {
@@ -105,7 +119,7 @@ export function buildAgentPromptDefaults(
     llm: ELEVENLABS_LLM_MODEL,
     temperature: ELEVENLABS_PROMPT_TEMPERATURE,
     maxTokens: ELEVENLABS_PROMPT_MAX_TOKENS,
-    knowledgeBase: options?.knowledgeBase,
+    knowledgeBase: normalizeKnowledgeBase(options?.knowledgeBase),
     builtInTools: buildBuiltInToolsDefaults(options?.builtInTools),
   };
 }
@@ -156,7 +170,7 @@ export function buildConversationConfig(params: {
   language: string;
   systemPrompt: string;
   voiceId: string;
-  knowledgeBase?: KnowledgeBaseLocator[];
+  knowledgeBase?: KnowledgeBaseLocator[] | unknown;
   builtInTools?: BuiltInToolsInput | null;
 }) {
   const language = normalizeAgentLanguage(params.language);
@@ -182,7 +196,7 @@ export function buildConversationConfig(params: {
 export function buildConversationConfigCostPatchSnake(options: {
   prompt?: string;
   firstMessage?: string;
-  knowledgeBase?: KnowledgeBaseLocator[];
+  knowledgeBase?: KnowledgeBaseLocator[] | unknown;
   builtInTools?: Record<string, unknown>;
 }) {
   return {
@@ -197,9 +211,7 @@ export function buildConversationConfigCostPatchSnake(options: {
           llm: ELEVENLABS_LLM_MODEL,
           temperature: ELEVENLABS_PROMPT_TEMPERATURE,
           max_tokens: ELEVENLABS_PROMPT_MAX_TOKENS,
-          ...(options.knowledgeBase?.length
-            ? { knowledge_base: options.knowledgeBase }
-            : {}),
+          knowledge_base: normalizeKnowledgeBase(options.knowledgeBase),
           built_in_tools: {
             ...options.builtInTools,
             voicemail_detection: {

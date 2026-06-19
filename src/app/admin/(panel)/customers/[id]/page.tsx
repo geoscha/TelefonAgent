@@ -347,23 +347,40 @@ export default function AdminCustomerDetailPage() {
           <p className="text-caption text-text-muted">Keine Anrufe.</p>
         ) : (
           <div className="divide-y divide-stroke">
-            {customer.calls.map((call) => (
-              <div key={call.id} className="py-3 first:pt-0 last:pb-0">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="font-medium text-navy">{call.title || "Anruf"}</p>
-                  <p className="text-caption text-text-muted">
-                    {new Date(call.startedAt).toLocaleString("de-CH")} ·{" "}
-                    {Math.round(call.durationSeconds / 60)} Min.
+            {customer.calls.map((call) => {
+              const hasRecording = !call.id.startsWith("call-");
+              const audioSrc = `/api/admin/customers/${id}/calls/${encodeURIComponent(call.id)}/audio`;
+
+              return (
+                <div key={call.id} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="font-medium text-navy">{call.title || "Anruf"}</p>
+                    <p className="text-caption text-text-muted">
+                      {new Date(call.startedAt).toLocaleString("de-CH")} ·{" "}
+                      {Math.round(call.durationSeconds / 60)} Min.
+                    </p>
+                  </div>
+                  <p className="mt-1 text-caption text-text-muted">
+                    {call.callerPhone} · {call.status}
                   </p>
+                  {call.summary && (
+                    <p className="mt-1 text-body text-text-muted">{call.summary}</p>
+                  )}
+                  {hasRecording ? (
+                    <audio
+                      controls
+                      preload="none"
+                      src={audioSrc}
+                      className="mt-3 h-9 w-full max-w-md"
+                    />
+                  ) : (
+                    <p className="mt-2 text-caption text-text-muted">
+                      Keine Aufnahme verfügbar.
+                    </p>
+                  )}
                 </div>
-                <p className="mt-1 text-caption text-text-muted">
-                  {call.callerPhone} · {call.status}
-                </p>
-                {call.summary && (
-                  <p className="mt-1 text-body text-text-muted">{call.summary}</p>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

@@ -156,32 +156,44 @@ export async function getAdminCustomer(
 
   if (!profileRow) return null;
 
-  const [settings, { data: calls }, { data: requests }] = await Promise.all([
+  const [
+    settings,
+    { data: calls },
+    { data: requests },
+    { count: callCount },
+    { data: durationRows },
+  ] = await Promise.all([
     getSettingsForUser(userId),
     admin
       .from("calls")
       .select("id, title, started_at, duration_seconds, summary, caller_phone, status")
       .eq("user_id", userId)
-      .order("started_at", { ascending: false })
-      .limit(50),
+      .order("started_at", { ascending: false }),
     admin
       .from("requests")
       .select("id, type, status, created_at, payload")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(20),
+    admin
+      .from("calls")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId),
+    admin.from("calls").select("duration_seconds").eq("user_id", userId),
   ]);
 
   const callRows = calls ?? [];
   const totalMinutes =
-    callRows.reduce((s, c) => s + ((c.duration_seconds as number) ?? 0), 0) /
-    60;
+    (durationRows ?? []).reduce(
+      (s, c) => s + ((c.duration_seconds as number) ?? 0),
+      0
+    ) / 60;
 
   return {
     profile: rowToProfile(profileRow as Record<string, unknown>),
     settings,
     stats: {
-      callCount: callRows.length,
+      callCount: callCount ?? callRows.length,
       totalMinutes,
       lastCallAt: callRows[0]?.started_at as string | undefined,
     },

@@ -16,6 +16,7 @@ import {
   ELEVENLABS_PROMPT_TEMPERATURE,
   ELEVENLABS_TTS_MODEL,
   ELEVENLABS_TURN_TIMEOUT_SECONDS,
+  normalizeKnowledgeBase,
   prepareAgentSystemPrompt,
   type AgentLanguageLabel,
 } from "../src/lib/elevenlabs/agent-config";
@@ -187,9 +188,7 @@ async function patchAgentCostConfig(
   const body = buildConversationConfigCostPatchSnake({
     firstMessage: agent?.first_message,
     prompt: preparedPrompt,
-    knowledgeBase: promptCfg?.knowledge_base as
-      | { type: string; name: string; id: string }[]
-      | undefined,
+    knowledgeBase: promptCfg?.knowledge_base,
     builtInTools: promptCfg?.built_in_tools,
   });
 
