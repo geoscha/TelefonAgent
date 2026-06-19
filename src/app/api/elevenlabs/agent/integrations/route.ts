@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { buildConversationConfig } from "@/lib/elevenlabs/agent-config";
 import {
   describeElevenLabsError,
   getElevenLabsClient,
@@ -10,7 +11,6 @@ import {
 } from "@/lib/elevenlabs/compliance";
 import {
   buildAppointmentBlock,
-  toLanguageCode,
 } from "@/lib/elevenlabs/prompt";
 import {
   getAgentCalendarIntegration,
@@ -53,19 +53,19 @@ async function syncLiveAgentPrompt(
     prompt += buildAppointmentBlock();
   }
 
+  const conversationConfig = buildConversationConfig({
+    greeting: applyEuComplianceGreeting(
+      agent.greeting,
+      Boolean(agent.euComplianceEnabled)
+    ),
+    language: agent.language ?? "Deutsch",
+    systemPrompt: prompt,
+    voiceId: agent.voiceId,
+  });
+
   await client.conversationalAi.agents.update(agent.id, {
     name: agent.name,
-    conversationConfig: {
-      agent: {
-        firstMessage: applyEuComplianceGreeting(
-          agent.greeting,
-          Boolean(agent.euComplianceEnabled)
-        ),
-        language: toLanguageCode(agent.language ?? "Deutsch"),
-        prompt: { prompt },
-      },
-      tts: { voiceId: agent.voiceId },
-    },
+    conversationConfig,
   } as Parameters<typeof client.conversationalAi.agents.update>[1]);
 }
 

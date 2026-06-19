@@ -127,6 +127,12 @@ export function parseSystemPrompt(raw: string): PromptSections {
   return sections;
 }
 
+/** Sections that belong in the knowledge base (not repeated on every LLM turn). */
+export const KNOWLEDGE_PROMPT_SECTION_KEYS: (keyof PromptSections)[] = [
+  "typischeAnfragen",
+  "sonstiges",
+];
+
 /** Compose prompt for ElevenLabs without markdown `#` headers. */
 export function composeSystemPrompt(sections: PromptSections): string {
   return PROMPT_SECTION_FIELDS.map(({ key, label }) => {
@@ -136,4 +142,33 @@ export function composeSystemPrompt(sections: PromptSections): string {
   })
     .filter(Boolean)
     .join("\n\n");
+}
+
+/** Behavior-only prompt for live agents (excludes FAQ / reference sections). */
+export function composeBehaviorSystemPrompt(sections: PromptSections): string {
+  return PROMPT_SECTION_FIELDS.filter(
+    ({ key }) => !KNOWLEDGE_PROMPT_SECTION_KEYS.includes(key)
+  )
+    .map(({ key, label }) => {
+      const content = sections[key].trim();
+      if (!content) return "";
+      return `${label}:\n${content}`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** Reference text suitable for a knowledge-base document (not sent as prompt tokens). */
+export function composeKnowledgeReferenceText(
+  sections: PromptSections
+): string | null {
+  const chunks = KNOWLEDGE_PROMPT_SECTION_KEYS.map((key) => {
+    const content = sections[key].trim();
+    if (!content) return "";
+    const label =
+      PROMPT_SECTION_FIELDS.find((field) => field.key === key)?.label ?? key;
+    return `${label}:\n${content}`;
+  }).filter(Boolean);
+
+  return chunks.length > 0 ? chunks.join("\n\n") : null;
 }

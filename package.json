@@ -7,7 +7,9 @@
     "dev:clean": "rm -rf .next .next-dev && NEXT_DIST_DIR=.next-dev next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "migrate:elevenlabs-flash": "npx tsx scripts/migrate-elevenlabs-flash.ts",
+    "migrate:elevenlabs-agent-config": "npx tsx scripts/migrate-elevenlabs-flash.ts"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.52.0",

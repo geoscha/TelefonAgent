@@ -1,7 +1,9 @@
 import type { AgentLanguageLabel } from "@/lib/elevenlabs/agent-config";
 
 /** Primary: fast + reliable German via language_code. */
-export const DEMO_TTS_MODEL = "eleven_flash_v2_5";
+import { ELEVENLABS_TTS_MODEL } from "@/lib/elevenlabs/agent-config";
+
+export const DEMO_TTS_MODEL = ELEVENLABS_TTS_MODEL;
 
 /** Fallback when flash rejects the request (quota, voice, etc.). */
 export const DEMO_TTS_MODEL_FALLBACK = "eleven_multilingual_v2";

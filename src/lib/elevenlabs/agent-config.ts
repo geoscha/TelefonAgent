@@ -1,4 +1,30 @@
+import {
+  composeBehaviorSystemPrompt,
+  parseSystemPrompt,
+} from "@/lib/elevenlabs/prompt-sections";
 import { toLanguageCode } from "@/lib/elevenlabs/prompt";
+
+type KnowledgeBaseLocator = {
+  type: string;
+  name: string;
+  id: string;
+  usageMode?: string;
+};
+
+type SystemToolConfigInput = {
+  type?: "system";
+  name: string;
+  description?: string;
+  params: {
+    systemToolType: string;
+    [key: string]: unknown;
+  };
+};
+
+type BuiltInToolsInput = {
+  voicemailDetection?: SystemToolConfigInput;
+  [key: string]: unknown;
+};
 
 /** UI language options — only German variants (ElevenLabs agent code: de). */
 export const AGENT_LANGUAGE_OPTIONS = [
@@ -8,7 +34,98 @@ export const AGENT_LANGUAGE_OPTIONS = [
 
 export type AgentLanguageLabel = (typeof AGENT_LANGUAGE_OPTIONS)[number]["value"];
 
-export const MULTILINGUAL_TTS_MODEL = "eleven_flash_v2_5";
+/** Default TTS model for all ElevenLabs Conversational AI agents. */
+export const ELEVENLABS_TTS_MODEL = "eleven_flash_v2_5";
+
+/**
+ * Default LLM — gemini-2.5-flash balances cost and quality for phone agents.
+ * (gemini-2.5-flash-lite is cheaper but weaker on multi-step property-management calls.)
+ */
+export const ELEVENLABS_LLM_MODEL = "gemini-2.5-flash";
+
+export const ELEVENLABS_PROMPT_TEMPERATURE = 0.3;
+/** ~1–2 short spoken sentences in German. */
+export const ELEVENLABS_PROMPT_MAX_TOKENS = 120;
+export const ELEVENLABS_TURN_TIMEOUT_SECONDS = 8;
+export const ELEVENLABS_MAX_DURATION_SECONDS = 300;
+
+const BREVITY_INSTRUCTION_BLOCK = `# Antwortstil (Telefon)
+- Antworte IMMER kurz und präzise: maximal 1–2 Sätze pro Turn.
+- Keine Monologe oder langen Aufzählungen am Telefon.
+- Lieber eine klärende Rückfrage als eine lange Erklärung.`;
+
+export function buildTtsConfig(voiceId: string) {
+  return {
+    voiceId,
+    modelId: ELEVENLABS_TTS_MODEL,
+  };
+}
+
+export function buildVoicemailDetectionTool(): SystemToolConfigInput {
+  return {
+    type: "system",
+    name: "voicemail_detection",
+    params: {
+      systemToolType: "voicemail_detection",
+    },
+  };
+}
+
+export function buildBuiltInToolsDefaults(
+  existing?: BuiltInToolsInput | null
+): BuiltInToolsInput {
+  return {
+    ...existing,
+    voicemailDetection:
+      existing?.voicemailDetection ?? buildVoicemailDetectionTool(),
+  };
+}
+
+export function buildTurnDefaults() {
+  return {
+    turnTimeout: ELEVENLABS_TURN_TIMEOUT_SECONDS,
+  };
+}
+
+export function buildConversationDefaults() {
+  return {
+    maxDurationSeconds: ELEVENLABS_MAX_DURATION_SECONDS,
+  };
+}
+
+export function buildAgentPromptDefaults(
+  systemPrompt: string,
+  options?: {
+    knowledgeBase?: KnowledgeBaseLocator[];
+    builtInTools?: BuiltInToolsInput | null;
+  }
+) {
+  return {
+    prompt: systemPrompt,
+    llm: ELEVENLABS_LLM_MODEL,
+    temperature: ELEVENLABS_PROMPT_TEMPERATURE,
+    maxTokens: ELEVENLABS_PROMPT_MAX_TOKENS,
+    knowledgeBase: options?.knowledgeBase,
+    builtInTools: buildBuiltInToolsDefaults(options?.builtInTools),
+  };
+}
+
+export function ensureBrevityInstruction(systemPrompt: string): string {
+  const trimmed = systemPrompt.trim();
+  if (/maximal 1.?2 sätze/i.test(trimmed)) return trimmed;
+  return `${trimmed}\n\n${BREVITY_INSTRUCTION_BLOCK}`;
+}
+
+/** Slim prompt for ElevenLabs: behavior only + brevity (FAQ sections stay out of prompt tokens). */
+export function prepareAgentSystemPrompt(
+  rawPrompt: string,
+  language: AgentLanguageLabel
+): string {
+  const sections = parseSystemPrompt(rawPrompt);
+  const behaviorPrompt = composeBehaviorSystemPrompt(sections);
+  const base = behaviorPrompt.trim() || rawPrompt.trim();
+  return applyLanguageInstructions(ensureBrevityInstruction(base), language);
+}
 
 export function isAllowedAgentLanguage(
   language: string
@@ -39,19 +156,60 @@ export function buildConversationConfig(params: {
   language: string;
   systemPrompt: string;
   voiceId: string;
+  knowledgeBase?: KnowledgeBaseLocator[];
+  builtInTools?: BuiltInToolsInput | null;
 }) {
   const language = normalizeAgentLanguage(params.language);
   return {
     agent: {
       firstMessage: params.greeting,
       language: toLanguageCode(language),
-      prompt: {
-        prompt: applyLanguageInstructions(params.systemPrompt, language),
-      },
+      prompt: buildAgentPromptDefaults(
+        prepareAgentSystemPrompt(params.systemPrompt, language),
+        {
+          knowledgeBase: params.knowledgeBase,
+          builtInTools: params.builtInTools,
+        }
+      ),
     },
-    tts: {
-      voiceId: params.voiceId,
-      modelId: MULTILINGUAL_TTS_MODEL,
+    tts: buildTtsConfig(params.voiceId),
+    turn: buildTurnDefaults(),
+    conversation: buildConversationDefaults(),
+  };
+}
+
+/** REST API snake_case patch for migration scripts (PATCH /v1/convai/agents/{id}). */
+export function buildConversationConfigCostPatchSnake(options: {
+  prompt?: string;
+  firstMessage?: string;
+  knowledgeBase?: KnowledgeBaseLocator[];
+  builtInTools?: Record<string, unknown>;
+}) {
+  return {
+    conversation_config: {
+      tts: { model_id: ELEVENLABS_TTS_MODEL },
+      turn: { turn_timeout: ELEVENLABS_TURN_TIMEOUT_SECONDS },
+      conversation: { max_duration_seconds: ELEVENLABS_MAX_DURATION_SECONDS },
+      agent: {
+        ...(options.firstMessage ? { first_message: options.firstMessage } : {}),
+        prompt: {
+          ...(options.prompt ? { prompt: options.prompt } : {}),
+          llm: ELEVENLABS_LLM_MODEL,
+          temperature: ELEVENLABS_PROMPT_TEMPERATURE,
+          max_tokens: ELEVENLABS_PROMPT_MAX_TOKENS,
+          ...(options.knowledgeBase?.length
+            ? { knowledge_base: options.knowledgeBase }
+            : {}),
+          built_in_tools: {
+            ...options.builtInTools,
+            voicemail_detection: {
+              type: "system",
+              name: "voicemail_detection",
+              params: { system_tool_type: "voicemail_detection" },
+            },
+          },
+        },
+      },
     },
   };
 }

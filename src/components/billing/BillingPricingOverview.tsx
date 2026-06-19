@@ -12,13 +12,13 @@ import {
   formatTokenCount,
   PHONE_NUMBER_MONTHLY_TOKENS,
 } from "@/lib/billing/quota-display";
-import { MULTILINGUAL_TTS_MODEL } from "@/lib/elevenlabs/agent-config";
+import { ELEVENLABS_TTS_MODEL } from "@/lib/elevenlabs/agent-config";
 import { cn } from "@/lib/utils";
 
 const STACK_ITEMS = [
   "ElevenLabs Conversational AI",
   "ChatGPT 4o mini",
-  `TTS · ${MULTILINGUAL_TTS_MODEL.replace(/_/g, " ")}`,
+  `TTS · ${ELEVENLABS_TTS_MODEL.replace(/_/g, " ")}`,
   "Twilio Telefonie",
 ] as const;
 

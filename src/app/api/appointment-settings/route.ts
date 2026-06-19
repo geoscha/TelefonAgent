@@ -1,13 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { buildConversationConfig } from "@/lib/elevenlabs/agent-config";
 import {
   describeElevenLabsError,
   getElevenLabsClient,
 } from "@/lib/elevenlabs/client";
-import {
-  buildAppointmentBlock,
-  toLanguageCode,
-} from "@/lib/elevenlabs/prompt";
+import { buildAppointmentBlock } from "@/lib/elevenlabs/prompt";
 import {
   getCalendar,
   updateSettings,
@@ -66,16 +64,15 @@ export async function POST(req: NextRequest) {
       const client = getElevenLabsClient();
       const effectivePrompt =
         (updated.systemPrompt ?? "") + (enabled ? buildAppointmentBlock() : "");
+      const conversationConfig = buildConversationConfig({
+        greeting: updated.greeting,
+        language: updated.language ?? "Deutsch",
+        systemPrompt: effectivePrompt,
+        voiceId: updated.voiceId,
+      });
       await client.conversationalAi.agents.update(updated.agentId, {
         name: updated.agentName,
-        conversationConfig: {
-          agent: {
-            firstMessage: updated.greeting,
-            language: toLanguageCode(updated.language ?? "Deutsch"),
-            prompt: { prompt: effectivePrompt },
-          },
-          tts: { voiceId: updated.voiceId },
-        },
+        conversationConfig,
       } as Parameters<typeof client.conversationalAi.agents.update>[1]);
     } catch (error) {
       const { message } = describeElevenLabsError(error);
