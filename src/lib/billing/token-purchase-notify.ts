@@ -1,6 +1,5 @@
 import "server-only";
 
-import { formatChf } from "@/lib/billing/billing-history-format";
 import { getTokenPack } from "@/lib/billing/quota-display";
 import { sendTokenPurchaseReceiptEmail } from "@/lib/email/token-purchase-receipt";
 import { createAdminClient } from "@/lib/supabase/admin";
