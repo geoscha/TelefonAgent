@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
           quantity: 1,
           price_data: {
             currency: "chf",
-            unit_amount: pack.priceChf * 100,
+            unit_amount: Math.round(pack.priceChf * 100),
             product_data: {
               name: pack.label,
               description: "Token-Guthaben für Cura Telefonagent",

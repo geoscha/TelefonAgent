@@ -18,6 +18,7 @@ import {
   tokenBalanceHighlight,
   type TokenBalanceView,
 } from "@/lib/billing/quota-display";
+import { formatChf } from "@/lib/billing/billing-history-format";
 import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
 import { cn } from "@/lib/utils";
 
@@ -216,7 +217,7 @@ function BillingPageContent() {
               <p className={userTitleClass}>{pack.label}</p>
               <div className="mt-4 flex items-baseline gap-1">
                 <span className="text-[28px] font-normal leading-none text-[#0E121B]">
-                  CHF {pack.priceChf}
+                  CHF {formatChf(pack.priceChf)}
                 </span>
               </div>
               <div className="mt-auto pt-6">

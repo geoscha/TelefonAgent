@@ -48,19 +48,19 @@ export const TOKEN_PACKS = [
   {
     id: "pack_5k",
     tokens: 5_000,
-    priceChf: 10,
+    priceChf: 0.1,
     label: "5'000 Tokens",
   },
   {
     id: "pack_20k",
     tokens: 20_000,
-    priceChf: 35,
+    priceChf: 0.35,
     label: "20'000 Tokens",
   },
   {
     id: "pack_100k",
     tokens: 100_000,
-    priceChf: 130,
+    priceChf: 1.3,
     label: "100'000 Tokens",
   },
 ] as const;
