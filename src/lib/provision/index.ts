@@ -14,7 +14,7 @@ export interface ProvisionResult {
 
 /**
  * Links an existing phone number to the user's active agent after onboarding.
- * Number assignment is handled manually via admin (no auto pool).
+ * Pool numbers are assigned automatically when available.
  */
 export async function provisionCurrentUser(): Promise<ProvisionResult> {
   const settings = await getSettings();
@@ -27,7 +27,7 @@ export async function provisionCurrentUser(): Promise<ProvisionResult> {
     return {
       ok: true,
       settings,
-      message: "Onboarding läuft — Nummer wird manuell zugewiesen.",
+      message: "Onboarding läuft — freie Nummer wird automatisch zugewiesen.",
     };
   }
 

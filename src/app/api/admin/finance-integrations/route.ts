@@ -31,7 +31,6 @@ export async function PATCH(req: NextRequest) {
     twilioAuthToken?: string;
     elevenLabsApiKey?: string;
     stripeSecretKey?: string;
-    usdToChfRate?: number;
     clearTwilio?: boolean;
     clearElevenLabs?: boolean;
     clearStripe?: boolean;

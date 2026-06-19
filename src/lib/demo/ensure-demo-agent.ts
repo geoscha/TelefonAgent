@@ -1,6 +1,9 @@
 import "server-only";
 
 import {
+  getDemoOutboundConfig,
+} from "@/lib/admin/demo-config";
+import {
   buildDemoAgentConversationConfig,
   DEMO_AGENT_NAME,
   DEMO_AGENT_TAG,
@@ -8,16 +11,24 @@ import {
 import { resolvePleasantDemoVoiceId } from "@/lib/demo/pleasant-voice";
 import { getElevenLabsClient } from "@/lib/elevenlabs/client";
 import {
-  configuredPoolNumbers,
-  listWorkspacePhones,
+  assignAgentToPhoneNumber,
+  getWorkspacePhoneDetail,
+  listWorkspacePhoneDetails,
+  normalizePhoneNumber,
+  type PhoneTelephonyProvider,
 } from "@/lib/elevenlabs/phone";
 
 export interface DemoCallTarget {
   agentId: string;
   agentPhoneNumberId: string;
+  phoneProvider: PhoneTelephonyProvider;
 }
 
 let cachedTarget: DemoCallTarget | null = null;
+
+export function resetDemoCallTargetCache(): void {
+  cachedTarget = null;
+}
 
 type ListedAgent = {
   agentId?: string;
@@ -47,20 +58,63 @@ function findDemoAgent(agents: ListedAgent[]): ListedAgent | undefined {
   );
 }
 
-async function resolveDemoPhoneNumberId(): Promise<string> {
+async function resolveDemoPhoneTarget(): Promise<{
+  phoneNumberId: string;
+  provider: PhoneTelephonyProvider;
+}> {
   const envPhoneId = process.env.DEMO_AGENT_PHONE_NUMBER_ID?.trim();
-  if (envPhoneId) return envPhoneId;
+  if (envPhoneId) {
+    const detail = await getWorkspacePhoneDetail(envPhoneId);
+    if (!detail.supportsOutbound) {
+      throw new Error(
+        "Die konfigurierte Demo-Telefonnummer unterstützt keine ausgehenden Anrufe."
+      );
+    }
+    return { phoneNumberId: envPhoneId, provider: detail.provider };
+  }
 
-  const phones = await listWorkspacePhones();
-  if (phones.length === 0) {
+  const { phoneNumber, elevenLabsPhoneId } = await getDemoOutboundConfig();
+  if (!phoneNumber) {
     throw new Error(
-      "Keine Telefonnummer in ElevenLabs gefunden. Bitte Nummer aus CURA_NUMBER_POOL im ElevenLabs-Dashboard importieren."
+      "Keine Demo-Ausgangsnummer hinterlegt. Bitte in Admin → Einstellungen die Live-Demo-Nummer eintragen."
     );
   }
 
-  const pool = configuredPoolNumbers();
-  const fromPool = phones.find((p) => pool.includes(p.phoneNumber));
-  return (fromPool ?? phones[0]).phoneNumberId;
+  if (elevenLabsPhoneId) {
+    const detail = await getWorkspacePhoneDetail(elevenLabsPhoneId);
+    if (normalizePhoneNumber(detail.phoneNumber) !== phoneNumber) {
+      throw new Error(
+        "Die gespeicherte ElevenLabs-ID passt nicht zur Demo-Telefonnummer. Bitte in den Admin-Einstellungen erneut speichern."
+      );
+    }
+    if (!detail.supportsOutbound) {
+      throw new Error(
+        "Die Demo-Telefonnummer unterstützt keine ausgehenden Anrufe."
+      );
+    }
+    return {
+      phoneNumberId: elevenLabsPhoneId,
+      provider: detail.provider,
+    };
+  }
+
+  const phones = await listWorkspacePhoneDetails();
+  const match = phones.find((p) => p.phoneNumber === phoneNumber);
+  if (!match) {
+    throw new Error(
+      `Die Demo-Nummer ${phoneNumber} wurde in ElevenLabs nicht gefunden. Bitte dort als Twilio-Nummer importieren.`
+    );
+  }
+  if (!match.supportsOutbound) {
+    throw new Error(
+      "Die Demo-Telefonnummer unterstützt keine ausgehenden Anrufe."
+    );
+  }
+
+  return {
+    phoneNumberId: match.phoneNumberId,
+    provider: match.provider,
+  };
 }
 
 async function createOrUpdateDemoAgent(existingId?: string): Promise<string> {
@@ -88,9 +142,33 @@ async function createOrUpdateDemoAgent(existingId?: string): Promise<string> {
   return created.agentId;
 }
 
+/** Syncs personalized greeting/prompt onto the demo agent before each outbound call. */
+export async function updateDemoAgentForOutbound(params: {
+  greeting: string;
+  systemPrompt: string;
+}): Promise<void> {
+  const client = getElevenLabsClient();
+  const voiceId = await resolvePleasantDemoVoiceId();
+  const conversationConfig = buildDemoAgentConversationConfig(voiceId, {
+    greeting: params.greeting,
+    systemPrompt: params.systemPrompt,
+  });
+
+  const agentId =
+    cachedTarget?.agentId ??
+    findDemoAgent(await listWorkspaceAgents())?.agentId ??
+    (await createOrUpdateDemoAgent());
+
+  await client.conversationalAi.agents.update(agentId, {
+    name: DEMO_AGENT_NAME,
+    conversationConfig,
+    tags: [DEMO_AGENT_TAG, "cura"],
+  } as Parameters<typeof client.conversationalAi.agents.update>[1]);
+}
+
 /**
  * Resolves (and lazily creates) the shared landing-page demo agent + outbound phone.
- * Env overrides optional; otherwise auto-provisions in ElevenLabs.
+ * Demo phone comes from admin settings, not the user number pool.
  */
 export async function ensureDemoCallTarget(): Promise<DemoCallTarget> {
   if (cachedTarget) return cachedTarget;
@@ -98,8 +176,15 @@ export async function ensureDemoCallTarget(): Promise<DemoCallTarget> {
   const agents = await listWorkspaceAgents();
   const existing = findDemoAgent(agents);
   const agentId = await createOrUpdateDemoAgent(existing?.agentId);
-  const agentPhoneNumberId = await resolveDemoPhoneNumberId();
+  const { phoneNumberId: agentPhoneNumberId, provider: phoneProvider } =
+    await resolveDemoPhoneTarget();
 
-  cachedTarget = { agentId, agentPhoneNumberId };
+  await assignAgentToPhoneNumber(
+    agentPhoneNumberId,
+    agentId,
+    "Cura Live-Demo"
+  );
+
+  cachedTarget = { agentId, agentPhoneNumberId, phoneProvider };
   return cachedTarget;
 }

@@ -1,11 +1,10 @@
 import "server-only";
 
 import {
-  createSipTrunkPhoneNumber,
   deletePhoneNumberFromElevenLabs,
+  importAndValidateSipTrunkForAgent,
   normalizePhoneNumber,
   SIP_INCOMPATIBLE_MESSAGE,
-  validateSipTrunkForBotCalls,
 } from "@/lib/elevenlabs/phone";
 import { linkUserPhoneToAgent } from "@/lib/elevenlabs/sync-agent";
 import {
@@ -15,7 +14,10 @@ import { setupPhoneBilling } from "@/lib/billing/phone-billing";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient, requireUserId } from "@/lib/supabase/server";
 import { getSettingsForUser, updateSettingsForUser, type ElevenLabsSettings } from "@/lib/store";
-import { assignNumberFromPool, syncNumberPoolFromEnv } from "@/lib/store/number-pool";
+import {
+  assignNumberFromPool,
+  hasFreePoolNumber,
+} from "@/lib/store/number-pool";
 
 export type PhoneNumberSource = "pool" | "sip_trunk";
 export type PhoneValidationStatus = "pending" | "valid" | "invalid";
@@ -238,19 +240,19 @@ export async function addPoolPhoneNumber(
   return phone;
 }
 
-export async function requestAdditionalPoolNumber(): Promise<{
+/** Claims the next free pool number for a user (billing + agent link). */
+export async function assignNextFreePoolNumberForUser(
+  userId: string
+): Promise<{
   phone?: UserPhoneNumber;
-  pending: boolean;
   autoAssigned: boolean;
   insufficientTokens?: boolean;
+  noPoolNumber?: boolean;
   error?: string;
 }> {
-  const userId = await requireUserId();
-
   const affordability = await assertCanAffordPhoneNumber(userId);
   if (!affordability.ok) {
     return {
-      pending: false,
       autoAssigned: false,
       insufficientTokens: true,
       error: affordability.error,
@@ -258,17 +260,8 @@ export async function requestAdditionalPoolNumber(): Promise<{
   }
 
   try {
-    await syncNumberPoolFromEnv();
-    const admin = createAdminClient();
-    const { data: free } = await admin
-      .from("forwarding_number_pool")
-      .select("phone_number")
-      .is("assigned_user_id", null)
-      .limit(1)
-      .maybeSingle();
-
-    if (!free) {
-      return { pending: true, autoAssigned: false };
+    if (!(await hasFreePoolNumber())) {
+      return { autoAssigned: false, noPoolNumber: true };
     }
 
     const pool = await assignNumberFromPool(userId, { allowExisting: false });
@@ -282,16 +275,15 @@ export async function requestAdditionalPoolNumber(): Promise<{
 
     const charged = await setupPhoneBilling(userId, phone.id);
     if (!charged.ok) {
-      const admin = createAdminClient();
       const { releasePoolNumberAssignment } = await import("@/lib/billing/phone-billing");
       await releasePoolNumberAssignment(pool.phoneNumber, userId);
+      const admin = createAdminClient();
       await admin
         .from("user_phone_numbers")
         .delete()
         .eq("id", phone.id)
         .eq("user_id", userId);
       return {
-        pending: false,
         autoAssigned: false,
         insufficientTokens: true,
         error: charged.error,
@@ -304,10 +296,26 @@ export async function requestAdditionalPoolNumber(): Promise<{
       );
     }
 
-    return { phone, pending: false, autoAssigned: true };
-  } catch {
-    return { pending: true, autoAssigned: false };
+    return { phone, autoAssigned: true };
+  } catch (err) {
+    console.warn("[phone/numbers] pool assign failed:", err);
+    return { autoAssigned: false };
   }
+}
+
+export async function requestAdditionalPoolNumber(): Promise<{
+  phone?: UserPhoneNumber;
+  pending: boolean;
+  autoAssigned: boolean;
+  insufficientTokens?: boolean;
+  error?: string;
+}> {
+  const userId = await requireUserId();
+  const result = await assignNextFreePoolNumberForUser(userId);
+  return {
+    ...result,
+    pending: Boolean(result.noPoolNumber),
+  };
 }
 
 export async function addSipTrunkPhoneNumber(
@@ -347,37 +355,24 @@ export async function addSipTrunkPhoneNumber(
 
   const admin = createAdminClient();
   const label = input.label?.trim() || `SIP ${normalized}`;
-  const outboundConfigured = Boolean(input.outboundAddress?.trim());
-  let elevenLabsId: string | undefined;
+
+  const imported = await importAndValidateSipTrunkForAgent({
+    phoneNumber: normalized,
+    label,
+    agentId: settings.agentId,
+    outboundAddress: input.outboundAddress?.trim(),
+    outboundTransport: input.outboundTransport,
+    outboundUsername: input.outboundUsername?.trim(),
+    outboundPassword: input.outboundPassword,
+  });
+
+  if (!imported.ok) {
+    return { ok: false, error: imported.error };
+  }
+
+  const elevenLabsId = imported.phoneNumberId;
 
   try {
-    const created = await createSipTrunkPhoneNumber({
-      phoneNumber: normalized,
-      label,
-      outboundAddress: input.outboundAddress?.trim(),
-      outboundTransport: input.outboundTransport,
-      outboundUsername: input.outboundUsername?.trim(),
-      outboundPassword: input.outboundPassword,
-    });
-    elevenLabsId = created.phoneNumberId;
-
-    const botReady = await validateSipTrunkForBotCalls({
-      phoneNumberId: elevenLabsId,
-      expectedNumber: normalized,
-      agentId: settings.agentId,
-      outboundConfigured,
-    });
-
-    if (!botReady.ok) {
-      await deletePhoneNumberFromElevenLabs(elevenLabsId).catch((err) =>
-        console.warn("[phone/sip] cleanup after bot validation:", err)
-      );
-      return {
-        ok: false,
-        error: botReady.error || SIP_INCOMPATIBLE_MESSAGE,
-      };
-    }
-
     const makePrimary = existing.length === 0;
     if (makePrimary) {
       await clearPrimaryFlag(userId);
@@ -430,11 +425,9 @@ export async function addSipTrunkPhoneNumber(
 
     return { ok: true, phone };
   } catch (err) {
-    if (elevenLabsId) {
-      await deletePhoneNumberFromElevenLabs(elevenLabsId).catch((cleanupErr) =>
-        console.warn("[phone/sip] cleanup after error:", cleanupErr)
-      );
-    }
+    await deletePhoneNumberFromElevenLabs(elevenLabsId).catch((cleanupErr) =>
+      console.warn("[phone/sip] cleanup after error:", cleanupErr)
+    );
     const message =
       err instanceof Error && err.message.trim()
         ? err.message

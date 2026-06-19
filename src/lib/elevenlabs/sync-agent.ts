@@ -265,4 +265,34 @@ export async function linkUserPhoneToAgent(userId: string): Promise<void> {
   await reconcileUserPhoneAgentLink(userId);
 }
 
+/** Unlinks all of a user's ElevenLabs phone numbers from any agent. */
+export async function unlinkUserPhonesFromAgent(userId: string): Promise<void> {
+  const { hasApiKey, getElevenLabsClient } = await import("@/lib/elevenlabs/client");
+  if (!hasApiKey()) return;
+
+  const client = getElevenLabsClient();
+  const phones = await listUserPhoneNumbers(userId);
+  const settings = await getSettingsForUser(userId);
+  const ids = new Set<string>();
+
+  for (const phone of phones) {
+    if (phone.elevenLabsPhoneNumberId) {
+      ids.add(phone.elevenLabsPhoneNumberId);
+    }
+  }
+  if (settings.elevenLabsPhoneNumberId) {
+    ids.add(settings.elevenLabsPhoneNumberId);
+  }
+
+  for (const phoneNumberId of Array.from(ids)) {
+    try {
+      await client.conversationalAi.phoneNumbers.update(phoneNumberId, {
+        agentId: undefined,
+      });
+    } catch (err) {
+      console.warn(`[sync-agent] unlink ${phoneNumberId}:`, err);
+    }
+  }
+}
+
 export { describeElevenLabsError };

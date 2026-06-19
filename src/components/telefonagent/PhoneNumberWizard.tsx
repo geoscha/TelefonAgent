@@ -41,6 +41,7 @@ import {
   PHONE_NUMBER_MONTHLY_TOKENS,
   resolvePhoneNextBillingAt,
 } from "@/lib/billing/quota-display";
+import { cn } from "@/lib/utils";
 
 type ForwardingStatus = "nicht_eingerichtet" | "anleitung" | "aktiv";
 
@@ -189,11 +190,7 @@ interface PhoneNumberWizardProps {
   disconnecting: boolean;
   onRequestNumber: () => void;
   onCancelRequest: (requestId: string) => Promise<void>;
-  onAddSip: (input: {
-    phoneNumber: string;
-    label?: string;
-    outboundAddress?: string;
-  }) => Promise<boolean>;
+  onAddSip: (input: { phoneNumber: string }) => Promise<{ ok: true } | { ok: false }>;
   onConfirmForwarding: (
     phoneId: string,
     customerNumber: string
@@ -230,8 +227,7 @@ export function PhoneNumberWizard({
   const [activePhoneId, setActivePhoneId] = useState<string | null>(null);
   const [customerNumber, setCustomerNumber] = useState("");
   const [sipNumber, setSipNumber] = useState("");
-  const [sipLabel, setSipLabel] = useState("");
-  const [sipAddress, setSipAddress] = useState("");
+  const [sipUnsupportedOpen, setSipUnsupportedOpen] = useState(false);
 
   const activePhone = numbers.find((n) => n.id === activePhoneId);
   const curaNumber = activePhone?.phoneNumber ?? "";
@@ -253,8 +249,7 @@ export function PhoneNumberWizard({
     setActivePhoneId(null);
     setCustomerNumber("");
     setSipNumber("");
-    setSipLabel("");
-    setSipAddress("");
+    setSipUnsupportedOpen(false);
   }
 
   function startConnect(phoneId: string) {
@@ -275,12 +270,12 @@ export function PhoneNumberWizard({
   }
 
   async function handleAddSip() {
-    const ok = await onAddSip({
-      phoneNumber: sipNumber,
-      label: sipLabel || undefined,
-      outboundAddress: sipAddress || undefined,
-    });
-    if (ok) resetToOverview();
+    const result = await onAddSip({ phoneNumber: sipNumber });
+    if (result.ok) {
+      resetToOverview();
+      return;
+    }
+    setSipUnsupportedOpen(true);
   }
 
   return (
@@ -304,17 +299,19 @@ export function PhoneNumberWizard({
       )}
 
       {flow === "sip" && (
-        <SipTrunkStep
-          phoneNumber={sipNumber}
-          label={sipLabel}
-          outboundAddress={sipAddress}
-          adding={addingSip}
-          onPhoneNumberChange={setSipNumber}
-          onLabelChange={setSipLabel}
-          onAddressChange={setSipAddress}
-          onBack={resetToOverview}
-          onSubmit={handleAddSip}
-        />
+        <>
+          <SipTrunkStep
+            phoneNumber={sipNumber}
+            adding={addingSip}
+            onPhoneNumberChange={setSipNumber}
+            onBack={resetToOverview}
+            onSubmit={handleAddSip}
+          />
+          <SipUnsupportedDialog
+            open={sipUnsupportedOpen}
+            onOpenChange={setSipUnsupportedOpen}
+          />
+        </>
       )}
 
       {flow === "connect" && activePhone && (
@@ -471,6 +468,36 @@ function OverviewStep({
         </div>
       )}
 
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          data-setup-demo="setup-demo-phone-request"
+          className={landingBtnPrimary}
+          onClick={onRequestNumber}
+          disabled={requesting || hasPending || !canAffordPhoneNumber}
+          title={
+            !canAffordPhoneNumber
+              ? `Mindestens ${formatPhoneNumberCostLabel()} erforderlich`
+              : undefined
+          }
+        >
+          {requesting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Plus className="h-4 w-4" />
+          )}
+          Nummer beantragen
+        </button>
+        <button
+          type="button"
+          className={landingBtnSecondary}
+          onClick={onStartSip}
+          disabled={addingSip}
+        >
+          Eigene Nummer (SIP)
+        </button>
+      </div>
+
       {(numbers.length > 0 || hasPending) && (
         <ul className="space-y-3">
           {pendingRequests.map((req) => (
@@ -596,36 +623,6 @@ function OverviewStep({
           })}
         </ul>
       )}
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          data-setup-demo="setup-demo-phone-request"
-          className={landingBtnPrimary}
-          onClick={onRequestNumber}
-          disabled={requesting || hasPending || !canAffordPhoneNumber}
-          title={
-            !canAffordPhoneNumber
-              ? `Mindestens ${formatPhoneNumberCostLabel()} erforderlich`
-              : undefined
-          }
-        >
-          {requesting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" />
-          )}
-          Nummer beantragen
-        </button>
-        <button
-          type="button"
-          className={landingBtnSecondary}
-          onClick={onStartSip}
-          disabled={addingSip}
-        >
-          Eigene Nummer (SIP)
-        </button>
-      </div>
     </div>
   );
 }
@@ -665,62 +662,65 @@ function ConnectCustomerStep({
   );
 }
 
+function SipUnsupportedDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm gap-4">
+        <DialogHeader>
+          <DialogTitle className="text-[15px] font-normal text-[#0E121B]">
+            Nummer nicht unterstützt
+          </DialogTitle>
+          <DialogDescription className="text-[13px] leading-relaxed text-[#525866]">
+            Diese Nummer kann nicht hinzugefügt werden. Ihr Anbieter unterstützt
+            sie nicht für den Telefonagenten.
+          </DialogDescription>
+        </DialogHeader>
+        <button
+          type="button"
+          className={cn(landingBtnPrimary, "w-full justify-center")}
+          onClick={() => onOpenChange(false)}
+        >
+          Verstanden
+        </button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SipTrunkStep({
   phoneNumber,
-  label,
-  outboundAddress,
   adding,
   onPhoneNumberChange,
-  onLabelChange,
-  onAddressChange,
   onBack,
   onSubmit,
 }: {
   phoneNumber: string;
-  label: string;
-  outboundAddress: string;
   adding: boolean;
   onPhoneNumberChange: (v: string) => void;
-  onLabelChange: (v: string) => void;
-  onAddressChange: (v: string) => void;
   onBack: () => void;
   onSubmit: () => void | Promise<void>;
 }) {
   return (
     <div className="space-y-3">
-      <p className={userLabelClass}>
-        Eigene Nummer als SIP Trunk hinzufügen. Die Nummer wird bei ElevenLabs
-        importiert und auf Bot-Anrufe geprüft — nur SIP-kompatible Nummern
-        werden übernommen. Ein Telefonagent muss bereits existieren.
-      </p>
       <div className="space-y-2">
-        <Label className={userLabelClass}>Telefonnummer (E.164)</Label>
+        <Label className={userLabelClass}>Telefonnummer</Label>
         <Input
           value={phoneNumber}
           onChange={(e) => onPhoneNumberChange(e.target.value)}
-          placeholder="+41791234567"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label className={userLabelClass}>Bezeichnung (optional)</Label>
-        <Input
-          value={label}
-          onChange={(e) => onLabelChange(e.target.value)}
-          placeholder="Hauptleitung"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label className={userLabelClass}>SIP-Adresse (optional, für ausgehend)</Label>
-        <Input
-          value={outboundAddress}
-          onChange={(e) => onAddressChange(e.target.value)}
-          placeholder="sip.provider.ch"
+          inputMode="tel"
+          autoComplete="tel"
         />
       </div>
       <StepNav
         onBack={onBack}
         onNext={() => void onSubmit()}
-        nextLabel="Prüfen & hinzufügen"
+        nextLabel="Hinzufügen"
         nextDisabled={adding || !phoneNumber.trim()}
         nextLoading={adding}
       />

@@ -5,6 +5,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  adminPanelClass,
+  adminTableClass,
+  adminTableHeadClass,
+} from "@/components/admin/admin-ui";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { formatTokenCount } from "@/lib/billing/quota-display";
@@ -51,10 +56,8 @@ export default function AdminCustomersPage() {
   }, [load]);
 
   return (
-    <div className="space-y-6">
-      <h1>Kunden</h1>
-
-      <div className="relative max-w-md">
+    <div className="space-y-4">
+      <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
         <Input
           className="pl-9"
@@ -64,65 +67,65 @@ export default function AdminCustomersPage() {
         />
       </div>
 
-      <div className="overflow-hidden rounded-card border border-stroke bg-surface">
+      <div className={`overflow-hidden ${adminPanelClass}`}>
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-text-muted">
-            <Loader2 className="h-5 w-5 animate-spin" />
+          <div className="flex items-center justify-center gap-2 py-16 text-[#525866]">
+            <Loader2 className="h-4 w-4 animate-spin" />
           </div>
         ) : customers.length === 0 ? (
-          <p className="py-16 text-center text-text-muted">Keine Kunden.</p>
+          <p className="py-16 text-center landing-body text-[#525866]">—</p>
         ) : (
-          <table className="w-full text-left text-body">
+          <table className={adminTableClass}>
             <thead>
-              <tr className="border-b border-stroke bg-bg/50 text-caption text-text-muted">
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Tokens</th>
-                <th className="px-4 py-3 font-medium">Nummer</th>
-                <th className="px-4 py-3 font-medium">Anrufe</th>
-                <th className="px-4 py-3 font-medium">Support</th>
-                <th className="px-4 py-3 font-medium">Registriert</th>
+              <tr className={adminTableHeadClass}>
+                <th className="px-3 py-2.5 font-normal">Name</th>
+                <th className="px-3 py-2.5 font-normal">Tokens</th>
+                <th className="px-3 py-2.5 font-normal">Nummer</th>
+                <th className="px-3 py-2.5 font-normal">Anrufe</th>
+                <th className="px-3 py-2.5 font-normal">Support</th>
+                <th className="px-3 py-2.5 font-normal">Seit</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stroke">
+            <tbody className="divide-y divide-[#E1E4EA]">
               {customers.map((c) => (
-                <tr key={c.id} className="hover:bg-bg/30">
-                  <td className="px-4 py-3">
+                <tr key={c.id} className="hover:bg-[#F5F7FA]/60">
+                  <td className="px-3 py-2.5">
                     <Link
                       href={`/admin/customers/${c.id}`}
-                      className="block font-medium text-navy hover:text-accent"
+                      className="block text-[#0E121B] hover:text-[#335cff]"
                     >
                       {c.name || "—"}
                     </Link>
-                    <p className="text-caption text-text-muted">{c.email}</p>
+                    <p className="landing-caption text-[#99A0AE]">{c.email}</p>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2.5">
                     <Badge variant={c.tokenBalance <= 0 ? "warning" : "default"}>
                       {formatTokenCount(c.tokenBalance)}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3 font-mono text-caption">
+                  <td className="px-3 py-2.5 font-mono landing-caption">
                     {c.curaNumber || "—"}
                   </td>
-                  <td className="px-4 py-3">{c.callCount}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2.5">{c.callCount}</td>
+                  <td className="px-3 py-2.5">
                     {(c.openSupportCount ?? 0) > 0 ? (
                       <div className="max-w-[200px]">
                         <Badge variant="warning">
                           {c.openSupportCount === 1
                             ? "Nachricht"
-                            : `${c.openSupportCount} Nachrichten`}
+                            : `${c.openSupportCount}`}
                         </Badge>
                         {c.lastSupportPreview && (
-                          <p className="mt-1 line-clamp-2 text-caption text-text-muted">
+                          <p className="mt-1 line-clamp-2 landing-caption text-[#99A0AE]">
                             {c.lastSupportPreview}
                           </p>
                         )}
                       </div>
                     ) : (
-                      <span className="text-caption text-text-muted">—</span>
+                      <span className="landing-caption text-[#99A0AE]">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-caption text-text-muted">
+                  <td className="px-3 py-2.5 landing-caption text-[#525866]">
                     {new Date(c.createdAt).toLocaleDateString("de-CH")}
                   </td>
                 </tr>

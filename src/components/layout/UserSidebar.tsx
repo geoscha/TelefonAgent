@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText } from "lucide-react";
 
 import { CuraLogo } from "@/components/brand/CuraLogo";
 import {
   isUserNavActive,
   USER_NAV_ITEMS,
 } from "@/components/layout/user-nav";
-import { landingBtnSecondary } from "@/components/landing/landing-buttons";
+import {
+  SidebarSupportButton,
+  SidebarSupportIcon,
+} from "@/components/support/SidebarSupportButton";
 import { cn } from "@/lib/utils";
 
 export function UserSidebar() {
@@ -50,11 +52,9 @@ export function UserSidebar() {
 
       <div className="mt-4 landing-radius border border-[#E1E4EA] bg-[#F5F7FA] p-4">
         <div className="mb-3 flex justify-center text-[#99A0AE]" aria-hidden>
-          <FileText className="h-7 w-7 stroke-[1.25]" />
+          <SidebarSupportIcon />
         </div>
-        <Link href="#" className={cn(landingBtnSecondary, "w-full justify-center bg-white")}>
-          API-Dokumentation
-        </Link>
+        <SidebarSupportButton />
       </div>
     </aside>
   );

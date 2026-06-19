@@ -3,7 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Call, SuggestedAction, TranscriptLine } from "@/lib/types";
-import { teardownUserResources } from "@/lib/account/teardown";
+import { deleteUserAccount } from "@/lib/account/delete-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient, requireUserId } from "@/lib/supabase/server";
 
@@ -28,6 +28,10 @@ export type {
   StoredAgent,
 } from "@/lib/onboarding-types";
 import type { OnboardingPhase, SetupDemoStatus, StoredAgent } from "@/lib/onboarding-types";
+import {
+  normalizeCalendarAgentPermissions,
+  type CalendarAgentPermissions,
+} from "@/lib/integrations/calendar-agent-permissions";
 export type CalendarProvider = "google" | "microsoft" | "apple";
 export type BillingPlan = "free" | "pro";
 export type BillingInterval = "monthly" | "yearly";
@@ -74,6 +78,7 @@ export interface CalendarConnection {
   expiresAt?: number;
   appPassword?: string;
   caldavCalendarUrl?: string;
+  agentPermissions?: CalendarAgentPermissions;
 }
 
 export interface Profile {
@@ -194,6 +199,7 @@ function rowToCall(row: any): Call {
         urgency: row.urgency ?? "niedrig",
       },
     suggestedActions: (row.suggested_actions ?? []) as SuggestedAction[],
+    agentId: row.agent_id ?? undefined,
   };
 }
 
@@ -214,6 +220,7 @@ function callToRow(userId: string, call: Call): Record<string, unknown> {
     transcript: call.transcript,
     structured_summary: call.structuredSummary,
     suggested_actions: call.suggestedActions,
+    agent_id: call.agentId ?? null,
   };
 }
 
@@ -228,6 +235,7 @@ function rowToCalendar(row: any): CalendarConnection {
     expiresAt: row.expires_at ?? undefined,
     appPassword: row.app_password ?? undefined,
     caldavCalendarUrl: row.caldav_calendar_url ?? undefined,
+    agentPermissions: normalizeCalendarAgentPermissions(row.agent_permissions),
   };
 }
 
@@ -242,6 +250,8 @@ function calendarPatchToRow(patch: Partial<CalendarConnection>): Record<string, 
   if (patch.appPassword !== undefined) row.app_password = patch.appPassword;
   if (patch.caldavCalendarUrl !== undefined)
     row.caldav_calendar_url = patch.caldavCalendarUrl;
+  if (patch.agentPermissions !== undefined)
+    row.agent_permissions = patch.agentPermissions;
   return row;
 }
 
@@ -400,36 +410,7 @@ export async function updateProfile(patch: Partial<Profile>): Promise<Profile> {
 /** Permanently deletes the signed-in account (cascades to all their data). */
 export async function deleteAccount(): Promise<void> {
   const userId = await requireUserId();
-  await teardownUserResources(userId);
-  const admin = createAdminClient();
-
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("created_at")
-    .eq("id", userId)
-    .maybeSingle();
-
-  const { data: callAgg } = await admin
-    .from("calls")
-    .select("duration_seconds")
-    .eq("user_id", userId);
-
-  const callSeconds = (callAgg ?? []).reduce(
-    (s, c) => s + (c.duration_seconds ?? 0),
-    0
-  );
-
-  await admin.from("customer_registry").upsert(
-    {
-      id: userId,
-      created_at: profile?.created_at ?? new Date().toISOString(),
-      deleted_at: new Date().toISOString(),
-      call_seconds_lifetime: callSeconds,
-    },
-    { onConflict: "id" }
-  );
-
-  await admin.auth.admin.deleteUser(userId);
+  await deleteUserAccount(userId);
 }
 
 // ── Calendar connections (session) ───────────────────────────────────────────

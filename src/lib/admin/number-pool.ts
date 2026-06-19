@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getConfiguredDemoOutboundPhone } from "@/lib/admin/demo-config";
 import { configuredPoolNumbers, normalizePhoneNumber } from "@/lib/elevenlabs/phone";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -19,6 +20,7 @@ export interface AdminPoolNumber {
 /** All pool numbers with assignment status (for admin dashboard). */
 export async function listAdminPoolNumbers(): Promise<AdminPoolNumber[]> {
   const admin = createAdminClient();
+  const demoPhone = await getConfiguredDemoOutboundPhone();
   const { data: rows } = await admin
     .from("forwarding_number_pool")
     .select("*")
@@ -47,6 +49,7 @@ export async function listAdminPoolNumbers(): Promise<AdminPoolNumber[]> {
 
   for (const row of poolRows) {
     const phone = normalizePhoneNumber(row.phone_number as string);
+    if (demoPhone && phone === demoPhone) continue;
     const userId = row.assigned_user_id as string | null;
     const profile = userId ? profiles.get(userId) : undefined;
     const timesAssigned = Number(row.times_assigned ?? 0);
@@ -69,6 +72,7 @@ export async function listAdminPoolNumbers(): Promise<AdminPoolNumber[]> {
   }
 
   for (const num of configuredPoolNumbers()) {
+    if (demoPhone && num === demoPhone) continue;
     if (!byPhone.has(num)) {
       byPhone.set(num, {
         phoneNumber: num,

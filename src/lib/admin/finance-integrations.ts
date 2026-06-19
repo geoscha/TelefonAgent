@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getUsdToChfRate } from "@/lib/admin/usd-chf-rate";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface FinanceIntegrationConfig {
@@ -7,6 +8,7 @@ export interface FinanceIntegrationConfig {
   twilioAuthToken: string;
   elevenLabsApiKey: string;
   stripeSecretKey: string;
+  stripeWebhookSecret: string;
   usdToChfRate: number;
 }
 
@@ -18,6 +20,8 @@ export interface FinanceIntegrationPublic {
   elevenLabsKeyMasked: string;
   stripeKeyMasked: string;
   usdToChfRate: number;
+  usdToChfUpdatedAt: string | null;
+  usdToChfSource: "live" | "cached" | "fallback";
   elevenLabsFromEnv: boolean;
 }
 
@@ -36,21 +40,53 @@ export async function getFinanceIntegrations(): Promise<FinanceIntegrationConfig
   const { data } = await admin
     .from("admin_config")
     .select(
-      "twilio_account_sid, twilio_auth_token, elevenlabs_finance_api_key, stripe_finance_secret_key, usd_to_chf_rate"
+      "twilio_account_sid, twilio_auth_token, elevenlabs_finance_api_key, stripe_finance_secret_key, stripe_webhook_secret"
     )
     .eq("id", 1)
     .maybeSingle();
 
-  const rate = Number(data?.usd_to_chf_rate);
   const stripeDb = (data?.stripe_finance_secret_key as string)?.trim() ?? "";
+  const stripeWebhookDb =
+    (data?.stripe_webhook_secret as string)?.trim() ?? "";
+
+  let twilioAccountSid = (data?.twilio_account_sid as string)?.trim() ?? "";
+  let twilioAuthToken = (data?.twilio_auth_token as string)?.trim() ?? "";
+  let elevenLabsApiKey =
+    (data?.elevenlabs_finance_api_key as string)?.trim() || envElevenLabsKey();
+
+  const { data: twilioProfile } = await admin
+    .from("admin_twilio_accounts")
+    .select("account_sid, auth_token")
+    .eq("is_default", true)
+    .maybeSingle();
+
+  if (
+    twilioProfile?.account_sid?.trim() &&
+    twilioProfile?.auth_token?.trim()
+  ) {
+    twilioAccountSid = twilioProfile.account_sid.trim();
+    twilioAuthToken = twilioProfile.auth_token.trim();
+  }
+
+  const { data: elProfile } = await admin
+    .from("admin_elevenlabs_accounts")
+    .select("api_key")
+    .eq("is_default", true)
+    .maybeSingle();
+
+  if (elProfile?.api_key?.trim()) {
+    elevenLabsApiKey = elProfile.api_key.trim();
+  }
+
+  const { rate: usdToChfRate } = await getUsdToChfRate();
+
   return {
-    twilioAccountSid: (data?.twilio_account_sid as string) ?? "",
-    twilioAuthToken: (data?.twilio_auth_token as string) ?? "",
-    elevenLabsApiKey:
-      (data?.elevenlabs_finance_api_key as string)?.trim() ||
-      envElevenLabsKey(),
+    twilioAccountSid,
+    twilioAuthToken,
+    elevenLabsApiKey,
     stripeSecretKey: stripeDb,
-    usdToChfRate: Number.isFinite(rate) && rate > 0 ? rate : 0.88,
+    stripeWebhookSecret: stripeWebhookDb,
+    usdToChfRate,
   };
 }
 
@@ -59,7 +95,7 @@ export async function getFinanceIntegrationsPublic(): Promise<FinanceIntegration
   const { data } = await admin
     .from("admin_config")
     .select(
-      "twilio_account_sid, twilio_auth_token, elevenlabs_finance_api_key, stripe_finance_secret_key, usd_to_chf_rate"
+      "twilio_account_sid, twilio_auth_token, elevenlabs_finance_api_key, stripe_finance_secret_key, stripe_webhook_secret"
     )
     .eq("id", 1)
     .maybeSingle();
@@ -68,8 +104,13 @@ export async function getFinanceIntegrationsPublic(): Promise<FinanceIntegration
   const token = (data?.twilio_auth_token as string) ?? "";
   const elKey = (data?.elevenlabs_finance_api_key as string) ?? "";
   const stripeKey = (data?.stripe_finance_secret_key as string) ?? "";
+  const stripeWebhookKey = (data?.stripe_webhook_secret as string) ?? "";
   const envKey = envElevenLabsKey();
-  const rate = Number(data?.usd_to_chf_rate);
+  const {
+    rate: usdToChfRate,
+    updatedAt: usdToChfUpdatedAt,
+    source: usdToChfSource,
+  } = await getUsdToChfRate();
 
   return {
     twilioConfigured: Boolean(sid && token),
@@ -82,7 +123,9 @@ export async function getFinanceIntegrationsPublic(): Promise<FinanceIntegration
         ? `${maskSecret(envKey)} (Env)`
         : "",
     stripeKeyMasked: stripeKey ? maskSecret(stripeKey) : "",
-    usdToChfRate: Number.isFinite(rate) && rate > 0 ? rate : 0.88,
+    usdToChfRate,
+    usdToChfUpdatedAt,
+    usdToChfSource,
     elevenLabsFromEnv: !elKey && Boolean(envKey),
   };
 }
@@ -92,10 +135,11 @@ export async function updateFinanceIntegrations(patch: {
   twilioAuthToken?: string;
   elevenLabsApiKey?: string;
   stripeSecretKey?: string;
-  usdToChfRate?: number;
+  stripeWebhookSecret?: string;
   clearTwilio?: boolean;
   clearElevenLabs?: boolean;
   clearStripe?: boolean;
+  clearStripeWebhook?: boolean;
 }): Promise<void> {
   const admin = createAdminClient();
   const row: Record<string, unknown> = {
@@ -124,12 +168,11 @@ export async function updateFinanceIntegrations(patch: {
   if (patch.clearStripe) {
     row.stripe_finance_secret_key = null;
   }
-  if (patch.usdToChfRate !== undefined) {
-    const rate = patch.usdToChfRate;
-    if (!Number.isFinite(rate) || rate <= 0) {
-      throw new Error("USD/CHF Kurs muss grösser als 0 sein.");
-    }
-    row.usd_to_chf_rate = rate;
+  if (patch.stripeWebhookSecret !== undefined) {
+    row.stripe_webhook_secret = patch.stripeWebhookSecret.trim() || null;
+  }
+  if (patch.clearStripeWebhook) {
+    row.stripe_webhook_secret = null;
   }
 
   const { data: existing } = await admin

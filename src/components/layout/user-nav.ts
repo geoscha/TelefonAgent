@@ -2,9 +2,8 @@ import {
   Bot,
   CreditCard,
   History,
-  Key,
   Phone,
-  Webhook,
+  Plug,
   type LucideIcon,
 } from "lucide-react";
 
@@ -18,9 +17,8 @@ export const USER_NAV_ITEMS: UserNavItem[] = [
   { href: "/telefonagent", label: "KI-Agenten", icon: Bot },
   { href: "/phones", label: "Telefonnummern", icon: Phone },
   { href: "/anrufe", label: "Verlauf", icon: History },
-  { href: "/api-keys", label: "API-Schlüssel", icon: Key },
+  { href: "/integrations", label: "Integrationen", icon: Plug },
   { href: "/billing", label: "Abrechnung", icon: CreditCard },
-  { href: "/webhooks", label: "Webhooks", icon: Webhook },
 ];
 
 export function isUserNavActive(pathname: string, href: string) {

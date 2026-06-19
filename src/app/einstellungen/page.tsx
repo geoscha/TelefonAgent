@@ -24,6 +24,7 @@ import type { TokenBalanceView } from "@/lib/billing/quota-display";
 import { tokenBalanceHighlight } from "@/lib/billing/quota-display";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
 import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
+import { SupportChatPanel } from "@/components/support/SupportChatPanel";
 import { userPanelClass } from "@/components/user/user-styles";
 
 type BillingPlan = "free" | "pro";
@@ -50,13 +51,6 @@ export default function ProfilPage() {
   const [deleting, setDeleting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
-  const [supportMessages, setSupportMessages] = useState<
-    { id: string; message: string; createdAt: string }[]
-  >([]);
-  const [supportText, setSupportText] = useState("");
-  const [supportLoading, setSupportLoading] = useState(false);
-  const [supportSending, setSupportSending] = useState(false);
-  const supportScrollRef = useRef<HTMLDivElement>(null);
   const [curaNumber, setCuraNumber] = useState<string | null>(null);
   const [forwardingType, setForwardingType] =
     useState<ForwardingType>("bedingt");
@@ -170,63 +164,6 @@ export default function ProfilPage() {
       setSavingPassword(false);
     }
   }
-
-  async function loadSupportMessages() {
-    setSupportLoading(true);
-    try {
-      const res = await fetch("/api/support");
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setSupportMessages(data.messages ?? []);
-      }
-    } catch {
-      toast.error("Support-Nachrichten konnten nicht geladen werden.");
-    } finally {
-      setSupportLoading(false);
-    }
-  }
-
-  async function sendSupportMessage() {
-    const trimmed = supportText.trim();
-    if (!trimmed) return;
-
-    setSupportSending(true);
-    try {
-      const res = await fetch("/api/support", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed }),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setSupportText("");
-        setSupportMessages((prev) => [...prev, data.message]);
-        toast.success("Nachricht gesendet.");
-      } else {
-        toast.error(data.error ?? "Senden fehlgeschlagen.");
-      }
-    } catch {
-      toast.error("Senden fehlgeschlagen.");
-    } finally {
-      setSupportSending(false);
-    }
-  }
-
-  function toggleSupport() {
-    const next = !supportOpen;
-    setSupportOpen(next);
-    if (next && supportMessages.length === 0) {
-      void loadSupportMessages();
-    }
-  }
-
-  useEffect(() => {
-    if (!supportOpen) return;
-    supportScrollRef.current?.scrollTo({
-      top: supportScrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [supportMessages, supportOpen]);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -381,54 +318,15 @@ export default function ProfilPage() {
       <div className="border-t border-stroke pt-8">
         <button
           type="button"
-          onClick={toggleSupport}
+          onClick={() => setSupportOpen((open) => !open)}
           className="text-body text-accent underline-offset-4 hover:underline"
         >
           Support kontaktieren
         </button>
 
         {supportOpen && (
-          <div className={`${userPanelClass} mt-4 space-y-3 p-4`}>
-            <div
-              ref={supportScrollRef}
-              className="flex max-h-[220px] min-h-[80px] flex-col gap-2 overflow-y-auto"
-            >
-              {supportLoading ? (
-                <p className="text-caption text-text-muted">Laden…</p>
-              ) : supportMessages.length === 0 ? (
-                <p className="text-caption text-text-muted">
-                  Schreiben Sie uns — wir melden uns bei Ihnen.
-                </p>
-              ) : (
-                supportMessages.map((msg) => (
-                  <div key={msg.id} className="flex justify-end">
-                    <div className="max-w-[85%] rounded bg-[#EBEEF4] px-3 py-2 text-[14px] font-normal leading-relaxed text-[#0E121B]">
-                      {msg.message}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void sendSupportMessage();
-              }}
-              className="flex gap-2"
-            >
-              <Input
-                value={supportText}
-                onChange={(e) => setSupportText(e.target.value)}
-                placeholder="Ihre Nachricht…"
-                disabled={supportSending}
-              />
-              <Button
-                type="submit"
-                disabled={supportSending || !supportText.trim()}
-              >
-                {supportSending ? "…" : "Senden"}
-              </Button>
-            </form>
+          <div className={`${userPanelClass} mt-4 p-4`}>
+            <SupportChatPanel active={supportOpen} />
           </div>
         )}
 

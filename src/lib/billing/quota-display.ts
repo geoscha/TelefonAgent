@@ -12,6 +12,17 @@ export function formatTokenCount(tokens: number): string {
   return tokens.toLocaleString("de-CH");
 }
 
+/** Human-readable agent call time for profile header. */
+export function formatAgentUsageDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  if (seconds === 0) return "0 Sek. im Einsatz";
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  if (minutes === 0) return `${remainder} Sek. im Einsatz`;
+  if (remainder === 0) return `${minutes} Min. im Einsatz`;
+  return `${minutes} Min. ${remainder} Sek. im Einsatz`;
+}
+
 /** @deprecated Minute quota — kept for legacy UsageRing component. */
 export function formatQuotaDuration(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -53,6 +64,21 @@ export const TOKEN_PACKS = [
     label: "100'000 Tokens",
   },
 ] as const;
+
+/** Token cost to preview the agent greeting (TTS). */
+export const GREETING_PREVIEW_COST_TOKENS = 25;
+
+export function formatGreetingPreviewCostLabel(): string {
+  return `${formatTokenCount(GREETING_PREVIEW_COST_TOKENS)} Tokens`;
+}
+
+export function formatOperationInsufficientTokensMessage(
+  balance: number,
+  required: number,
+  operation: string
+): string {
+  return `Nicht genügend Tokens (vorhanden: ${formatTokenCount(balance)}, benötigt: ${formatTokenCount(required)} für ${operation}). Bitte laden Sie unter Abrechnung auf.`;
+}
 
 /** Token cost per second of call duration. */
 export const CALL_SECOND_COST_TOKENS = 10;

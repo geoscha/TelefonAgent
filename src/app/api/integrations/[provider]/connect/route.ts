@@ -22,7 +22,7 @@ export async function GET(
   }
   if (!isConfigured(provider)) {
     return NextResponse.redirect(
-      `${APP_URL}/telefonagent?error=not_configured&provider=${provider}`
+      `${APP_URL}/integrations?error=not_configured&provider=${provider}`
     );
   }
 

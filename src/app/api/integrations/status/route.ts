@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isConfigured, type PublicCalendarStatus } from "@/lib/calendar";
+import { normalizeCalendarAgentPermissions } from "@/lib/integrations/calendar-agent-permissions";
 import { getCalendars, getSettings, type CalendarProvider } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export async function GET() {
       configured: isConfigured(provider),
       accountLabel: conn?.accountLabel,
       connectedAt: conn?.connectedAt,
+      agentPermissions: normalizeCalendarAgentPermissions(conn?.agentPermissions),
     };
   });
 

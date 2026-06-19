@@ -1,29 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
-import Stripe from "stripe";
 
 import { getTokenPack } from "@/lib/billing/quota-display";
+import { notifyTokenPurchaseEmail } from "@/lib/billing/token-purchase-notify";
+import {
+  appOriginFromRequest,
+  getStripeClient,
+  isBillingTestMode,
+  isStripeConfigured,
+} from "@/lib/billing/stripe-config";
 import { creditTokens, getTokenBalanceForUser } from "@/lib/billing/tokens";
 import { getProfile } from "@/lib/store";
 import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-/** Gratis-Testguthaben wenn Stripe deaktiviert oder BILLING_TEST_MODE=true. */
+/** Gratis-Testguthaben nur wenn BILLING_TEST_MODE=true gesetzt ist. */
 const TEST_TOPUP_TOKENS = 35_000;
-
-function isBillingTestMode(): boolean {
-  return (
-    process.env.BILLING_TEST_MODE === "true" ||
-    !process.env.STRIPE_SECRET_KEY?.trim()
-  );
-}
-
-function appOrigin(req: NextRequest): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-    req.nextUrl.origin
-  );
-}
 
 export async function POST(req: NextRequest) {
   let body: { packId?: string };
@@ -57,6 +49,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (result.ok && !result.duplicate) {
+      await notifyTokenPurchaseEmail({
+        userId,
+        tokens: TEST_TOPUP_TOKENS,
+        packId: pack.id,
+        referenceId,
+        purchasedAt: new Date().toISOString(),
+      });
+    }
+
     const tokenBalance = await getTokenBalanceForUser(userId);
     return NextResponse.json({
       ok: true,
@@ -66,25 +68,33 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const secret = process.env.STRIPE_SECRET_KEY;
-  if (!secret) {
+  if (!(await isStripeConfigured())) {
     return NextResponse.json(
       {
         error:
-          "Stripe ist noch nicht konfiguriert. Bitte STRIPE_SECRET_KEY hinterlegen.",
+          "Stripe ist noch nicht konfiguriert. Bitte Stripe Secret Key und Webhook Secret im Admin hinterlegen.",
       },
       { status: 503 }
     );
   }
 
-  const origin = appOrigin(req);
+  const stripe = await getStripeClient();
+  if (!stripe) {
+    return NextResponse.json(
+      { error: "Stripe konnte nicht initialisiert werden." },
+      { status: 503 }
+    );
+  }
+
+  const origin = appOriginFromRequest(req);
   const profile = await getProfile();
-  const stripe = new Stripe(secret);
 
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      locale: "de",
       customer_email: profile.email || undefined,
+      payment_method_types: ["card"],
       line_items: [
         {
           quantity: 1,
@@ -93,7 +103,7 @@ export async function POST(req: NextRequest) {
             unit_amount: pack.priceChf * 100,
             product_data: {
               name: pack.label,
-              description: "Token-Guthaben für Cura",
+              description: "Token-Guthaben für Cura Telefonagent",
             },
           },
         },
@@ -103,11 +113,25 @@ export async function POST(req: NextRequest) {
         packId: pack.id,
         tokens: String(pack.tokens),
       },
-      success_url: `${origin}/billing?topup=success`,
+      payment_intent_data: {
+        metadata: {
+          userId,
+          packId: pack.id,
+          tokens: String(pack.tokens),
+        },
+      },
+      success_url: `${origin}/billing?topup=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/billing?topup=cancel`,
     });
 
-    return NextResponse.json({ url: session.url });
+    if (!session.url) {
+      return NextResponse.json(
+        { error: "Checkout-URL fehlt." },
+        { status: 502 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, url: session.url });
   } catch (error) {
     console.error("[billing] checkout failed:", error);
     return NextResponse.json(

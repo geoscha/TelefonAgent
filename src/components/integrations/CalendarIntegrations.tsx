@@ -97,7 +97,7 @@ export function CalendarIntegrations() {
       });
     }
     if (connected || error) {
-      window.history.replaceState({}, "", "/telefonagent");
+      window.history.replaceState({}, "", "/integrations");
     }
   }, []);
 

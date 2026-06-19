@@ -100,6 +100,7 @@ export async function buildCallFromWebhook(
       notes: enrichment.summary,
     },
     suggestedActions: enrichment.suggestedActions,
+    agentId: data.agent_id,
   };
 }
 

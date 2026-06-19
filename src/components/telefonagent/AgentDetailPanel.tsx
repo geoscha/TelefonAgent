@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Phone, Sparkles, Trash2 } from "lucide-react";
+import { Loader2, Sparkles, Trash2, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -9,20 +9,28 @@ import {
   landingBtnSecondary,
 } from "@/components/landing/landing-buttons";
 import type { AgentWizardDraft } from "@/components/telefonagent/AgentCreateWizard";
+import { AgentIntegrationsSection } from "@/components/telefonagent/AgentIntegrationsSection";
+import { AgentDetailSection } from "@/components/telefonagent/AgentDetailSection";
+import { VoiceSelect } from "@/components/telefonagent/VoiceSelect";
 import {
   userLabelClass,
   userPanelClass,
-  userTitleClass,
+  userStatClass,
 } from "@/components/user/user-styles";
 import { Switch } from "@/components/ui/switch";
 import {
+  formatAgentUsageDuration,
+  formatGreetingPreviewCostLabel,
+} from "@/lib/billing/quota-display";
+import { applyEuComplianceGreeting } from "@/lib/elevenlabs/compliance";
+import {
   composeSystemPrompt,
   parseSystemPrompt,
-  PROMPT_SECTION_FIELDS,
-  type PromptSections,
 } from "@/lib/elevenlabs/prompt-sections";
 import type { StoredAgent } from "@/lib/onboarding-types";
 import { cn } from "@/lib/utils";
+import { useVoicePreview } from "@/lib/hooks/useVoicePreview";
+import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
 
 interface VoiceOption {
   id: string;
@@ -38,21 +46,35 @@ export type AgentDetailUpdate = Partial<
   }
 >;
 
+interface AgentPhoneNumber {
+  id: string;
+  phoneNumber: string;
+  label?: string;
+  customerNumber?: string;
+  source?: "pool" | "sip_trunk";
+  forwardingStatus?: string;
+  isPrimary?: boolean;
+}
+
 interface AgentDetailPanelProps {
   agent: StoredAgent;
   isActive: boolean;
+  curaNumber?: string;
+  customerNumber?: string;
   voices: VoiceOption[];
   voicesLoading: boolean;
   deleting: boolean;
   saving?: boolean;
   saveError?: boolean;
-  phoneNumbers?: Array<{ id: string; phoneNumber: string; label?: string }>;
+  phoneNumbers?: AgentPhoneNumber[];
   assigningPhone?: boolean;
   onAssignPhone?: (phoneNumberId: string) => void;
   onDelete: () => void;
   onActivate?: () => void;
+  onDeactivate?: () => void;
   activating?: boolean;
   onUpdate: (patch: AgentDetailUpdate) => void | Promise<void>;
+  onAgentsChange?: (agents: StoredAgent[]) => void;
 }
 
 const fieldClass =
@@ -62,9 +84,138 @@ const textareaClass = cn(fieldClass, "min-h-0 resize-y");
 
 const AUTOSAVE_MS = 700;
 
+function ToggleRow({
+  label,
+  checked,
+  onCheckedChange,
+  ariaLabel,
+  disabled = false,
+}: {
+  label: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  ariaLabel: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded border border-[#E1E4EA] bg-[#FAFAFA] px-3 py-2.5">
+      <span className="text-[13px] text-[#0E121B]">{label}</span>
+      <Switch
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        aria-label={ariaLabel}
+        disabled={disabled}
+      />
+    </div>
+  );
+}
+
+function AgentReachability({
+  isActive,
+  curaNumber,
+  customerNumber,
+  phoneNumbers,
+  agentPhoneNumberId,
+}: {
+  isActive: boolean;
+  curaNumber?: string;
+  customerNumber?: string;
+  phoneNumbers: AgentPhoneNumber[];
+  agentPhoneNumberId?: string;
+}) {
+  if (!isActive) {
+    return (
+      <p className="text-[12px] text-[#99A0AE]">
+        Agent ist inaktiv und nimmt keine Anrufe entgegen.
+      </p>
+    );
+  }
+
+  const assignedPhone =
+    phoneNumbers.find((p) => p.id === agentPhoneNumberId) ??
+    phoneNumbers.find((p) => p.isPrimary) ??
+    phoneNumbers[0];
+
+  const connectedSip = phoneNumbers.filter(
+    (p) =>
+      p.source === "sip_trunk" &&
+      (!agentPhoneNumberId || p.id === agentPhoneNumberId)
+  );
+
+  const lines: Array<{ label: string; number: string }> = [];
+
+  if (curaNumber) {
+    lines.push({ label: "Cura-Nummer", number: curaNumber });
+  }
+
+  for (const sip of connectedSip) {
+    if (!lines.some((line) => line.number === sip.phoneNumber)) {
+      lines.push({
+        label: sip.label?.trim() || "Verbundene Nummer",
+        number: sip.phoneNumber,
+      });
+    }
+  }
+
+  const forwardedFrom =
+    assignedPhone?.customerNumber?.trim() || customerNumber?.trim();
+  if (
+    forwardedFrom &&
+    assignedPhone?.forwardingStatus === "aktiv" &&
+    !lines.some((line) => line.number === forwardedFrom)
+  ) {
+    lines.push({ label: "Ihre Nummer", number: forwardedFrom });
+  }
+
+  if (lines.length === 0) {
+    return (
+      <p className="text-[12px] text-[#99A0AE]">
+        Noch keine Telefonnummer verbunden. Richten Sie eine Nummer unter
+        Telefonnummern ein.
+      </p>
+    );
+  }
+
+  return (
+    <div className="rounded border border-[#E1E4EA] bg-[#FAFAFA] px-3 py-2.5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-[#99A0AE]">
+        Erreichbar unter
+      </p>
+      <ul className="mt-1.5 space-y-1">
+        {lines.map((line) => (
+          <li
+            key={`${line.label}-${line.number}`}
+            className="flex items-baseline justify-between gap-3 text-[13px]"
+          >
+            <span className="text-[#525866]">{line.label}</span>
+            <span className="font-mono text-[#0E121B]">{line.number}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function LabeledField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <p className={userLabelClass}>{label}</p>
+      {children}
+    </div>
+  );
+}
+
 export function AgentDetailPanel({
   agent,
   isActive,
+  curaNumber,
+  customerNumber,
   voices,
   voicesLoading,
   deleting,
@@ -75,15 +226,15 @@ export function AgentDetailPanel({
   onAssignPhone,
   onDelete,
   onActivate,
+  onDeactivate,
   activating = false,
   onUpdate,
+  onAgentsChange,
 }: AgentDetailPanelProps) {
   const [name, setName] = useState(agent.name);
   const [greeting, setGreeting] = useState(agent.greeting);
   const [voiceId, setVoiceId] = useState(agent.voiceId);
-  const [sections, setSections] = useState<PromptSections>(() =>
-    parseSystemPrompt(agent.systemPrompt)
-  );
+  const [systemPrompt, setSystemPrompt] = useState(agent.systemPrompt);
   const [euComplianceEnabled, setEuComplianceEnabled] = useState(
     Boolean(agent.euComplianceEnabled)
   );
@@ -95,6 +246,10 @@ export function AgentDetailPanel({
     () => parseSystemPrompt(agent.systemPrompt).ziel
   );
   const [aiLoading, setAiLoading] = useState(false);
+  const [usageSeconds, setUsageSeconds] = useState<number | null>(null);
+  const [usageLoading, setUsageLoading] = useState(true);
+  const [greetingPreviewLoading, setGreetingPreviewLoading] = useState(false);
+  const { previewVoice } = useVoicePreview();
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestDraft = useRef({
@@ -112,7 +267,7 @@ export function AgentDetailPanel({
     setName(agent.name);
     setGreeting(agent.greeting);
     setVoiceId(agent.voiceId);
-    setSections(parseSystemPrompt(agent.systemPrompt));
+    setSystemPrompt(agent.systemPrompt);
     setEuComplianceEnabled(Boolean(agent.euComplianceEnabled));
     setWebsite(agent.website ?? "");
     const parsed = parseSystemPrompt(agent.systemPrompt);
@@ -129,6 +284,27 @@ export function AgentDetailPanel({
       website: agent.website ?? "",
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when switching agents
+  }, [agent.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setUsageLoading(true);
+    fetch(`/api/elevenlabs/agent/usage?agentId=${encodeURIComponent(agent.id)}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error("usage_failed");
+        if (!cancelled) setUsageSeconds(Number(data.totalSeconds) || 0);
+      })
+      .catch(() => {
+        if (!cancelled) setUsageSeconds(0);
+      })
+      .finally(() => {
+        if (!cancelled) setUsageLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [agent.id]);
 
   function scheduleSave(patch: AgentDetailUpdate, immediate = false) {
@@ -149,6 +325,16 @@ export function AgentDetailPanel({
     };
   }, []);
 
+  function patchSystemPrompt(
+    patch: Partial<ReturnType<typeof parseSystemPrompt>>
+  ) {
+    const parsed = parseSystemPrompt(systemPrompt);
+    const next = composeSystemPrompt({ ...parsed, ...patch });
+    setSystemPrompt(next);
+    scheduleSave({ systemPrompt: next });
+    return next;
+  }
+
   function handleNameChange(value: string) {
     setName(value);
     scheduleSave({ name: value });
@@ -167,17 +353,17 @@ export function AgentDetailPanel({
       voiceName: picked?.name,
       language: picked?.language ?? agent.language,
     });
+    if (picked) {
+      void previewVoice(picked.id, picked.name, picked.language ?? agent.language);
+    }
   }
 
-  function handleSectionChange(
-    key: keyof PromptSections,
-    value: string
-  ) {
-    setSections((prev) => {
-      const next = { ...prev, [key]: value };
-      scheduleSave({ systemPrompt: composeSystemPrompt(next) });
-      return next;
-    });
+  function handleSystemPromptChange(value: string) {
+    setSystemPrompt(value);
+    const parsed = parseSystemPrompt(value);
+    setBranche(parsed.branche);
+    setZiel(parsed.ziel);
+    scheduleSave({ systemPrompt: value });
   }
 
   function handleWebsiteChange(value: string) {
@@ -187,20 +373,12 @@ export function AgentDetailPanel({
 
   function handleBrancheChange(value: string) {
     setBranche(value);
-    setSections((prev) => {
-      const next = { ...prev, branche: value };
-      scheduleSave({ systemPrompt: composeSystemPrompt(next) });
-      return next;
-    });
+    patchSystemPrompt({ branche: value });
   }
 
   function handleZielChange(value: string) {
     setZiel(value);
-    setSections((prev) => {
-      const next = { ...prev, ziel: value };
-      scheduleSave({ systemPrompt: composeSystemPrompt(next) });
-      return next;
-    });
+    patchSystemPrompt({ ziel: value });
   }
 
   async function handleAiFill() {
@@ -245,7 +423,7 @@ export function AgentDetailPanel({
 
       setName(draft.name);
       setGreeting(draft.greeting);
-      setSections(parsed);
+      setSystemPrompt(composed);
       setBranche(parsed.branche);
       setZiel(parsed.ziel);
 
@@ -276,7 +454,52 @@ export function AgentDetailPanel({
 
   function handleComplianceToggle(enabled: boolean) {
     setEuComplianceEnabled(enabled);
-    scheduleSave({ euComplianceEnabled: enabled });
+    scheduleSave({ euComplianceEnabled: enabled }, true);
+  }
+
+  function handleActiveToggle(active: boolean) {
+    if (activating) return;
+    if (active) {
+      onActivate?.();
+    } else {
+      onDeactivate?.();
+    }
+  }
+
+  async function handlePreviewGreeting() {
+    const text = greeting.trim();
+    if (!voiceId || !text) {
+      toast.error("Bitte Begrüssung und Stimme angeben.");
+      return;
+    }
+
+    const picked = voices.find((v) => v.id === voiceId);
+    const spokenGreeting = applyEuComplianceGreeting(text, euComplianceEnabled);
+
+    setGreetingPreviewLoading(true);
+    try {
+      const result = await previewVoice(
+        voiceId,
+        picked?.name ?? agent.voiceName ?? "Stimme",
+        picked?.language ?? agent.language,
+        spokenGreeting
+      );
+      if (result.ok) {
+        notifyTokenBalanceChanged();
+      } else if (result.insufficientTokens) {
+        toast.error("Nicht genügend Tokens", {
+          description:
+            result.error ??
+            `Die Begrüssungsvorschau kostet ${formatGreetingPreviewCostLabel()}.`,
+        });
+      } else {
+        toast.error("Begrüssung konnte nicht abgespielt werden.", {
+          description: result.error,
+        });
+      }
+    } finally {
+      setGreetingPreviewLoading(false);
+    }
   }
 
   const selectedPhoneId =
@@ -284,235 +507,223 @@ export function AgentDetailPanel({
     (phoneNumbers.length === 1 ? phoneNumbers[0]?.id : "") ??
     "";
 
-  const visiblePromptFields = PROMPT_SECTION_FIELDS.filter(
-    ({ key }) => key !== "branche" && key !== "ziel"
-  );
+  const voiceOptions =
+    voices.length > 0
+      ? voices
+      : voiceId
+        ? [{ id: voiceId, name: agent.voiceName ?? "Stimme", language: agent.language }]
+        : [];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-      <div className={cn(userPanelClass, "p-5 sm:p-6")}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-3">
-            <div className="flex items-center gap-3">
-              <input
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                aria-label="Agent-Name"
-                className={cn(fieldClass, "text-[18px] font-medium")}
-              />
-              {(saving || saveError) && (
-                <span className="shrink-0 text-[12px] text-[#99A0AE]">
-                  {saving ? (
-                    <span className="inline-flex items-center gap-1">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Speichert…
-                    </span>
-                  ) : (
-                    "Speichern fehlgeschlagen"
-                  )}
-                </span>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <label className={userLabelClass} htmlFor="agent-voice">
-                Stimme
-              </label>
-              <select
-                id="agent-voice"
-                value={voiceId}
-                disabled={voicesLoading}
-                onChange={(e) => handleVoiceChange(e.target.value)}
-                className={fieldClass}
-              >
-                {voices.length === 0 ? (
-                  <option value={voiceId}>
-                    {agent.voiceName ?? "Stimme wählen"}
-                  </option>
-                ) : (
-                  voices.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={deleting}
-            aria-label="Agent löschen"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-[#525866] hover:bg-red-50 hover:text-red-600"
-          >
-            {deleting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5 stroke-[1.5]" />
-            )}
-          </button>
-        </div>
-
-        {phoneNumbers.length > 0 && (
-          <div className="mt-4 space-y-1.5">
-            <label className={userLabelClass} htmlFor="agent-phone">
-              Telefonnummer
-            </label>
-            <select
-              id="agent-phone"
-              value={selectedPhoneId}
-              disabled={assigningPhone || !onAssignPhone}
-              onChange={(e) => {
-                const nextId = e.target.value;
-                if (nextId) onAssignPhone?.(nextId);
-              }}
-              className={fieldClass}
-            >
-              {phoneNumbers.length > 1 && (
-                <option value="">Nummer wählen…</option>
-              )}
-              {phoneNumbers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.phoneNumber}
-                  {p.label ? ` · ${p.label}` : ""}
-                </option>
-              ))}
-            </select>
-            {assigningPhone && (
-              <p className="text-[11px] text-[#525866]">Wird zugewiesen…</p>
-            )}
-          </div>
+    <div className="flex min-h-0 flex-1 flex-col self-stretch overflow-y-auto">
+      <div
+        className={cn(
+          userPanelClass,
+          "flex min-h-full flex-1 flex-col p-5 sm:p-6"
         )}
+      >
+        <div className="sticky top-0 z-10 -mx-5 border-b border-[#E1E4EA] bg-white px-5 pb-4 pt-0 sm:-mx-6 sm:px-6">
+          <LabeledField label="Name">
+            <input
+              value={name}
+              onChange={(e) => handleNameChange(e.target.value)}
+              className={cn(fieldClass, "text-[16px] font-medium")}
+            />
+          </LabeledField>
 
-        <div className="mt-4 flex items-start justify-between gap-4 rounded border border-[#E1E4EA] bg-[#F5F7FA] px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-[14px] font-medium text-[#0E121B]">
-              EU-/DSGVO-/DSG-konform
-            </p>
-            <p className={`${userLabelClass} mt-1`}>
-              Der Agent informiert Anrufer zu Beginn über KI, Aufzeichnung und
-              Datenschutzrechte (EU, Deutschland, Schweiz).
-            </p>
-          </div>
-          <Switch
-            checked={euComplianceEnabled}
-            onCheckedChange={handleComplianceToggle}
-            aria-label="EU-/DSGVO-/DSG-konform aktivieren"
-          />
-        </div>
+          <p className={cn(userStatClass, "mt-3")}>
+            {usageLoading
+              ? "…"
+              : formatAgentUsageDuration(usageSeconds ?? 0)}
+          </p>
 
-        <div className="mt-5 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            disabled
-            title="Demnächst verfügbar"
+            onClick={() => void handlePreviewGreeting()}
+            disabled={greetingPreviewLoading || !voiceId || !greeting.trim()}
             className={cn(
               landingBtnSecondary,
-              "cursor-not-allowed opacity-60"
+              "mt-3 inline-flex w-full items-center justify-center gap-2"
             )}
           >
-            <Phone className="h-3.5 w-3.5 stroke-[1.75]" />
-            Web-Anruf testen
+            {greetingPreviewLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Volume2 className="h-3.5 w-3.5 stroke-[1.75]" />
+            )}
+            Begrüssung anhören · {formatGreetingPreviewCostLabel()}
           </button>
-          {!isActive && onActivate && (
-            <button
-              type="button"
-              onClick={onActivate}
-              disabled={activating}
-              className={landingBtnPrimary}
-            >
-              {activating ? "Aktivieren…" : "Als aktiv setzen"}
-            </button>
+
+          {(saving || saveError) && (
+            <p className="mt-2 text-[11px] text-[#99A0AE]">
+              {saving ? "Speichert…" : "Speichern fehlgeschlagen"}
+            </p>
           )}
         </div>
-      </div>
 
-      <div className={cn(userPanelClass, "p-5 sm:p-6")}>
-        <h3 className={userTitleClass}>KI-Konfiguration</h3>
-        <p className={`${userLabelClass} mt-1`}>
-          Website und Branche helfen der KI, Name, Begrüssung und Anweisungen
-          passend auszufüllen.
-        </p>
-        <div className="mt-4 space-y-4">
-          <label className="block space-y-1.5">
-            <span className={userLabelClass}>Website (optional)</span>
-            <input
-              type="url"
-              value={website}
-              onChange={(e) => handleWebsiteChange(e.target.value)}
-              placeholder="https://ihre-firma.ch"
-              className={fieldClass}
-            />
-          </label>
-          <label className="block space-y-1.5">
-            <span className={userLabelClass}>Branche</span>
-            <input
-              value={branche}
-              onChange={(e) => handleBrancheChange(e.target.value)}
-              placeholder="z. B. Immobilienverwaltung"
-              className={fieldClass}
-            />
-          </label>
-          <label className="block space-y-1.5">
-            <span className={userLabelClass}>Ziel des Agenten</span>
-            <textarea
-              value={ziel}
-              onChange={(e) => handleZielChange(e.target.value)}
-              rows={2}
-              placeholder="z. B. Schadenmeldungen aufnehmen und Termine koordinieren"
-              className={textareaClass}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => void handleAiFill()}
-            disabled={aiLoading || saving}
-            className={cn(landingBtnPrimary, "inline-flex items-center gap-2")}
+        <div key={agent.id} className="mt-4 flex-1 space-y-2">
+          <AgentDetailSection
+            title="Status"
+            subtitle={isActive ? "Agent ist aktiv" : "Agent ist inaktiv"}
           >
-            {aiLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
+            <ToggleRow
+              label={isActive ? "Aktiv" : "Inaktiv"}
+              checked={isActive}
+              onCheckedChange={handleActiveToggle}
+              ariaLabel="Agent aktivieren oder deaktivieren"
+              disabled={activating}
+            />
+            <AgentReachability
+              isActive={isActive}
+              curaNumber={curaNumber}
+              customerNumber={customerNumber}
+              phoneNumbers={phoneNumbers}
+              agentPhoneNumberId={agent.phoneNumberId}
+            />
+          </AgentDetailSection>
+
+          <AgentDetailSection
+            title="Konfiguration"
+            subtitle="Stimme, Nummer und Website"
+          >
+            <LabeledField label="Stimme">
+              <VoiceSelect
+                voices={voiceOptions}
+                value={voiceId}
+                onChange={handleVoiceChange}
+                loading={voicesLoading}
+              />
+            </LabeledField>
+
+            {phoneNumbers.length > 0 && (
+              <LabeledField label="Telefonnummer">
+                {phoneNumbers.length === 1 ? (
+                  <p className={cn(fieldClass, "bg-[#FAFAFA] text-[#525866]")}>
+                    {phoneNumbers[0].phoneNumber}
+                    {phoneNumbers[0].label ? ` · ${phoneNumbers[0].label}` : ""}
+                  </p>
+                ) : (
+                  <select
+                    value={selectedPhoneId}
+                    disabled={assigningPhone || !onAssignPhone}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      if (nextId) onAssignPhone?.(nextId);
+                    }}
+                    className={fieldClass}
+                  >
+                    <option value="">Telefonnummer wählen…</option>
+                    {phoneNumbers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.phoneNumber}
+                        {p.label ? ` · ${p.label}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </LabeledField>
             )}
-            {aiLoading ? "KI analysiert…" : "Mit KI ausfüllen"}
-          </button>
-        </div>
-      </div>
 
-      <div className={cn(userPanelClass, "p-5 sm:p-6")}>
-        <h3 className={userTitleClass}>Begrüssung</h3>
-        <p className={`${userLabelClass} mt-1`}>
-          Erster Satz, den Anrufer hören.
-        </p>
-        <textarea
-          value={greeting}
-          onChange={(e) => handleGreetingChange(e.target.value)}
-          rows={3}
-          className={cn(textareaClass, "mt-4")}
-          placeholder="Grüezi, Sie sprechen mit …"
-        />
-      </div>
+            <LabeledField label="Website">
+              <input
+                type="url"
+                value={website}
+                onChange={(e) => handleWebsiteChange(e.target.value)}
+                placeholder="https://…"
+                className={fieldClass}
+              />
+            </LabeledField>
+          </AgentDetailSection>
 
-      <div className={cn(userPanelClass, "p-5 sm:p-6")}>
-        <h3 className={userTitleClass}>System-Prompt</h3>
-        <p className={`${userLabelClass} mt-1`}>
-          Anweisungen für die Gesprächsführung — Änderungen werden automatisch
-          gespeichert.
-        </p>
-        <div className="mt-4 space-y-4">
-          {visiblePromptFields.map(({ key, label, rows = 3 }) => (
-            <label key={key} className="block space-y-1.5">
-              <span className={userLabelClass}>{label}</span>
+          <AgentDetailSection
+            title="Inhalte"
+            subtitle="Branche, Begrüssung und Anweisungen"
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <LabeledField label="Branche">
+                <input
+                  value={branche}
+                  onChange={(e) => handleBrancheChange(e.target.value)}
+                  className={fieldClass}
+                />
+              </LabeledField>
+              <LabeledField label="Ziel">
+                <input
+                  value={ziel}
+                  onChange={(e) => handleZielChange(e.target.value)}
+                  className={fieldClass}
+                />
+              </LabeledField>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleAiFill()}
+              disabled={aiLoading || saving}
+              className={cn(landingBtnPrimary, "inline-flex items-center gap-2")}
+            >
+              {aiLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              {aiLoading ? "KI analysiert…" : "Mit KI ausfüllen"}
+            </button>
+
+            <LabeledField label="Begrüssung">
               <textarea
-                value={sections[key]}
-                onChange={(e) => handleSectionChange(key, e.target.value)}
-                rows={rows}
+                value={greeting}
+                onChange={(e) => handleGreetingChange(e.target.value)}
+                rows={3}
                 className={textareaClass}
               />
-            </label>
-          ))}
+            </LabeledField>
+
+            <LabeledField label="Anweisungen">
+              <textarea
+                value={systemPrompt}
+                onChange={(e) => handleSystemPromptChange(e.target.value)}
+                rows={8}
+                className={cn(textareaClass, "font-mono text-[13px]")}
+              />
+            </LabeledField>
+          </AgentDetailSection>
+
+          <AgentDetailSection
+            title="Integrationen"
+            subtitle="Kalender und weitere Anbindungen"
+          >
+            <AgentIntegrationsSection
+              agent={agent}
+              onAgentsChange={onAgentsChange}
+            />
+          </AgentDetailSection>
+
+          <AgentDetailSection title="Erweitert" subtitle="Compliance und Löschen">
+            <ToggleRow
+              label="EU-/DSGVO-konform"
+              checked={euComplianceEnabled}
+              onCheckedChange={handleComplianceToggle}
+              ariaLabel="EU-/DSGVO-konform aktivieren"
+            />
+
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deleting}
+              className={cn(
+                landingBtnSecondary,
+                "w-full justify-center text-[#525866] hover:bg-red-50 hover:text-red-600"
+              )}
+            >
+              {deleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5 stroke-[1.5]" />
+              )}
+              Agent löschen
+            </button>
+          </AgentDetailSection>
         </div>
       </div>
     </div>

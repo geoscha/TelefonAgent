@@ -1,34 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { CalendarIntegrations } from "@/components/integrations/CalendarIntegrations";
 import { QuotaGate } from "@/components/billing/QuotaGate";
 import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
-import { landingBtnPrimary } from "@/components/landing/landing-buttons";
-import { AgentStatusHero } from "@/components/telefonagent/AgentStatusHero";
 import {
   PhoneNumberWizard,
   type PendingPhoneRequestView,
   type UserPhoneNumberView,
 } from "@/components/telefonagent/PhoneNumberWizard";
-import {
-  userLabelClass,
-  userPanelClass,
-  userTitleClass,
-} from "@/components/user/user-styles";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { notifyTokenBalanceChanged, useTokenBalance } from "@/lib/hooks/useTokenBalance";
 import { useWorkspace } from "@/lib/hooks/useWorkspace";
 import { formatBillingDateTime, PHONE_NUMBER_MONTHLY_TOKENS } from "@/lib/billing/quota-display";
@@ -36,28 +18,12 @@ import type { OnboardingPhase } from "@/lib/onboarding-types";
 
 type ForwardingType = "alle" | "bedingt";
 type ForwardingStatus = "nicht_eingerichtet" | "anleitung" | "aktiv";
-type CalendarProviderId = "google" | "microsoft" | "apple";
 
 interface Settings {
   forwardingType?: ForwardingType;
   forwardingStatus?: ForwardingStatus;
-  appointmentBookingEnabled?: boolean;
-  appointmentProvider?: CalendarProviderId;
-  curaForwardingNumber?: string;
   onboardingPhase?: OnboardingPhase;
 }
-
-interface ConnectedCalendar {
-  provider: CalendarProviderId;
-  connected: boolean;
-  accountLabel?: string;
-}
-
-const CALENDAR_LABELS: Record<CalendarProviderId, string> = {
-  google: "Google Kalender",
-  microsoft: "Microsoft Outlook",
-  apple: "Apple Kalender (iCloud)",
-};
 
 export default function PhonesPage() {
   const setupDemo = useSetupDemoOptional();
@@ -74,26 +40,17 @@ export default function PhonesPage() {
     useState<ForwardingType>("bedingt");
   const [forwardingStatus, setForwardingStatus] =
     useState<ForwardingStatus>("nicht_eingerichtet");
-  const [curaNumber, setCuraNumber] = useState("");
   const [numbers, setNumbers] = useState<UserPhoneNumberView[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingPhoneRequestView[]>([]);
   const [requestingNumber, setRequestingNumber] = useState(false);
   const [addingSip, setAddingSip] = useState(false);
   const [confirmingForwarding, setConfirmingForwarding] = useState(false);
   const [disconnectingPhone, setDisconnectingPhone] = useState(false);
-  const [calendars, setCalendars] = useState<ConnectedCalendar[]>([]);
-  const [apptEnabled, setApptEnabled] = useState(false);
-  const [apptProvider, setApptProvider] = useState<CalendarProviderId | "">("");
-  const [savingAppt, setSavingAppt] = useState(false);
 
   const applySettings = useCallback((s: Settings) => {
     if (s.onboardingPhase) setOnboardingPhase(s.onboardingPhase);
     if (s.forwardingType) setForwardingType(s.forwardingType);
     if (s.forwardingStatus) setForwardingStatus(s.forwardingStatus);
-    if (s.curaForwardingNumber) setCuraNumber(s.curaForwardingNumber);
-    if (typeof s.appointmentBookingEnabled === "boolean")
-      setApptEnabled(s.appointmentBookingEnabled);
-    if (s.appointmentProvider) setApptProvider(s.appointmentProvider);
   }, []);
 
   const applyWorkspace = useCallback(
@@ -107,11 +64,6 @@ export default function PhonesPage() {
           createdAt: r.createdAt,
         }))
       );
-      const num =
-        data.capabilities.forwardingNumber ??
-        data.settings.curaForwardingNumber ??
-        "";
-      if (num) setCuraNumber(String(num));
     },
     [applySettings]
   );
@@ -154,22 +106,6 @@ export default function PhonesPage() {
     return () => clearInterval(interval);
   }, [forwardingStatus, applySettings]);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/integrations/status");
-        const data = await res.json();
-        if (res.ok && data.ok) {
-          setCalendars(
-            (data.calendars as ConnectedCalendar[]).filter((c) => c.connected)
-          );
-        }
-      } catch {
-        /* non-fatal */
-      }
-    })();
-  }, []);
-
   async function handleRequestNumber() {
     setRequestingNumber(true);
     try {
@@ -211,9 +147,7 @@ export default function PhonesPage() {
 
   async function handleAddSip(input: {
     phoneNumber: string;
-    label?: string;
-    outboundAddress?: string;
-  }): Promise<boolean> {
+  }): Promise<{ ok: true } | { ok: false }> {
     setAddingSip(true);
     try {
       const res = await fetch("/api/phone/sip", {
@@ -225,17 +159,12 @@ export default function PhonesPage() {
       if (res.ok && data.ok) {
         await loadOnboarding();
         toast.success("SIP-Nummer erfolgreich hinzugefügt");
-        return true;
+        return { ok: true };
       }
-      toast.error("SIP-Nummer nicht kompatibel", {
-        description:
-          data.error ??
-          "Die Nummer ist nicht SIP-kompatibel oder Bot-Anrufe sind nicht möglich.",
-      });
-      return false;
+      return { ok: false };
     } catch {
       toast.error("Netzwerkfehler");
-      return false;
+      return { ok: false };
     } finally {
       setAddingSip(false);
     }
@@ -357,48 +286,9 @@ export default function PhonesPage() {
     }
   }
 
-  async function handleSaveAppointment() {
-    if (apptEnabled && !apptProvider) {
-      toast.error("Bitte einen verbundenen Kalender auswählen.");
-      return;
-    }
-    setSavingAppt(true);
-    try {
-      const res = await fetch("/api/appointment-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          enabled: apptEnabled,
-          provider: apptEnabled ? apptProvider : null,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        if (data.settings) applySettings(data.settings as Settings);
-        toast.success(
-          apptEnabled
-            ? "Terminvereinbarung aktiviert"
-            : "Terminvereinbarung deaktiviert"
-        );
-      } else {
-        toast.error("Speichern fehlgeschlagen", { description: data.error });
-      }
-    } catch {
-      toast.error("Netzwerkfehler beim Speichern");
-    } finally {
-      setSavingAppt(false);
-    }
-  }
-
-  const forwardingActive = forwardingStatus === "aktiv";
-
   return (
     <QuotaGate>
       <div className="mx-auto max-w-[820px] space-y-6">
-        {forwardingActive && (
-          <AgentStatusHero isLive phoneNumber={curaNumber || undefined} />
-        )}
-
         {statusLoading ? (
           <Skeleton className="h-48 w-full rounded" />
         ) : (
@@ -421,55 +311,6 @@ export default function PhonesPage() {
             onForwardingTypeChange={setForwardingType}
             canAffordPhoneNumber={canAffordPhoneNumber}
           />
-        )}
-
-        {forwardingActive && (
-          <section className={`${userPanelClass} space-y-4 p-5 sm:p-6`}>
-            <h2 className={userTitleClass}>Kalender</h2>
-            <CalendarIntegrations />
-          </section>
-        )}
-
-        {forwardingActive && calendars.length > 0 && (
-          <section className={`${userPanelClass} p-5 sm:p-6`}>
-            <h2 className={userTitleClass}>Terminvereinbarung</h2>
-            <div className="mt-4 space-y-4">
-              <div className="flex items-center justify-between gap-4 rounded border border-[#E1E4EA] p-4">
-                <p className={userTitleClass}>Termine durch den Agenten</p>
-                <Switch checked={apptEnabled} onCheckedChange={setApptEnabled} />
-              </div>
-              {apptEnabled && (
-                <div className="space-y-2">
-                  <Label className={userLabelClass}>Kalender</Label>
-                  <Select
-                    value={apptProvider}
-                    onValueChange={(v) => setApptProvider(v as CalendarProviderId)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Kalender auswählen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {calendars.map((c) => (
-                        <SelectItem key={c.provider} value={c.provider}>
-                          {CALENDAR_LABELS[c.provider]}
-                          {c.accountLabel ? ` · ${c.accountLabel}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <button
-                type="button"
-                className={landingBtnPrimary}
-                onClick={handleSaveAppointment}
-                disabled={savingAppt}
-              >
-                {savingAppt && <Loader2 className="h-4 w-4 animate-spin" />}
-                Speichern
-              </button>
-            </div>
-          </section>
         )}
       </div>
     </QuotaGate>

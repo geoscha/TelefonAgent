@@ -101,13 +101,20 @@ export default function TelefonagentPage() {
 
   const [storedAgents, setStoredAgents] = useState<StoredAgent[]>([]);
   const [phoneNumbers, setPhoneNumbers] = useState<
-    Array<{ id: string; phoneNumber: string; label?: string }>
+    Array<{
+      id: string;
+      phoneNumber: string;
+      label?: string;
+      customerNumber?: string;
+      source?: "pool" | "sip_trunk";
+      forwardingStatus?: string;
+      isPrimary?: boolean;
+    }>
   >([]);
   const [assigningPhone, setAssigningPhone] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [createNewAgent, setCreateNewAgent] = useState(false);
   const [createWizardOpen, setCreateWizardOpen] = useState(false);
-  const [createWizardDismissed, setCreateWizardDismissed] = useState(false);
   const [detailAgentId, setDetailAgentId] = useState<string | null>(null);
   const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
   const [activatingAgentId, setActivatingAgentId] = useState<string | null>(null);
@@ -213,6 +220,10 @@ export default function TelefonagentPage() {
         id: n.id,
         phoneNumber: n.phoneNumber,
         label: n.label,
+        customerNumber: n.customerNumber,
+        source: n.source,
+        forwardingStatus: n.forwardingStatus,
+        isPrimary: n.isPrimary,
       }))
     );
 
@@ -242,48 +253,24 @@ export default function TelefonagentPage() {
 
   const handleCloseCreateWizard = useCallback(() => {
     setCreateWizardOpen(false);
-    setCreateWizardDismissed(true);
+    setDetailAgentId((current) => {
+      if (current) return current;
+      const preferred = settings.agentId ?? storedAgents[0]?.id;
+      return preferred ?? null;
+    });
     if (setupDemo?.active && setupDemo.step === "agent") {
       void setupDemo.skip();
     }
-  }, [setupDemo]);
+  }, [setupDemo, settings.agentId, storedAgents]);
 
   useEffect(() => {
     function onDemoSkipped() {
       setCreateWizardOpen(false);
-      setCreateWizardDismissed(true);
     }
 
     window.addEventListener(SETUP_DEMO_SKIP_EVENT, onDemoSkipped);
     return () => window.removeEventListener(SETUP_DEMO_SKIP_EVENT, onDemoSkipped);
   }, []);
-
-  useEffect(() => {
-    if (
-      onboardingPhase === "agent" &&
-      storedAgents.length === 0 &&
-      !createWizardOpen &&
-      !createWizardDismissed &&
-      detailAgentId === null
-    ) {
-      setCreateWizardOpen(true);
-      if (caps.hasApiKey && !settings.connected) {
-        autoConnect().then(() => loadVoices());
-      } else {
-        loadVoices();
-      }
-    }
-  }, [
-    onboardingPhase,
-    storedAgents.length,
-    createWizardOpen,
-    createWizardDismissed,
-    detailAgentId,
-    caps.hasApiKey,
-    settings.connected,
-    autoConnect,
-    loadVoices,
-  ]);
 
   useEffect(() => {
     if (settings.connected) loadVoices();
@@ -354,6 +341,11 @@ export default function TelefonagentPage() {
           greeting: saveGreeting,
           systemPrompt: saveSystemPrompt,
           euComplianceEnabled: saveComplianceEnabled,
+          website:
+            override?.website?.trim() ||
+            storedAgents.find((a) => a.id === (override?.agentId ?? selectedAgentId))
+              ?.website ||
+            undefined,
           agentId: isNew ? undefined : saveAgentId || undefined,
           createNew: isNew,
         }),
@@ -458,7 +450,14 @@ export default function TelefonagentPage() {
         if (data.settings) applySettings(data.settings as Settings);
         if (data.agents) setStoredAgents(data.agents as StoredAgent[]);
         if (settings.connected || caps.hasApiKey) {
-          queueElevenLabsSync({ ...draft, agentId });
+          if (patch.euComplianceEnabled !== undefined) {
+            void handleSaveAgent(
+              { ...draft, agentId, createNew: false },
+              { silent: true }
+            );
+          } else {
+            queueElevenLabsSync({ ...draft, agentId });
+          }
         }
       } else {
         setAutoSaveError(true);
@@ -472,13 +471,44 @@ export default function TelefonagentPage() {
 
   async function handleWizardSave(draft: AgentWizardDraft) {
     const ok = await handleSaveAgent({ ...draft, createNew: true });
-    if (ok) setCreateWizardOpen(false);
+    if (ok) {
+      setCreateWizardOpen(false);
+    }
   }
 
   function handleCreateNewAgent() {
-    setCreateWizardDismissed(false);
     setCreateWizardOpen(true);
+    setDetailAgentId(null);
     if (settings.connected || caps.hasApiKey) loadVoices();
+  }
+
+  async function handleDeactivateAgent() {
+    const previousAgentId = settings.agentId;
+    if (!previousAgentId) return;
+
+    setSettings((s) => ({ ...s, agentId: undefined }));
+    setActivatingAgentId(previousAgentId);
+    try {
+      const res = await fetch("/api/elevenlabs/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deactivate: true }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        applySettings(data.settings as Settings);
+        if (data.agents) setStoredAgents(data.agents as StoredAgent[]);
+        void revalidateWorkspace().catch(() => {});
+      } else {
+        setSettings((s) => ({ ...s, agentId: previousAgentId }));
+        toast.error("Deaktivieren fehlgeschlagen", { description: data.error });
+      }
+    } catch {
+      setSettings((s) => ({ ...s, agentId: previousAgentId }));
+      toast.error("Netzwerkfehler");
+    } finally {
+      setActivatingAgentId(null);
+    }
   }
 
   async function handleActivateAgent(agentId: string) {
@@ -497,6 +527,7 @@ export default function TelefonagentPage() {
           ...agent,
           agentId: agent.id,
           createNew: false,
+          activate: true,
         }),
       });
       const data = await res.json();
@@ -514,6 +545,7 @@ export default function TelefonagentPage() {
           });
         }
         setSelectedAgentId(agentId);
+        void revalidateWorkspace().catch(() => {});
       } else {
         setSettings((s) => ({ ...s, agentId: previousAgentId }));
         toast.error("Aktivieren fehlgeschlagen", { description: data.error });
@@ -596,7 +628,7 @@ export default function TelefonagentPage() {
   return (
     <>
       <QuotaGate>
-        <div className="flex min-h-[560px] gap-3">
+        <div className="flex min-h-[calc(100dvh-3.5rem-2rem)] gap-3 sm:min-h-[calc(100dvh-3.5rem-2.5rem)] lg:min-h-[calc(100dvh-3.5rem-3rem)]">
           <RetellAgentSidebar
             agents={storedAgents}
             selectedAgentId={detailAgentId ?? selectedAgentId}
@@ -605,11 +637,23 @@ export default function TelefonagentPage() {
             onCreateNew={handleCreateNewAgent}
           />
           {statusLoading ? (
-            <Skeleton className="h-[560px] flex-1 rounded" />
+            <Skeleton className="min-h-0 flex-1 self-stretch rounded" />
+          ) : createWizardOpen ? (
+            <AgentCreateWizard
+              onClose={handleCloseCreateWizard}
+              voices={voices}
+              voicesLoading={voicesLoading}
+              saving={savingAgent}
+              onSave={handleWizardSave}
+            />
           ) : detailAgent ? (
             <AgentDetailPanel
               agent={detailAgent}
               isActive={settings.agentId === detailAgent.id}
+              curaNumber={
+                settings.curaForwardingNumber ?? caps.forwardingNumber ?? undefined
+              }
+              customerNumber={settings.customerNumber}
               voices={voices}
               voicesLoading={voicesLoading}
               deleting={deletingAgentId === detailAgent.id}
@@ -622,11 +666,13 @@ export default function TelefonagentPage() {
               }
               onDelete={() => void handleDeleteAgent(detailAgent.id)}
               onActivate={() => void handleActivateAgent(detailAgent.id)}
+              onDeactivate={() => void handleDeactivateAgent()}
               activating={activatingAgentId === detailAgent.id}
               onUpdate={(patch) => void handleAgentAutoSave(detailAgent.id, patch)}
+              onAgentsChange={(agents) => setStoredAgents(agents)}
             />
           ) : (
-            <div className="landing-panel flex flex-1 items-center justify-center border border-dashed border-[#E1E4EA] p-8">
+            <div className="landing-panel flex flex-1 items-center justify-center self-stretch border border-dashed border-[#E1E4EA] p-8">
               <p className="landing-body text-[#99A0AE]">
                 Agent auswählen oder neuen Agent hinzufügen
               </p>
@@ -634,15 +680,6 @@ export default function TelefonagentPage() {
           )}
         </div>
       </QuotaGate>
-
-      <AgentCreateWizard
-        open={createWizardOpen}
-        onClose={handleCloseCreateWizard}
-        voices={voices}
-        voicesLoading={voicesLoading}
-        saving={savingAgent}
-        onSave={handleWizardSave}
-      />
     </>
   );
 }

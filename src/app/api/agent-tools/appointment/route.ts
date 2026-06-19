@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { createCalendarEvent, DEFAULT_TZ } from "@/lib/calendar";
+import { getAgentCalendarIntegration } from "@/lib/integrations/agent-calendar";
 import {
   getCalendarForUser,
   getSettingsForUser,
@@ -73,8 +74,9 @@ export async function POST(req: NextRequest) {
   }
 
   const settings = await getSettingsForUser(userId);
-  const provider = settings.appointmentProvider;
-  const enabled = Boolean(settings.appointmentBookingEnabled);
+  const integration = getAgentCalendarIntegration(settings, agentId);
+  const provider = integration.calendarProvider;
+  const enabled = integration.appointmentBookingEnabled;
   const connection = provider
     ? await getCalendarForUser(userId, provider)
     : undefined;

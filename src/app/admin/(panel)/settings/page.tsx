@@ -4,70 +4,24 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { adminPanelClass } from "@/components/admin/admin-ui";
+import { AdminSecretsSection } from "@/components/admin/AdminSecretsSection";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-interface IntegrationsPublic {
-  twilioConfigured: boolean;
-  elevenLabsConfigured: boolean;
-  stripeConfigured: boolean;
-  twilioAccountSidMasked: string;
-  elevenLabsKeyMasked: string;
-  stripeKeyMasked: string;
-  usdToChfRate: number;
-  elevenLabsFromEnv: boolean;
-}
-
-interface EnrichmentPublic {
-  configured: boolean;
-  apiKeyMasked: string;
-  baseUrl: string;
-  model: string;
-  fromEnv: boolean;
-}
+import { landingInputClass } from "@/components/landing/landing-buttons";
 
 export default function AdminSettingsPage() {
   const [username, setUsername] = useState("");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [savingFinance, setSavingFinance] = useState(false);
-  const [savingEnrichment, setSavingEnrichment] = useState(false);
-
-  const [integrations, setIntegrations] = useState<IntegrationsPublic | null>(
-    null
-  );
-  const [enrichment, setEnrichment] = useState<EnrichmentPublic | null>(null);
-  const [twilioSid, setTwilioSid] = useState("");
-  const [twilioToken, setTwilioToken] = useState("");
-  const [elevenLabsKey, setElevenLabsKey] = useState("");
-  const [stripeKey, setStripeKey] = useState("");
-  const [usdToChf, setUsdToChf] = useState("0.88");
-  const [enrichmentKey, setEnrichmentKey] = useState("");
-  const [enrichmentBaseUrl, setEnrichmentBaseUrl] = useState(
-    "https://api.openai.com/v1"
-  );
-  const [enrichmentModel, setEnrichmentModel] = useState("gpt-4o-mini");
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/admin/config").then((r) => r.json()),
-      fetch("/api/admin/finance-integrations").then((r) => r.json()),
-      fetch("/api/admin/enrichment-config").then((r) => r.json()),
-    ])
-      .then(([config, finance, enrich]) => {
+    fetch("/api/admin/config")
+      .then((r) => r.json())
+      .then((config) => {
         if (config.ok && config.username) setUsername(config.username);
-        if (finance.ok && finance.integrations) {
-          setIntegrations(finance.integrations as IntegrationsPublic);
-          setUsdToChf(String(finance.integrations.usdToChfRate ?? 0.88));
-        }
-        if (enrich.ok && enrich.config) {
-          const c = enrich.config as EnrichmentPublic;
-          setEnrichment(c);
-          setEnrichmentBaseUrl(c.baseUrl || "https://api.openai.com/v1");
-          setEnrichmentModel(c.model || "gpt-4o-mini");
-        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -83,264 +37,71 @@ export default function AdminSettingsPage() {
       });
       const data = await res.json();
       if (res.ok && data.ok) {
-        toast.success("Admin-Zugang aktualisiert.");
+        toast.success("Gespeichert.");
         setCode("");
       } else {
-        toast.error(data.error ?? "Speichern fehlgeschlagen.");
+        toast.error(data.error ?? "Fehlgeschlagen.");
       }
     } finally {
       setSaving(false);
     }
   }
 
-  async function saveFinance(e: React.FormEvent) {
-    e.preventDefault();
-    setSavingFinance(true);
-    try {
-      const body: Record<string, unknown> = {
-        usdToChfRate: parseFloat(usdToChf),
-      };
-      if (twilioSid.trim()) body.twilioAccountSid = twilioSid.trim();
-      if (twilioToken.trim()) body.twilioAuthToken = twilioToken.trim();
-      if (elevenLabsKey.trim()) body.elevenLabsApiKey = elevenLabsKey.trim();
-      if (stripeKey.trim()) body.stripeSecretKey = stripeKey.trim();
-
-      const res = await fetch("/api/admin/finance-integrations", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setIntegrations(data.integrations as IntegrationsPublic);
-        setTwilioSid("");
-        setTwilioToken("");
-        setElevenLabsKey("");
-        setStripeKey("");
-        toast.success("Finanz-APIs gespeichert.");
-      } else {
-        toast.error(data.error ?? "Speichern fehlgeschlagen.");
-      }
-    } finally {
-      setSavingFinance(false);
-    }
-  }
-
-  async function saveEnrichment(e: React.FormEvent) {
-    e.preventDefault();
-    setSavingEnrichment(true);
-    try {
-      const body: Record<string, unknown> = {
-        baseUrl: enrichmentBaseUrl.trim(),
-        model: enrichmentModel.trim(),
-      };
-      if (enrichmentKey.trim()) body.apiKey = enrichmentKey.trim();
-
-      const res = await fetch("/api/admin/enrichment-config", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setEnrichment(data.config as EnrichmentPublic);
-        setEnrichmentKey("");
-        toast.success("KI-Einstellungen gespeichert.");
-      } else {
-        toast.error(data.error ?? "Speichern fehlgeschlagen.");
-      }
-    } finally {
-      setSavingEnrichment(false);
-    }
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-[#525866]">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="landing-caption">Laden…</span>
+      </div>
+    );
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-10">
-      <div>
-        <h1>Einstellungen</h1>
-      </div>
+    <div className="mx-auto max-w-3xl space-y-3">
+      <AdminSecretsSection />
 
-      {loading ? (
-        <div className="flex items-center gap-2 text-text-muted">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Laden…
+      <form
+        onSubmit={handleSave}
+        className={`${adminPanelClass} space-y-3 p-4`}
+      >
+        <div>
+          <h2 className="landing-body font-medium text-[#0E121B]">
+            Admin-Zugang
+          </h2>
+          <p className="landing-caption mt-1 text-[#99A0AE]">
+            Benutzername und Zugangscode für das Admin-Panel.
+          </p>
         </div>
-      ) : (
-        <>
-          <form
-            onSubmit={handleSave}
-            className="space-y-4 rounded-card border border-stroke bg-surface p-6"
-          >
-            <p className="font-medium text-navy">Admin-Zugang</p>
-            <div className="space-y-2">
-              <Label htmlFor="admin-username">Benutzername</Label>
-              <Input
-                id="admin-username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="admin-code-new">Neuer Code</Label>
-              <Input
-                id="admin-code-new"
-                type="password"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="Mindestens 4 Zeichen"
-                required
-              />
-            </div>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Speichern…" : "Speichern"}
-            </Button>
-          </form>
-
-          <form
-            onSubmit={saveFinance}
-            className="space-y-4 rounded-card border border-stroke bg-surface p-6"
-          >
-            <p className="font-medium text-navy">Finanz-APIs</p>
-            {integrations && (
-              <div className="space-y-1 text-caption text-text-muted">
-                <p>
-                  Twilio:{" "}
-                  {integrations.twilioConfigured
-                    ? integrations.twilioAccountSidMasked
-                    : "nicht verbunden"}
-                </p>
-                <p>
-                  ElevenLabs:{" "}
-                  {integrations.elevenLabsConfigured
-                    ? integrations.elevenLabsKeyMasked
-                    : "nicht verbunden"}
-                </p>
-                <p>
-                  Stripe:{" "}
-                  {integrations.stripeConfigured
-                    ? integrations.stripeKeyMasked
-                    : "nicht verbunden — Einnahmen = 0"}
-                </p>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="twilio-sid">Twilio Account SID</Label>
-              <Input
-                id="twilio-sid"
-                className="font-mono text-caption"
-                placeholder="AC…"
-                value={twilioSid}
-                onChange={(e) => setTwilioSid(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="twilio-token">Twilio Auth Token</Label>
-              <Input
-                id="twilio-token"
-                type="password"
-                className="font-mono text-caption"
-                placeholder="Neu eingeben zum Aktualisieren"
-                value={twilioToken}
-                onChange={(e) => setTwilioToken(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="el-key">ElevenLabs API Key</Label>
-              <Input
-                id="el-key"
-                type="password"
-                className="font-mono text-caption"
-                placeholder={
-                  integrations?.elevenLabsFromEnv
-                    ? "Optional — sonst ELEVENLABS_API_KEY"
-                    : "xi-…"
-                }
-                value={elevenLabsKey}
-                onChange={(e) => setElevenLabsKey(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="stripe-key">Stripe Secret Key</Label>
-              <Input
-                id="stripe-key"
-                type="password"
-                className="font-mono text-caption"
-                placeholder="sk_live_… — für Einnahmen in Finanzen"
-                value={stripeKey}
-                onChange={(e) => setStripeKey(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="usd-chf">USD → CHF Kurs</Label>
-              <Input
-                id="usd-chf"
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={usdToChf}
-                onChange={(e) => setUsdToChf(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={savingFinance}>
-              {savingFinance ? "Speichern…" : "APIs speichern"}
-            </Button>
-          </form>
-
-          <form
-            onSubmit={saveEnrichment}
-            className="space-y-4 rounded-card border border-stroke bg-surface p-6"
-          >
-            <p className="font-medium text-navy">KI (Agent & Anrufe)</p>
-            <p className="text-caption text-text-muted">
-              OpenAI-kompatibler Key für intelligente Agent-Erstellung
-              (Website-Analyse), Anruf-Zusammenfassungen und Kosten in Finanzen.
-            </p>
-            {enrichment && (
-              <p className="text-caption text-text-muted">
-                Status:{" "}
-                {enrichment.configured
-                  ? enrichment.apiKeyMasked
-                  : "nicht verbunden — Standard-Vorlagen"}
-              </p>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="enrichment-key">OpenAI API Key</Label>
-              <Input
-                id="enrichment-key"
-                type="password"
-                className="font-mono text-caption"
-                placeholder="sk-…"
-                value={enrichmentKey}
-                onChange={(e) => setEnrichmentKey(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="enrichment-base">API Base URL</Label>
-              <Input
-                id="enrichment-base"
-                className="font-mono text-caption"
-                placeholder="https://api.openai.com/v1"
-                value={enrichmentBaseUrl}
-                onChange={(e) => setEnrichmentBaseUrl(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="enrichment-model">Modell</Label>
-              <Input
-                id="enrichment-model"
-                className="font-mono text-caption"
-                placeholder="gpt-4o-mini"
-                value={enrichmentModel}
-                onChange={(e) => setEnrichmentModel(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={savingEnrichment}>
-              {savingEnrichment ? "Speichern…" : "KI speichern"}
-            </Button>
-          </form>
-        </>
-      )}
+        <div className="space-y-2">
+          <Label htmlFor="admin-username" className="landing-caption">
+            Benutzername
+          </Label>
+          <Input
+            id="admin-username"
+            className={landingInputClass}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="admin-code-new" className="landing-caption">
+            Neuer Code
+          </Label>
+          <Input
+            id="admin-code-new"
+            type="password"
+            className={landingInputClass}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="Min. 4 Zeichen"
+            required
+          />
+        </div>
+        <Button type="submit" size="sm" disabled={saving}>
+          {saving ? "…" : "Speichern"}
+        </Button>
+      </form>
     </div>
   );
 }

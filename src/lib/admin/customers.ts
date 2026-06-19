@@ -1,5 +1,6 @@
 import "server-only";
 
+import { deleteUserAccount } from "@/lib/account/delete-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadOpenSupportByUserIds } from "@/lib/support/messages";
 import {
@@ -232,4 +233,19 @@ export async function updateAdminCustomer(
   const detail = await getAdminCustomer(userId);
   if (!detail) throw new Error("Customer not found");
   return detail;
+}
+
+export async function deleteAdminCustomer(userId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!profile) {
+    throw new Error("NOT_FOUND");
+  }
+
+  await deleteUserAccount(userId);
 }

@@ -4,9 +4,17 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  AdminFilterPill,
+  AdminStat,
+  adminPanelClass,
+  adminTableClass,
+  adminTableHeadClass,
+} from "@/components/admin/admin-ui";
+import { TwilioNumberOrderPanel } from "@/components/admin/TwilioNumberOrderPanel";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { landingBtnPrimary } from "@/components/landing/landing-buttons";
+import { landingInputClass } from "@/components/landing/landing-buttons";
 
 interface AdminPoolNumber {
   phoneNumber: string;
@@ -67,7 +75,7 @@ export default function AdminNumbersPage() {
   async function copyText(text: string, key: string) {
     await navigator.clipboard.writeText(text);
     setCopied(key);
-    toast.success("In Zwischenablage kopiert");
+    toast.success("Kopiert");
     setTimeout(() => setCopied(null), 2000);
   }
 
@@ -77,7 +85,7 @@ export default function AdminNumbersPage() {
       .map((n) => n.phoneNumber)
       .join("\n");
     if (!free) {
-      toast.info("Keine freien Nummern vorhanden.");
+      toast.info("Keine freien Nummern.");
       return;
     }
     await copyText(free, "all-free");
@@ -89,7 +97,7 @@ export default function AdminNumbersPage() {
       .map((n) => n.trim())
       .filter(Boolean);
     if (lines.length === 0) {
-      toast.error("Bitte Nummer(n) eingeben.");
+      toast.error("Nummer eingeben.");
       return;
     }
     setAdding(true);
@@ -107,30 +115,27 @@ export default function AdminNumbersPage() {
         if (added > 0) {
           toast.success(
             assigned > 0
-              ? `${added} Nummer(n) hinzugefügt · ${assigned} zugewiesen`
-              : `${added} Nummer(n) hinzugefügt`
+              ? `${added} hinzugefügt · ${assigned} zugewiesen`
+              : `${added} hinzugefügt`
           );
           setNewNumbers("");
           await load();
         }
         if (skipped.length > 0) {
           const labels: Record<string, string> = {
-            duplicate_input: "doppelt eingegeben",
-            already_free: "bereits frei im Pool",
-            already_used: "bereits belegt",
+            duplicate_input: "doppelt",
+            already_free: "bereits im Pool",
+            already_used: "belegt",
+            demo_reserved: "Demo-Nummer",
           };
           toast.warning(
-            `${skipped.length} übersprungen: ${skipped
+            skipped
               .map((s) => `${s.phone} (${labels[s.reason] ?? s.reason})`)
-              .join(", ")}`
+              .join(", ")
           );
         }
       } else {
-        toast.error(data.error ?? "Hinzufügen fehlgeschlagen.");
-        if (data.skipped?.length) {
-          const skipped = data.skipped as { phone: string; reason: string }[];
-          toast.warning(skipped.map((s) => s.phone).join(", "));
-        }
+        toast.error(data.error ?? "Fehlgeschlagen.");
       }
     } finally {
       setAdding(false);
@@ -140,55 +145,63 @@ export default function AdminNumbersPage() {
   const filtered = numbers.filter((n) => filter === "all" || n.status === filter);
   const freeCount = numbers.filter((n) => n.status === "frei").length;
   const usedCount = numbers.filter((n) => n.status === "belegt").length;
-  const returnedCount = numbers.filter((n) => n.status === "zurückgegeben").length;
+  const returnedCount = numbers.filter(
+    (n) => n.status === "zurückgegeben"
+  ).length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <h1>Nummern</h1>
-        <Button variant="outline" size="sm" onClick={copyAllFree}>
-          <Copy className="mr-2 h-4 w-4" />
-          Alle freien kopieren
-        </Button>
+    <div className="space-y-4">
+      <TwilioNumberOrderPanel onOrdered={load} />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={copyAllFree}
+          className="landing-caption landing-radius-sm inline-flex min-h-8 items-center gap-1.5 border border-[#E1E4EA] px-2.5 text-[#525866] transition-colors hover:bg-[#F5F7FA] hover:text-[#0E121B]"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          Freie kopieren
+        </button>
       </div>
 
-      <div className="rounded-card border border-stroke bg-surface p-5 space-y-3">
-        <Label htmlFor="new-numbers">Neue Nummern</Label>
-        <textarea
-          id="new-numbers"
-          className="flex min-h-[72px] w-full rounded-btn border border-stroke bg-bg px-3 py-2 font-mono text-caption"
-          placeholder="+41445054632&#10;+41445054633"
-          value={newNumbers}
-          onChange={(e) => setNewNumbers(e.target.value)}
-        />
-        <Button size="sm" onClick={addNumbers} disabled={adding}>
-          {adding ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="mr-2 h-4 w-4" />
-          )}
-          Hinzufügen
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Stat label="Gesamt" value={numbers.length} />
-        <Stat label="Frei" value={freeCount} accent />
-        <Stat label="Zurückgegeben" value={returnedCount} />
-        <Stat label="Belegt" value={usedCount} />
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {(["all", "frei", "zurückgegeben", "belegt"] as const).map((f) => (
+      <div className={`${adminPanelClass} p-4 space-y-3`}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <textarea
+            id="new-numbers"
+            className={`${landingInputClass} min-h-[64px] flex-1 font-mono landing-caption resize-y`}
+            placeholder="+41…"
+            value={newNumbers}
+            onChange={(e) => setNewNumbers(e.target.value)}
+          />
           <button
-            key={f}
             type="button"
+            onClick={addNumbers}
+            disabled={adding}
+            className={landingBtnPrimary}
+          >
+            {adding ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Plus className="h-3.5 w-3.5" />
+            )}
+            Hinzufügen
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <AdminStat label="Gesamt" value={numbers.length} />
+        <AdminStat label="Frei" value={freeCount} accent />
+        <AdminStat label="Zurückgegeben" value={returnedCount} />
+        <AdminStat label="Belegt" value={usedCount} />
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {(["all", "frei", "zurückgegeben", "belegt"] as const).map((f) => (
+          <AdminFilterPill
+            key={f}
+            active={filter === f}
             onClick={() => setFilter(f)}
-            className={`rounded-full px-3 py-1.5 text-caption font-medium transition-colors ${
-              filter === f
-                ? "bg-accent text-white"
-                : "border border-stroke bg-bg text-text-muted hover:text-navy"
-            }`}
           >
             {f === "all"
               ? "Alle"
@@ -197,89 +210,81 @@ export default function AdminNumbersPage() {
                 : f === "belegt"
                   ? "Belegt"
                   : "Zurückgegeben"}
-          </button>
+          </AdminFilterPill>
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-card border border-stroke bg-surface">
+      <div className={`overflow-hidden ${adminPanelClass}`}>
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-text-muted">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Laden…
+          <div className="flex items-center justify-center gap-2 py-16 text-[#525866]">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="landing-caption">Laden…</span>
           </div>
         ) : filtered.length === 0 ? (
-          <p className="py-16 text-center text-body text-text-muted">
-            Keine Nummern gefunden.
-          </p>
+          <p className="py-16 text-center landing-body text-[#525866]">—</p>
         ) : (
-          <table className="w-full text-left text-body">
+          <table className={adminTableClass}>
             <thead>
-              <tr className="border-b border-stroke bg-bg/50 text-caption text-text-muted">
-                <th className="px-4 py-3 font-medium">Nummer</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">User</th>
-                <th className="px-4 py-3 font-medium">Zugewiesen</th>
-                <th className="px-4 py-3 font-medium">Zurückgegeben</th>
-                <th className="px-4 py-3 font-medium">Kopieren</th>
+              <tr className={adminTableHeadClass}>
+                <th className="px-3 py-2.5 font-normal">Nummer</th>
+                <th className="px-3 py-2.5 font-normal">Status</th>
+                <th className="px-3 py-2.5 font-normal">User</th>
+                <th className="px-3 py-2.5 font-normal">Zugewiesen</th>
+                <th className="px-3 py-2.5 font-normal">Freigegeben</th>
+                <th className="px-3 py-2.5 font-normal w-12" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-stroke">
+            <tbody className="divide-y divide-[#E1E4EA]">
               {filtered.map((n) => (
-                <tr key={n.phoneNumber} className="hover:bg-bg/30">
-                  <td className="px-4 py-3 font-mono text-navy">
+                <tr key={n.phoneNumber} className="hover:bg-[#F5F7FA]/60">
+                  <td className="px-3 py-2.5 font-mono text-[#0E121B]">
                     {n.phoneNumber}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2.5">
                     <Badge variant={STATUS_VARIANT[n.status]}>
                       {STATUS_LABEL[n.status]}
                     </Badge>
                     {n.timesAssigned > 1 && (
-                      <p className="mt-1 text-caption text-text-muted">
-                        {n.timesAssigned}× vergeben
-                      </p>
-                    )}
-                    {!n.inDatabase && (
-                      <p className="mt-1 text-caption text-text-muted">
-                        Nur in Env
+                      <p className="mt-0.5 landing-caption text-[#99A0AE]">
+                        {n.timesAssigned}×
                       </p>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2.5">
                     {n.status === "belegt" ? (
                       <>
-                        <p className="font-medium text-navy">
-                          {n.assignedUserName || "—"}
-                        </p>
-                        <p className="text-caption text-text-muted">
+                        <p className="text-[#0E121B]">{n.assignedUserName || "—"}</p>
+                        <p className="landing-caption text-[#99A0AE]">
                           {n.assignedUserEmail}
                         </p>
                       </>
                     ) : (
-                      <span className="text-text-muted">—</span>
+                      <span className="text-[#99A0AE]">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-caption text-text-muted">
+                  <td className="px-3 py-2.5 landing-caption text-[#525866]">
                     {n.assignedAt
                       ? new Date(n.assignedAt).toLocaleString("de-CH")
                       : "—"}
                   </td>
-                  <td className="px-4 py-3 text-caption text-text-muted">
+                  <td className="px-3 py-2.5 landing-caption text-[#525866]">
                     {n.lastReleasedAt
                       ? new Date(n.lastReleasedAt).toLocaleString("de-CH")
                       : "—"}
                   </td>
-                  <td className="px-4 py-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
+                  <td className="px-3 py-2.5">
+                    <button
+                      type="button"
                       onClick={() => copyText(n.phoneNumber, n.phoneNumber)}
+                      className="landing-radius-sm p-1.5 text-[#525866] hover:bg-[#F5F7FA]"
+                      aria-label="Kopieren"
                     >
                       {copied === n.phoneNumber ? (
-                        <Check className="h-4 w-4" />
+                        <Check className="h-3.5 w-3.5" />
                       ) : (
-                        <Copy className="h-4 w-4" />
+                        <Copy className="h-3.5 w-3.5" />
                       )}
-                    </Button>
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -287,27 +292,6 @@ export default function AdminNumbersPage() {
           </table>
         )}
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: number;
-  accent?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-card border px-4 py-3 ${
-        accent ? "border-accent/30 bg-accent/5" : "border-stroke bg-surface"
-      }`}
-    >
-      <p className="text-caption text-text-muted">{label}</p>
-      <p className="text-h3 text-navy">{value}</p>
     </div>
   );
 }

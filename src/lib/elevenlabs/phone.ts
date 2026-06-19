@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getElevenLabsClient } from "@/lib/elevenlabs/client";
+import { describeElevenLabsError, getElevenLabsClient } from "@/lib/elevenlabs/client";
 
 /** Normalise to E.164-ish for matching (+digits only). */
 export function normalizePhoneNumber(value: string): string {
@@ -11,21 +11,70 @@ export function normalizePhoneNumber(value: string): string {
   return "+" + digits;
 }
 
+export type PhoneTelephonyProvider = "twilio" | "sip_trunk" | "exotel";
+
 export interface ElevenLabsPhoneEntry {
   phoneNumber: string;
   phoneNumberId: string;
   assignedAgentId?: string;
 }
 
-/** Lists all phone numbers in the ElevenLabs workspace. */
-export async function listWorkspacePhones(): Promise<ElevenLabsPhoneEntry[]> {
-  const client = getElevenLabsClient();
-  const items = await client.conversationalAi.phoneNumbers.list();
-  return items.map((item) => ({
+export interface WorkspacePhoneDetail extends ElevenLabsPhoneEntry {
+  provider: PhoneTelephonyProvider;
+  supportsOutbound: boolean;
+}
+
+type RawPhoneListItem = {
+  phoneNumber: string;
+  phoneNumberId: string;
+  provider?: PhoneTelephonyProvider;
+  supportsOutbound?: boolean;
+  outboundTrunk?: unknown;
+  assignedAgent?: { agentId?: string };
+};
+
+function mapWorkspacePhoneDetail(item: RawPhoneListItem): WorkspacePhoneDetail {
+  const provider = item.provider ?? "sip_trunk";
+  const supportsOutbound =
+    provider === "twilio"
+      ? true
+      : Boolean(item.supportsOutbound ?? item.outboundTrunk);
+
+  return {
     phoneNumber: normalizePhoneNumber(item.phoneNumber),
     phoneNumberId: item.phoneNumberId,
     assignedAgentId: item.assignedAgent?.agentId,
+    provider,
+    supportsOutbound,
+  };
+}
+
+/** Lists all phone numbers in the ElevenLabs workspace. */
+export async function listWorkspacePhones(): Promise<ElevenLabsPhoneEntry[]> {
+  const details = await listWorkspacePhoneDetails();
+  return details.map(({ phoneNumber, phoneNumberId, assignedAgentId }) => ({
+    phoneNumber,
+    phoneNumberId,
+    assignedAgentId,
   }));
+}
+
+/** Lists phone numbers including telephony provider and outbound capability. */
+export async function listWorkspacePhoneDetails(): Promise<WorkspacePhoneDetail[]> {
+  const client = getElevenLabsClient();
+  const items = (await client.conversationalAi.phoneNumbers.list()) as RawPhoneListItem[];
+  return items.map(mapWorkspacePhoneDetail);
+}
+
+/** Loads a single workspace phone number with provider metadata. */
+export async function getWorkspacePhoneDetail(
+  phoneNumberId: string
+): Promise<WorkspacePhoneDetail> {
+  const client = getElevenLabsClient();
+  const item = (await client.conversationalAi.phoneNumbers.get(
+    phoneNumberId
+  )) as RawPhoneListItem;
+  return mapWorkspacePhoneDetail(item);
 }
 
 /** Assigns an ElevenLabs Conversational AI agent to a phone number. */
@@ -147,10 +196,81 @@ type SipTrunkPhoneDetail = {
   provider?: string;
   phoneNumber?: string;
   phoneNumberId?: string;
+  supportsInbound?: boolean;
+  supportsOutbound?: boolean;
   assignedAgent?: { agentId?: string };
   outboundTrunk?: unknown;
   inboundTrunk?: unknown;
 };
+
+export interface ImportSipTrunkInput extends SipTrunkCreateInput {
+  agentId: string;
+}
+
+/**
+ * Imports the SIP number into ElevenLabs, validates agent/bot compatibility,
+ * and only returns success when ElevenLabs accepts the number for telephony agents.
+ */
+export async function importAndValidateSipTrunkForAgent(
+  input: ImportSipTrunkInput
+): Promise<
+  | { ok: true; phoneNumberId: string; phoneNumber: string }
+  | { ok: false; error: string }
+> {
+  const normalized = normalizePhoneNumber(input.phoneNumber);
+  const outboundConfigured = Boolean(input.outboundAddress?.trim());
+  let phoneNumberId: string | undefined;
+  let createdInElevenLabs = false;
+
+  try {
+    const workspace = await listWorkspacePhoneDetails();
+    const existing = workspace.find((entry) => entry.phoneNumber === normalized);
+
+    if (existing) {
+      if (existing.provider !== "sip_trunk") {
+        return {
+          ok: false,
+          error:
+            "Diese Nummer ist in ElevenLabs bereits mit einem anderen Anbietertyp registriert und kann nicht als SIP Trunk genutzt werden.",
+        };
+      }
+      phoneNumberId = existing.phoneNumberId;
+    } else {
+      const created = await createSipTrunkPhoneNumber(input);
+      phoneNumberId = created.phoneNumberId;
+      createdInElevenLabs = true;
+    }
+
+    const botReady = await validateSipTrunkForBotCalls({
+      phoneNumberId,
+      expectedNumber: normalized,
+      agentId: input.agentId,
+      outboundConfigured,
+    });
+
+    if (!botReady.ok) {
+      if (createdInElevenLabs) {
+        await deletePhoneNumberFromElevenLabs(phoneNumberId).catch((err) =>
+          console.warn("[elevenlabs/phone] cleanup after SIP rejection:", err)
+        );
+      }
+      return { ok: false, error: botReady.error };
+    }
+
+    return { ok: true, phoneNumberId, phoneNumber: normalized };
+  } catch (err) {
+    if (createdInElevenLabs && phoneNumberId) {
+      await deletePhoneNumberFromElevenLabs(phoneNumberId).catch((cleanupErr) =>
+        console.warn("[elevenlabs/phone] cleanup after SIP import error:", cleanupErr)
+      );
+    }
+    const { message } = describeElevenLabsError(err);
+    return {
+      ok: false,
+      error: message || SIP_INCOMPATIBLE_MESSAGE,
+    };
+  }
+}
 
 /**
  * Validates that a SIP number can be used for Conversational AI bot calls:
@@ -170,7 +290,7 @@ export async function validateSipTrunkForBotCalls(options: {
     normalized
   );
   if (!basic.ok) {
-    return { ok: false, error: SIP_INCOMPATIBLE_MESSAGE };
+    return { ok: false, error: basic.error };
   }
 
   let detail: SipTrunkPhoneDetail;
@@ -184,6 +304,14 @@ export async function validateSipTrunkForBotCalls(options: {
 
   if (detail.provider && detail.provider !== "sip_trunk") {
     return { ok: false, error: SIP_INCOMPATIBLE_MESSAGE };
+  }
+
+  if (detail.supportsInbound === false) {
+    return {
+      ok: false,
+      error:
+        "ElevenLabs akzeptiert diese Nummer nicht für eingehende Telefonagent-Anrufe.",
+    };
   }
 
   try {

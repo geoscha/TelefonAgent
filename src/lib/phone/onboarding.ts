@@ -13,14 +13,14 @@ import type { OnboardingPhase } from "@/lib/onboarding-types";
 import { createUserRequest, listRequests, updateRequest } from "@/lib/admin/requests";
 import { isPhoneNumberRequest } from "@/lib/admin/request-types";
 import type { RequestStatus, UserRequest } from "@/lib/admin/request-types";
-import { assignNumberFromPool, syncNumberPoolFromEnv } from "@/lib/store/number-pool";
+import { syncNumberPoolFromEnv } from "@/lib/store/number-pool";
 import {
   assertCanAffordPhoneNumber,
 } from "@/lib/billing/tokens";
-import { setupPhoneBilling } from "@/lib/billing/phone-billing";
 import { requireUserId } from "@/lib/supabase/server";
 import {
   addPoolPhoneNumber,
+  assignNextFreePoolNumberForUser,
   listUserPhoneNumbers,
   requestAdditionalPoolNumber,
   updatePhoneForwarding,
@@ -74,10 +74,18 @@ export async function getPhoneOnboardingState(
   userId?: string
 ): Promise<PhoneOnboardingState> {
   const id = userId ?? (await requireUserId());
-  const settings = userId ? await getSettingsForUser(id) : await getSettings();
-  const phones = await listUserPhoneNumbers(id);
+  let settings = userId ? await getSettingsForUser(id) : await getSettings();
+  let phones = await listUserPhoneNumbers(id);
+  let pendingRequests = await findOpenPhoneRequests(id);
+
+  if (phones.length === 0 && pendingRequests.length > 0) {
+    await tryAutoAssignPhoneNumber(id);
+    settings = userId ? await getSettingsForUser(id) : await getSettings();
+    phones = await listUserPhoneNumbers(id);
+    pendingRequests = await findOpenPhoneRequests(id);
+  }
+
   const primary = phones.find((p) => p.isPrimary) ?? phones[0];
-  const pendingRequests = await findOpenPhoneRequests(id);
   const pendingRequest = pendingRequests[0] ?? null;
   let phase = defaultPhase(settings);
 
@@ -111,13 +119,25 @@ export async function requestPhoneNumber(): Promise<
     throw new Error(affordability.error);
   }
 
+  const phonesBefore = await listUserPhoneNumbers(userId);
+  const pendingBefore = await findOpenPhoneRequests(userId);
   const current = await getPhoneOnboardingState(userId);
   const phones = await listUserPhoneNumbers(userId);
 
-  if (current.pendingRequest && phones.length === 0) {
-    return current;
+  if (
+    phonesBefore.length === 0 &&
+    phones.length > 0 &&
+    pendingBefore.length > 0
+  ) {
+    const assigned = phones.find((p) => p.isPrimary) ?? phones[0];
+    return {
+      ...current,
+      autoAssigned: true,
+      phone: { phoneNumber: assigned.phoneNumber },
+    };
   }
-  if (current.pendingRequests.length > 0) {
+
+  if (phones.length === 0 && current.pendingRequests.length > 0) {
     return current;
   }
 
@@ -157,47 +177,17 @@ export async function requestPhoneNumber(): Promise<
 
 /** Assigns the next free pool number to a user and closes their open request. */
 export async function tryAutoAssignPhoneNumber(userId: string): Promise<boolean> {
-  const affordability = await assertCanAffordPhoneNumber(userId);
-  if (!affordability.ok) {
-    return false;
-  }
+  const phones = await listUserPhoneNumbers(userId);
+  if (phones.length > 0) return false;
 
-  try {
-    await syncNumberPoolFromEnv();
-    const pool = await assignNumberFromPool(userId, { allowExisting: false });
-    await assignPhoneNumberToUser(userId, pool.phoneNumber, {
-      elevenLabsPhoneNumberId: pool.elevenLabsPhoneNumberId,
-    });
+  const result = await assignNextFreePoolNumberForUser(userId);
+  if (!result.autoAssigned || !result.phone) return false;
 
-    const phones = await listUserPhoneNumbers(userId);
-    const phone = phones.find((p) => p.phoneNumber === pool.phoneNumber);
-    if (!phone) return false;
-
-    const charged = await setupPhoneBilling(userId, phone.id);
-    if (!charged.ok) {
-      const admin = createAdminClient();
-      await admin
-        .from("forwarding_number_pool")
-        .update({ assigned_user_id: null, assigned_at: null })
-        .eq("phone_number", pool.phoneNumber)
-        .eq("assigned_user_id", userId);
-      await admin
-        .from("user_phone_numbers")
-        .delete()
-        .eq("id", phone.id)
-        .eq("user_id", userId);
-      return false;
-    }
-
-    await completePhoneAssignment(userId, pool.phoneNumber, {
-      elevenLabsPhoneNumberId: pool.elevenLabsPhoneNumberId,
-      autoAssigned: true,
-    });
-    return true;
-  } catch (err) {
-    console.warn("[onboarding] auto-assign skipped:", err);
-    return false;
-  }
+  await completePhoneAssignment(userId, result.phone.phoneNumber, {
+    elevenLabsPhoneNumberId: result.phone.elevenLabsPhoneNumberId,
+    autoAssigned: true,
+  });
+  return true;
 }
 
 /** Processes oldest pending phone requests while free numbers exist. */

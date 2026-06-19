@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
+  deleteAdminCustomer,
   getAdminCustomer,
   updateAdminCustomer,
 } from "@/lib/admin/customers";
@@ -88,5 +89,32 @@ export async function PATCH(
   } catch (error) {
     console.error("[admin/customers/id]", error);
     return NextResponse.json({ error: "Speichern fehlgeschlagen." }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await requireAdminSession();
+  } catch {
+    return NextResponse.json({ error: "Nicht autorisiert." }, { status: 401 });
+  }
+
+  try {
+    await deleteAdminCustomer(params.id);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message =
+      error instanceof Error && error.message === "NOT_FOUND"
+        ? "Kunde nicht gefunden."
+        : error instanceof Error
+          ? error.message
+          : "Konto konnte nicht gelöscht werden.";
+    const status =
+      error instanceof Error && error.message === "NOT_FOUND" ? 404 : 500;
+    console.error("[admin/customers/id] delete", error);
+    return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

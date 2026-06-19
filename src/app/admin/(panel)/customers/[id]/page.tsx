@@ -1,13 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -72,9 +79,12 @@ const ONBOARDING_PHASES: OnboardingPhase[] = [
 
 export default function AdminCustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -150,6 +160,27 @@ export default function AdminCustomerDetailPage() {
     }
   }
 
+  async function deleteCustomer() {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/customers/${id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        toast.success("Kundenkonto gelöscht.");
+        router.push("/admin/customers");
+        router.refresh();
+      } else {
+        toast.error(data.error ?? "Konto konnte nicht gelöscht werden.");
+        setDeleting(false);
+      }
+    } catch {
+      toast.error("Konto konnte nicht gelöscht werden.");
+      setDeleting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-20 text-text-muted">
@@ -180,9 +211,18 @@ export default function AdminCustomerDetailPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1>{customer.profile.name || customer.profile.email}</h1>
-        <Button onClick={save} disabled={saving}>
-          {saving ? "Speichern…" : "Speichern"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={save} disabled={saving || deleting}>
+            {saving ? "Speichern…" : "Speichern"}
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => setDeleteOpen(true)}
+            disabled={saving || deleting}
+          >
+            Konto löschen
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -359,6 +399,38 @@ export default function AdminCustomerDetailPage() {
           </div>
         </section>
       )}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Kundenkonto wirklich löschen?</DialogTitle>
+            <DialogDescription>
+              Das Konto von{" "}
+              <span className="font-medium text-navy">
+                {customer.profile.name || customer.profile.email}
+              </span>{" "}
+              wird dauerhaft gelöscht — inklusive Anrufe, Einstellungen,
+              Agenten und Telefonnummern-Zuweisungen. Dieser Schritt kann nicht
+              rückgängig gemacht werden.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleting}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={deleteCustomer}
+              disabled={deleting}
+            >
+              {deleting ? "Löschen…" : "Endgültig löschen"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

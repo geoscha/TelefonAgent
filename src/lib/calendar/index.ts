@@ -47,4 +47,5 @@ export interface PublicCalendarStatus {
   configured: boolean;
   accountLabel?: string;
   connectedAt?: string;
+  agentPermissions?: import("@/lib/integrations/calendar-agent-permissions").CalendarAgentPermissions;
 }

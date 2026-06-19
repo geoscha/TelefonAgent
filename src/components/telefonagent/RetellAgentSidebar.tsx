@@ -25,7 +25,7 @@ export function RetellAgentSidebar({
   onCreateNew,
 }: RetellAgentSidebarProps) {
   return (
-    <div className="flex w-[200px] shrink-0 flex-col gap-2 lg:w-[220px]">
+    <div className="flex w-[200px] shrink-0 flex-col gap-2 self-stretch lg:w-[220px]">
       <button
         type="button"
         onClick={onCreateNew}

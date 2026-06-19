@@ -18,7 +18,7 @@ export async function GET(
 
   const fail = (reason: string) =>
     NextResponse.redirect(
-      `${APP_URL}/telefonagent?error=${reason}&provider=${provider}`
+      `${APP_URL}/integrations?error=${reason}&provider=${provider}`
     );
 
   if (oauthError) return fail("denied");
@@ -42,7 +42,7 @@ export async function GET(
   }
 
   const res = NextResponse.redirect(
-    `${APP_URL}/telefonagent?connected=${provider}`
+    `${APP_URL}/integrations?connected=${provider}`
   );
   res.cookies.delete(`oauth_state_${provider}`);
   return res;

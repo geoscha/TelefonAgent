@@ -5,17 +5,23 @@ import {
   getElevenLabsClient,
 } from "@/lib/elevenlabs/client";
 import {
+  getAgentCalendarIntegration,
+} from "@/lib/integrations/agent-calendar";
+import {
   buildAppointmentBlock,
   buildSystemPrompt,
 } from "@/lib/elevenlabs/prompt";
-import { applyEuCompliancePrompt } from "@/lib/elevenlabs/compliance";
+import {
+  applyEuComplianceGreeting,
+  applyEuCompliancePrompt,
+} from "@/lib/elevenlabs/compliance";
 import {
   buildConversationConfig,
   filterAgentVoices,
   normalizeAgentLanguage,
   type RawElevenLabsVoice,
 } from "@/lib/elevenlabs/agent-config";
-import { linkAgentToPhone } from "@/lib/elevenlabs/sync-agent";
+import { linkAgentToPhone, reconcileUserPhoneAgentLink, unlinkUserPhonesFromAgent } from "@/lib/elevenlabs/sync-agent";
 import { completeAgentOnboarding } from "@/lib/phone/onboarding";
 import { listUserPhoneNumbers } from "@/lib/phone/numbers";
 import { getSettings, updateSettings, type StoredAgent } from "@/lib/store";
@@ -37,6 +43,10 @@ interface AgentBody {
   website?: string;
   /** Save to app settings only — used for auto-save in the detail panel. */
   persistOnly?: boolean;
+  /** Clear the active agent without deleting it. */
+  deactivate?: boolean;
+  /** Set this agent as the active inbound handler (persists agentId + phone link). */
+  activate?: boolean;
 }
 
 function buildEffectiveSystemPrompt(
@@ -83,6 +93,9 @@ async function persistAgentRecord(params: {
     phoneNumberId: body.phoneNumberId ?? existing?.phoneNumberId,
     euComplianceEnabled,
     website: body.website?.trim() || existing?.website,
+    calendarProvider: existing?.calendarProvider ?? null,
+    calendarPermissions: existing?.calendarPermissions,
+    appointmentBookingEnabled: existing?.appointmentBookingEnabled,
   };
 
   const phones = await listUserPhoneNumbers(userId);
@@ -96,7 +109,8 @@ async function persistAgentRecord(params: {
     ? existingAgents.map((a) => (a.id === agentId ? stored : a))
     : [...existingAgents, stored];
 
-  const isActiveAgent = settings.agentId === agentId;
+  const isActiveAgent =
+    settings.agentId === agentId || body.activate === true;
 
   let updated = await updateSettings({
     agents,
@@ -118,11 +132,16 @@ async function persistAgentRecord(params: {
     updated = await completeAgentOnboarding();
   }
 
-  if (
-    isActiveAgent &&
-    (stored.phoneNumberId || updated.curaForwardingNumber)
-  ) {
-    await linkAgentToPhone(userId, agentId, stored.phoneNumberId);
+  if (isActiveAgent) {
+    try {
+      await reconcileUserPhoneAgentLink(userId);
+      updated = await getSettings();
+    } catch (err) {
+      console.warn("[agent] phone reconcile on activate:", err);
+      if (stored.phoneNumberId || updated.curaForwardingNumber) {
+        await linkAgentToPhone(userId, agentId, stored.phoneNumberId);
+      }
+    }
   }
 
   return { updated, agents, agentId, stored };
@@ -138,6 +157,30 @@ export async function POST(req: NextRequest) {
       { ok: false, error: "Ungültige Anfrage." },
       { status: 400 }
     );
+  }
+
+  if (body.deactivate) {
+    try {
+      const userId = await requireUserId();
+      const settings = await getSettings();
+      await unlinkUserPhonesFromAgent(userId);
+      const updated = await updateSettings({
+        agentId: undefined,
+        agentName: undefined,
+        voiceId: undefined,
+        voiceName: undefined,
+        greeting: undefined,
+        systemPrompt: undefined,
+      });
+      return NextResponse.json({
+        ok: true,
+        settings: updated,
+        agents: settings.agents ?? [],
+      });
+    } catch (error) {
+      const { status, message } = describeElevenLabsError(error);
+      return NextResponse.json({ ok: false, error: message }, { status });
+    }
   }
 
   const name = body.name?.trim();
@@ -217,14 +260,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const resolvedAgentId = body.createNew ? undefined : targetAgentId;
+    const appointmentEnabled = resolvedAgentId
+      ? getAgentCalendarIntegration(settings, resolvedAgentId)
+          .appointmentBookingEnabled
+      : false;
+
     const effectivePrompt = buildEffectiveSystemPrompt(
       systemPrompt,
       complianceEnabled,
-      Boolean(settings.appointmentBookingEnabled)
+      appointmentEnabled
     );
 
     const conversationConfig = buildConversationConfig({
-      greeting,
+      greeting: applyEuComplianceGreeting(greeting, complianceEnabled),
       language,
       systemPrompt: effectivePrompt,
       voiceId,

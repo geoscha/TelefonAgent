@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
-import { getTokenPack } from "@/lib/billing/quota-display";
-import { creditTokens } from "@/lib/billing/tokens";
+import { fulfillTokenPackCheckout } from "@/lib/billing/stripe-fulfillment";
+import {
+  getStripeSecretKey,
+  getStripeWebhookSecret,
+} from "@/lib/billing/stripe-config";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const secret = process.env.STRIPE_SECRET_KEY;
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const secret = await getStripeSecretKey();
+  const webhookSecret = await getStripeWebhookSecret();
   if (!secret || !webhookSecret) {
-    console.error("[stripe webhook] missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET");
+    console.error("[stripe webhook] missing Stripe secret key or webhook secret");
     return NextResponse.json({ error: "Not configured" }, { status: 500 });
   }
 
@@ -31,32 +34,11 @@ export async function POST(req: Request) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
-    if (session.mode !== "payment") {
-      return NextResponse.json({ received: true });
+    const result = await fulfillTokenPackCheckout(session);
+    if (!result.ok && result.error !== "not_paid") {
+      console.error("[stripe webhook] fulfillment failed:", result);
+      return NextResponse.json({ error: "Fulfillment failed" }, { status: 500 });
     }
-
-    const userId = session.metadata?.userId;
-    const packId = session.metadata?.packId;
-    const tokensRaw = session.metadata?.tokens;
-    const tokens =
-      tokensRaw != null
-        ? Number(tokensRaw)
-        : packId
-          ? getTokenPack(packId)?.tokens
-          : undefined;
-
-    if (!userId || !tokens || tokens <= 0) {
-      console.error("[stripe webhook] missing metadata:", session.metadata);
-      return NextResponse.json({ error: "Invalid metadata" }, { status: 400 });
-    }
-
-    const referenceId = `stripe:${session.id}`;
-    await creditTokens(userId, tokens, "stripe_topup", referenceId, {
-      packId,
-      sessionId: session.id,
-      amountTotal: session.amount_total,
-      currency: session.currency,
-    });
   }
 
   return NextResponse.json({ received: true });

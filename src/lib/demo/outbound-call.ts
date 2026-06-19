@@ -3,16 +3,19 @@ import "server-only";
 import {
   buildDemoOutboundSystemPrompt,
 } from "@/lib/demo/demo-agent-config";
-import { ensureDemoCallTarget } from "@/lib/demo/ensure-demo-agent";
+import {
+  ensureDemoCallTarget,
+  updateDemoAgentForOutbound,
+} from "@/lib/demo/ensure-demo-agent";
 import {
   buildDemoOutboundGreeting,
   getDemoUseCase,
   type DemoUseCaseId,
 } from "@/lib/demo/use-cases";
-import { resolvePleasantDemoVoiceId } from "@/lib/demo/pleasant-voice";
 import type { DemoVoicePresetId } from "@/lib/demo/voices";
 import {
   describeElevenLabsError,
+  getElevenLabsClient,
   hasApiKey,
 } from "@/lib/elevenlabs/client";
 import { normalizePhoneNumber } from "@/lib/elevenlabs/phone";
@@ -57,71 +60,46 @@ export async function initiateDemoCallback(
   }
 
   try {
-    const { agentId, agentPhoneNumberId } = await ensureDemoCallTarget();
-    const voiceId = await resolvePleasantDemoVoiceId();
     const greeting = buildDemoOutboundGreeting(name, useCase);
     const systemPrompt = buildDemoOutboundSystemPrompt({
       name,
       scenario: useCase.scenario,
     });
 
-    const apiKey = process.env.ELEVENLABS_API_KEY!;
-    const res = await fetch(
-      "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "xi-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          agent_id: agentId,
-          agent_phone_number_id: agentPhoneNumberId,
-          to_number: toNumber,
-          conversation_initiation_client_data: {
-            conversation_config_override: {
-              agent: {
-                first_message: greeting,
-                language: "de",
-                prompt: {
-                  prompt: systemPrompt,
-                },
-              },
-              tts: {
-                voice_id: voiceId,
-                speed: 0.95,
-                stability: 0.55,
-                similarity_boost: 0.75,
-              },
-            },
-          },
-          telephony_call_config: {
-            ringing_timeout_secs: 45,
-          },
-        }),
-      }
-    );
+    const { agentId, agentPhoneNumberId, phoneProvider } =
+      await ensureDemoCallTarget();
+    await updateDemoAgentForOutbound({ greeting, systemPrompt });
 
-    const data = (await res.json().catch(() => null)) as {
-      success?: boolean;
-      message?: string;
-      conversation_id?: string | null;
-      detail?: unknown;
-    } | null;
+    const client = getElevenLabsClient();
+    const request = {
+      agentId,
+      agentPhoneNumberId,
+      toNumber,
+      telephonyCallConfig: {
+        ringingTimeoutSecs: 45,
+      },
+    };
 
-    if (!res.ok || !data?.success) {
-      const detail =
-        typeof data?.detail === "string"
-          ? data.detail
-          : Array.isArray(data?.detail)
-            ? String((data.detail as { msg?: string }[])[0]?.msg ?? "")
-            : typeof data?.message === "string"
-              ? data.message
-              : null;
+    const data =
+      phoneProvider === "twilio"
+        ? await client.conversationalAi.twilio.outboundCall(request)
+        : phoneProvider === "sip_trunk"
+          ? await client.conversationalAi.sipTrunk.outboundCall(request)
+          : null;
+
+    if (!data) {
       return {
         ok: false,
         message:
-          detail ||
+          "Demo-Anrufe werden für diesen Telefonanbieter nicht unterstützt.",
+      };
+    }
+
+    if (!data.success) {
+      return {
+        ok: false,
+        message:
+          data.message?.trim() ||
           "Der Anruf konnte nicht gestartet werden. Bitte Nummer prüfen und erneut versuchen.",
       };
     }
@@ -129,7 +107,7 @@ export async function initiateDemoCallback(
     return {
       ok: true,
       message: "Lea ruft Sie gleich an — bitte nehmen Sie Ihr Telefon entgegen.",
-      conversationId: data.conversation_id,
+      conversationId: data.conversationId,
     };
   } catch (error) {
     if (error instanceof Error) {

@@ -28,11 +28,14 @@ Regeln:
 - Nach ca. 2 Minuten höflich zum Abschluss führen.`;
 }
 
-export function buildDemoAgentConversationConfig(voiceId: string) {
+export function buildDemoAgentConversationConfig(
+  voiceId: string,
+  options?: { greeting?: string; systemPrompt?: string }
+) {
   return buildConversationConfig({
-    greeting: DEMO_AGENT_GREETING,
+    greeting: options?.greeting ?? DEMO_AGENT_GREETING,
     language: "Deutsch" satisfies AgentLanguageLabel,
-    systemPrompt: buildDemoAgentSystemPrompt(),
+    systemPrompt: options?.systemPrompt ?? buildDemoAgentSystemPrompt(),
     voiceId,
   });
 }

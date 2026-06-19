@@ -1,3 +1,6 @@
+import type { CalendarAgentPermissions } from "@/lib/integrations/calendar-agent-permissions";
+import type { CalendarProvider } from "@/lib/store";
+
 export type OnboardingPhase =
   | "nummer_anfragen"
   | "nummer_warte"
@@ -22,4 +25,10 @@ export interface StoredAgent {
   euComplianceEnabled?: boolean;
   /** Company website used for AI configuration. */
   website?: string;
+  /** Connected calendar provider this agent may use for appointments. */
+  calendarProvider?: CalendarProvider | null;
+  /** Per-agent calendar access rules. */
+  calendarPermissions?: CalendarAgentPermissions;
+  /** Whether this agent may book appointments into the selected calendar. */
+  appointmentBookingEnabled?: boolean;
 }

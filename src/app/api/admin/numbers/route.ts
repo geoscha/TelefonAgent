@@ -5,6 +5,7 @@ import {
   listAdminPoolNumbers,
   parseUniquePoolNumbers,
 } from "@/lib/admin/number-pool";
+import { isConfiguredDemoOutboundPhone } from "@/lib/admin/demo-config";
 import { requireAdminSession } from "@/lib/admin/guard";
 import { listWorkspacePhones, normalizePhoneNumber } from "@/lib/elevenlabs/phone";
 import { processPendingPhoneAssignments } from "@/lib/phone/onboarding";
@@ -74,7 +75,11 @@ export async function POST(req: NextRequest) {
     const added: string[] = [];
     const skipped: {
       phone: string;
-      reason: "duplicate_input" | "already_free" | "already_used";
+      reason:
+        | "duplicate_input"
+        | "already_free"
+        | "already_used"
+        | "demo_reserved";
     }[] = [];
 
     for (const phone of duplicateInInput) {
@@ -82,6 +87,10 @@ export async function POST(req: NextRequest) {
     }
 
     for (const phone of unique) {
+      if (await isConfiguredDemoOutboundPhone(phone)) {
+        skipped.push({ phone, reason: "demo_reserved" });
+        continue;
+      }
       if (existing.has(phone)) {
         const status = statusByPhone.get(phone);
         skipped.push({

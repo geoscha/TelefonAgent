@@ -96,6 +96,10 @@ export interface FinanceDashboard {
     tokenSpend: TokenSpendStats;
     costPerToken12mChf: number | null;
     revenuePerToken12mChf: number | null;
+    grossMarginPct: number;
+    unusedNumberCostChf: number;
+    profitDeltaChf: number | null;
+    revenueDeltaChf: number | null;
     twilio: FinanceProviderStatus;
     elevenLabs: FinanceProviderStatus;
     openAi: FinanceProviderStatus;
@@ -297,6 +301,25 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
       ? totalRevenue12mChf / tokenSpend.totalTokensSpent
       : null;
 
+  const grossMarginPct =
+    thisMonthRevenueChf > 0
+      ? (monthlyProfitChf / thisMonthRevenueChf) * 100
+      : monthlyProfitChf < 0
+        ? -100
+        : 0;
+  const unusedNumberCostChf = unusedNumbers * config.numberMonthlyChf;
+
+  const priorMonth = series.length >= 2 ? series[series.length - 2] : null;
+  const currentMonth = series.length >= 1 ? series[series.length - 1] : null;
+  const profitDeltaChf =
+    priorMonth && currentMonth
+      ? currentMonth.profitChf - priorMonth.profitChf
+      : null;
+  const revenueDeltaChf =
+    priorMonth && currentMonth
+      ? currentMonth.revenueChf - priorMonth.revenueChf
+      : null;
+
   return {
     integrations: {
       twilioConfigured: Boolean(
@@ -334,6 +357,10 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
       tokenSpend,
       costPerToken12mChf,
       revenuePerToken12mChf,
+      grossMarginPct,
+      unusedNumberCostChf,
+      profitDeltaChf,
+      revenueDeltaChf,
       twilio: {
         amountChf: twilioThisMonth.amountChf,
         source: twilioThisMonth.source,

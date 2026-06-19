@@ -62,6 +62,8 @@ export interface Call {
   };
   suggestedActions: SuggestedAction[];
   recordingUrl?: string;
+  /** ElevenLabs agent that handled the call. */
+  agentId?: string;
 }
 
 export interface Suggestion {

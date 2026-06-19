@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getConfiguredDemoOutboundPhone } from "@/lib/admin/demo-config";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   configuredPoolNumbers,
@@ -19,11 +20,13 @@ export async function syncNumberPoolFromEnv(): Promise<number> {
   const wanted = configuredPoolNumbers();
   if (wanted.length === 0) return 0;
 
-  const workspace = await listWorkspacePhones();
+  const demoPhone = await getConfiguredDemoOutboundPhone();
   const admin = createAdminClient();
+  const workspace = await listWorkspacePhones();
   let synced = 0;
 
   for (const num of wanted) {
+    if (demoPhone && num === demoPhone) continue;
     const match = workspace.find((w) => w.phoneNumber === num);
     if (!match) {
       console.warn(`[pool] ${num} not found in ElevenLabs workspace — skip`);
@@ -67,6 +70,27 @@ export async function getAssignedPoolNumber(
   return numbers[0] ?? null;
 }
 
+/** Whether the pool has at least one unassigned number (excluding demo). */
+export async function hasFreePoolNumber(): Promise<boolean> {
+  await syncNumberPoolFromEnv();
+
+  const admin = createAdminClient();
+  const demoPhone = await getConfiguredDemoOutboundPhone();
+
+  let query = admin
+    .from("forwarding_number_pool")
+    .select("phone_number")
+    .is("assigned_user_id", null)
+    .limit(1);
+
+  if (demoPhone) {
+    query = query.neq("phone_number", demoPhone);
+  }
+
+  const { data } = await query.maybeSingle();
+  return Boolean(data);
+}
+
 /** Assigns the next free pool number to a user (atomic via admin client). */
 export async function assignNumberFromPool(
   userId: string,
@@ -80,13 +104,19 @@ export async function assignNumberFromPool(
   await syncNumberPoolFromEnv();
 
   const admin = createAdminClient();
+  const demoPhone = await getConfiguredDemoOutboundPhone();
 
-  const { data: free } = await admin
+  let query = admin
     .from("forwarding_number_pool")
     .select("*")
     .is("assigned_user_id", null)
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (demoPhone) {
+    query = query.neq("phone_number", demoPhone);
+  }
+
+  const { data: free } = await query.maybeSingle();
 
   if (!free) {
     throw new Error(

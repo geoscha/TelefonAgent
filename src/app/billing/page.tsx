@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { BillingHistorySection } from "@/components/billing/BillingHistorySection";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
 import { landingBtnPrimary } from "@/components/landing/landing-buttons";
 import {
@@ -43,13 +44,85 @@ function BillingPageContent() {
   const searchParams = useSearchParams();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loadingPack, setLoadingPack] = useState<string | null>(null);
+  const [billingStatus, setBillingStatus] = useState<{
+    stripeConfigured: boolean;
+    testMode: boolean;
+    paymentsEnabled: boolean;
+  } | null>(null);
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get("topup") === "success") {
-      toast.success("Guthaben erfolgreich aufgeladen.");
-    } else if (searchParams.get("topup") === "cancel") {
+    fetch("/api/billing/status")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok) {
+          setBillingStatus({
+            stripeConfigured: Boolean(data.stripeConfigured),
+            testMode: Boolean(data.testMode),
+            paymentsEnabled: Boolean(data.paymentsEnabled),
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const topup = searchParams.get("topup");
+    const sessionId = searchParams.get("session_id");
+
+    if (topup === "cancel") {
       toast.message("Aufladung abgebrochen.");
+      return;
     }
+
+    if (topup !== "success") return;
+
+    if (!sessionId) {
+      toast.success("Zahlung erfolgreich. Guthaben wird in Kürze gutgeschrieben.");
+      return;
+    }
+
+    setVerifying(true);
+    fetch("/api/billing/verify-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    })
+      .then(async (res) => {
+        const data = (await res.json()) as {
+          ok?: boolean;
+          tokens?: number;
+          tokenBalance?: TokenBalanceView;
+          duplicate?: boolean;
+          error?: string;
+        };
+        if (res.ok && data.ok) {
+          if (data.tokenBalance) {
+            setProfile((prev) =>
+              prev ? { ...prev, tokenBalance: data.tokenBalance } : prev
+            );
+          }
+          notifyTokenBalanceChanged();
+          if (data.duplicate) {
+            toast.success("Guthaben ist bereits gutgeschrieben.");
+          } else {
+            toast.success(
+              data.tokens
+                ? `${data.tokens.toLocaleString("de-CH")} Tokens gutgeschrieben.`
+                : "Guthaben erfolgreich aufgeladen."
+            );
+          }
+          return;
+        }
+        toast.error(data.error ?? "Guthaben konnte nicht bestätigt werden.");
+      })
+      .catch(() => {
+        toast.error("Zahlungsbestätigung fehlgeschlagen.");
+      })
+      .finally(() => {
+        setVerifying(false);
+        window.history.replaceState({}, "", "/billing");
+      });
   }, [searchParams]);
 
   useEffect(() => {
@@ -119,7 +192,22 @@ function BillingPageContent() {
           <p className={userTitleClass}>Guthaben aufladen</p>
           <p className={`${userLabelClass} mt-1`}>
             Wählen Sie ein Paket, um Tokens für Telefonate und Nummern zu kaufen.
+            {billingStatus?.stripeConfigured && !billingStatus.testMode
+              ? " Bezahlung per Karte, Apple Pay oder Google Pay über Stripe."
+              : null}
           </p>
+          {billingStatus && !billingStatus.paymentsEnabled && (
+            <p className="mt-2 text-[13px] text-amber-700">
+              Stripe ist noch nicht konfiguriert. Bitte Stripe Secret Key und
+              Webhook Secret im Admin unter Einstellungen hinterlegen.
+            </p>
+          )}
+          {billingStatus?.testMode && (
+            <p className="mt-2 text-[13px] text-amber-700">
+              Testmodus aktiv (BILLING_TEST_MODE) — es wird keine echte Zahlung
+              ausgeführt.
+            </p>
+          )}
         </div>
 
         <div className="grid gap-5 lg:grid-cols-3">
@@ -135,10 +223,14 @@ function BillingPageContent() {
                 <button
                   type="button"
                   onClick={() => buyPack(pack.id)}
-                  disabled={loadingPack === pack.id}
+                  disabled={
+                    loadingPack === pack.id ||
+                    verifying ||
+                    (billingStatus !== null && !billingStatus.paymentsEnabled)
+                  }
                   className={cn(landingBtnPrimary, "w-full justify-center")}
                 >
-                  {loadingPack === pack.id && (
+                  {(loadingPack === pack.id || verifying) && (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   )}
                   Jetzt kaufen
@@ -147,6 +239,8 @@ function BillingPageContent() {
             </div>
           ))}
         </div>
+
+        <BillingHistorySection />
 
         {profile?.tokenBalance?.phonePaused && (
           <div className={cn(userPanelClass, "border-amber-200 bg-amber-50/50 p-5")}>

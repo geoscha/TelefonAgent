@@ -5,6 +5,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, Search, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  adminPanelClass,
+  adminTableClass,
+  adminTableHeadClass,
+} from "@/components/admin/admin-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -144,17 +149,14 @@ export default function AdminDashboardPage() {
   ).length;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1>Anfragen</h1>
-        {freeCount > 0 && pendingPhoneCount > 0 && (
-          <p className="mt-2 flex items-center gap-1.5 text-caption text-text-muted">
-            <Sparkles className="h-3.5 w-3.5 text-accent" />
-            {Math.min(freeCount, pendingPhoneCount)} von {pendingPhoneCount}{" "}
-            Anfragen mit freier Nummer belegbar ({freeCount} frei)
-          </p>
-        )}
-      </div>
+    <div className="space-y-4">
+      {freeCount > 0 && pendingPhoneCount > 0 && (
+        <p className="flex items-center gap-1.5 landing-caption text-[#525866]">
+          <Sparkles className="h-3.5 w-3.5 text-[#335cff]" />
+          {Math.min(freeCount, pendingPhoneCount)} / {pendingPhoneCount} mit
+          freier Nummer · {freeCount} frei
+        </p>
+      )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
@@ -183,28 +185,26 @@ export default function AdminDashboardPage() {
         </Select>
       </div>
 
-      <div className="overflow-hidden rounded-card border border-stroke bg-surface">
+      <div className={`overflow-hidden ${adminPanelClass}`}>
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-text-muted">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Laden…
+          <div className="flex items-center justify-center gap-2 py-16 text-[#525866]">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="landing-caption">Laden…</span>
           </div>
         ) : requests.length === 0 ? (
-          <p className="py-16 text-center text-body text-text-muted">
-            Keine Anfragen gefunden.
-          </p>
+          <p className="py-16 text-center landing-body text-[#525866]">—</p>
         ) : (
-          <table className="w-full text-left text-body">
+          <table className={adminTableClass}>
             <thead>
-              <tr className="border-b border-stroke bg-bg/50 text-caption text-text-muted">
-                <th className="px-4 py-3 font-medium">User</th>
-                <th className="px-4 py-3 font-medium">Typ</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Datum</th>
-                <th className="px-4 py-3 font-medium">Twilio-Nummer zuweisen</th>
+              <tr className={adminTableHeadClass}>
+                <th className="px-3 py-2.5 font-normal">User</th>
+                <th className="px-3 py-2.5 font-normal">Typ</th>
+                <th className="px-3 py-2.5 font-normal">Status</th>
+                <th className="px-3 py-2.5 font-normal">Datum</th>
+                <th className="px-3 py-2.5 font-normal">Nummer</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stroke">
+            <tbody className="divide-y divide-[#E1E4EA]">
               {requests.map((r) => {
                 const isPhone = isPhoneNumberRequest(r.type);
                 const assigned =
@@ -219,45 +219,43 @@ export default function AdminDashboardPage() {
                   !assigned;
 
                 return (
-                  <tr key={r.id} className="hover:bg-bg/30">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-navy">
-                        {r.userName || "—"}
-                      </p>
-                      <p className="text-caption text-text-muted">
+                  <tr key={r.id} className="hover:bg-[#F5F7FA]/60">
+                    <td className="px-3 py-2.5">
+                      <p className="text-[#0E121B]">{r.userName || "—"}</p>
+                      <p className="landing-caption text-[#99A0AE]">
                         {r.userEmail || r.userId}
                       </p>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-2.5">
                       <p>{requestTypeLabel(r.type)}</p>
                       {r.type === "support" &&
                         typeof r.payload.message === "string" && (
-                          <p className="mt-1 line-clamp-2 text-caption text-text-muted">
+                          <p className="mt-1 line-clamp-2 landing-caption text-[#99A0AE]">
                             {r.payload.message}
                           </p>
                         )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-2.5">
                       <Badge variant={statusBadgeVariant(r.status)}>
                         {STATUS_LABELS[r.status]}
                       </Badge>
                       {assigned && (
-                        <p className="mt-1 font-mono text-caption text-text-muted">
+                        <p className="mt-1 font-mono landing-caption text-[#99A0AE]">
                           {assigned}
                         </p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-caption text-text-muted">
+                    <td className="px-3 py-2.5 landing-caption text-[#525866]">
                       {new Date(r.createdAt).toLocaleString("de-CH")}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-2.5">
                       {isPhone ? (
                         r.status === "erledigt" && assigned ? (
-                          <p className="font-mono text-caption text-navy">
+                          <p className="font-mono landing-caption text-[#0E121B]">
                             {assigned}
                           </p>
                         ) : r.status === "abgelehnt" ? (
-                          <span className="text-caption text-text-muted">—</span>
+                          <span className="landing-caption text-[#99A0AE]">—</span>
                         ) : (
                           <div className="flex min-w-[280px] flex-col gap-2 sm:flex-row sm:items-center">
                             <div className="min-w-0 flex-1">
@@ -278,7 +276,7 @@ export default function AdminDashboardPage() {
                                 disabled={acting === r.id}
                               />
                               {isSuggested && (
-                                <p className="mt-1 flex items-center gap-1 text-caption text-accent">
+                                <p className="mt-1 flex items-center gap-1 landing-caption text-[#335cff]">
                                   <Sparkles className="h-3 w-3" />
                                   Vorgeschlagen
                                 </p>
@@ -286,8 +284,8 @@ export default function AdminDashboardPage() {
                               {!suggested &&
                                 (r.status === "offen" ||
                                   r.status === "in_arbeit") && (
-                                  <p className="mt-1 text-caption text-text-muted">
-                                    Keine freie Nummer verfügbar
+                                  <p className="mt-1 landing-caption text-[#99A0AE]">
+                                    Keine freie Nummer
                                   </p>
                                 )}
                             </div>
