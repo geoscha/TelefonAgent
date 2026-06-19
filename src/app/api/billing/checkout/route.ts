@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { getTokenPack } from "@/lib/billing/quota-display";
+import { getTokenPack, isValidStripeCheckoutPrice, stripeUnitAmountFromChf } from "@/lib/billing/quota-display";
 import { notifyTokenPurchaseEmail } from "@/lib/billing/token-purchase-notify";
 import {
   appOriginFromRequest,
@@ -89,6 +89,15 @@ export async function POST(req: NextRequest) {
   const origin = appOriginFromRequest(req);
   const profile = await getProfile();
 
+  if (!isValidStripeCheckoutPrice(pack.priceChf)) {
+    return NextResponse.json(
+      {
+        error: `Mindestbetrag für Stripe ist CHF 0.50. Dieses Paket ist zu günstig (CHF ${pack.priceChf}).`,
+      },
+      { status: 400 }
+    );
+  }
+
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -100,7 +109,7 @@ export async function POST(req: NextRequest) {
           quantity: 1,
           price_data: {
             currency: "chf",
-            unit_amount: Math.round(pack.priceChf * 100),
+            unit_amount: stripeUnitAmountFromChf(pack.priceChf),
             product_data: {
               name: pack.label,
               description: "Token-Guthaben für Cura Telefonagent",
@@ -134,8 +143,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, url: session.url });
   } catch (error) {
     console.error("[billing] checkout failed:", error);
+    const stripeMessage =
+      error instanceof Error &&
+      "type" in error &&
+      typeof (error as { type?: string }).type === "string"
+        ? error.message
+        : null;
     return NextResponse.json(
-      { error: "Checkout konnte nicht gestartet werden." },
+      {
+        error:
+          stripeMessage ??
+          "Checkout konnte nicht gestartet werden.",
+      },
       { status: 502 }
     );
   }

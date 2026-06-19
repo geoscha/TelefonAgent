@@ -43,18 +43,21 @@ export function tokenBalanceHighlight(view: TokenBalanceView): {
   };
 }
 
+/** Stripe minimum charge for CHF (50 Rappen). */
+export const STRIPE_MIN_PRICE_CHF = 0.5;
+
 /** Public token packs shown on billing (prices only — no per-token rate). */
 export const TOKEN_PACKS = [
   {
     id: "pack_5k",
     tokens: 5_000,
-    priceChf: 0.1,
+    priceChf: 0.5,
     label: "5'000 Tokens",
   },
   {
     id: "pack_20k",
     tokens: 20_000,
-    priceChf: 0.35,
+    priceChf: 1.0,
     label: "20'000 Tokens",
   },
   {
@@ -64,6 +67,14 @@ export const TOKEN_PACKS = [
     label: "100'000 Tokens",
   },
 ] as const;
+
+export function stripeUnitAmountFromChf(priceChf: number): number {
+  return Math.round(priceChf * 100);
+}
+
+export function isValidStripeCheckoutPrice(priceChf: number): boolean {
+  return stripeUnitAmountFromChf(priceChf) >= Math.round(STRIPE_MIN_PRICE_CHF * 100);
+}
 
 /** Token cost to preview the agent greeting (TTS). */
 export const GREETING_PREVIEW_COST_TOKENS = 25;

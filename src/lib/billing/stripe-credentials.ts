@@ -14,16 +14,27 @@ export async function resolveStripeCredentials(): Promise<StripeCredentials> {
   const envWebhook = process.env.STRIPE_WEBHOOK_SECRET?.trim() || null;
 
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("admin_config")
     .select("stripe_finance_secret_key, stripe_webhook_secret")
     .eq("id", 1)
     .maybeSingle();
 
-  const dbSecret =
+  let dbSecret =
     (data?.stripe_finance_secret_key as string | null)?.trim() || null;
-  const dbWebhook =
+  let dbWebhook =
     (data?.stripe_webhook_secret as string | null)?.trim() || null;
+
+  if (error && !data) {
+    const { data: legacy } = await admin
+      .from("admin_config")
+      .select("stripe_finance_secret_key")
+      .eq("id", 1)
+      .maybeSingle();
+    dbSecret =
+      (legacy?.stripe_finance_secret_key as string | null)?.trim() || null;
+    dbWebhook = null;
+  }
 
   const secretKey = envSecret || dbSecret;
   const webhookSecret = envWebhook || dbWebhook;
