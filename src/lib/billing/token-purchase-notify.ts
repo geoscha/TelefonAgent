@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getTokenPack } from "@/lib/billing/quota-display";
+import { getTokenPackById } from "@/lib/billing/token-packs";
 import { sendTokenPurchaseReceiptEmail } from "@/lib/email/token-purchase-receipt";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -37,9 +37,9 @@ async function loadProfileContact(userId: string): Promise<{
   };
 }
 
-function resolvePriceChf(input: NotifyTokenPurchaseInput): number {
+async function resolvePriceChf(input: NotifyTokenPurchaseInput): Promise<number> {
   if (input.priceChf != null && input.priceChf > 0) return input.priceChf;
-  const pack = input.packId ? getTokenPack(input.packId) : undefined;
+  const pack = input.packId ? await getTokenPackById(input.packId) : undefined;
   if (pack) return pack.priceChf;
   return Math.round((input.tokens / 1000) * 100) / 100;
 }
@@ -54,12 +54,12 @@ export async function notifyTokenPurchaseEmail(
       return;
     }
 
-    const pack = input.packId ? getTokenPack(input.packId) : undefined;
+    const pack = input.packId ? await getTokenPackById(input.packId) : undefined;
     const result = await sendTokenPurchaseReceiptEmail({
       to: contact.email,
       customerName: contact.name || undefined,
       tokens: input.tokens,
-      priceChf: resolvePriceChf(input),
+      priceChf: await resolvePriceChf(input),
       packLabel: pack?.label,
       purchasedAt: input.purchasedAt ?? new Date().toISOString(),
       referenceId: input.referenceId,

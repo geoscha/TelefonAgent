@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { getTokenPack, isValidStripeCheckoutPrice, stripeUnitAmountFromChf } from "@/lib/billing/quota-display";
+import {
+  isValidStripeCheckoutPrice,
+  STRIPE_MIN_PRICE_CHF,
+  stripeUnitAmountFromChf,
+} from "@/lib/billing/token-pack-types";
+import { getTokenPackById } from "@/lib/billing/token-packs";
 import { notifyTokenPurchaseEmail } from "@/lib/billing/token-purchase-notify";
 import {
   appOriginFromRequest,
@@ -25,7 +30,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Ungültige Anfrage." }, { status: 400 });
   }
 
-  const pack = body.packId ? getTokenPack(body.packId) : undefined;
+  const pack = body.packId ? await getTokenPackById(body.packId) : undefined;
   if (!pack) {
     return NextResponse.json({ error: "Ungültiges Token-Paket." }, { status: 400 });
   }
@@ -92,7 +97,7 @@ export async function POST(req: NextRequest) {
   if (!isValidStripeCheckoutPrice(pack.priceChf)) {
     return NextResponse.json(
       {
-        error: `Mindestbetrag für Stripe ist CHF 0.50. Dieses Paket ist zu günstig (CHF ${pack.priceChf}).`,
+        error: `Mindestbetrag für Stripe ist CHF ${STRIPE_MIN_PRICE_CHF.toFixed(2)}. Dieses Paket ist zu günstig (CHF ${pack.priceChf}).`,
       },
       { status: 400 }
     );
@@ -121,12 +126,14 @@ export async function POST(req: NextRequest) {
         userId,
         packId: pack.id,
         tokens: String(pack.tokens),
+        priceChf: String(pack.priceChf),
       },
       payment_intent_data: {
         metadata: {
           userId,
           packId: pack.id,
           tokens: String(pack.tokens),
+          priceChf: String(pack.priceChf),
         },
       },
       success_url: `${origin}/billing?topup=success&session_id={CHECKOUT_SESSION_ID}`,

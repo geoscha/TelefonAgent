@@ -2,7 +2,7 @@ import "server-only";
 
 import type Stripe from "stripe";
 
-import { getTokenPack } from "@/lib/billing/quota-display";
+import { getTokenPackById } from "@/lib/billing/token-packs";
 import { notifyTokenPurchaseEmail } from "@/lib/billing/token-purchase-notify";
 import { creditTokens } from "@/lib/billing/tokens";
 import { getStripeClient } from "@/lib/billing/stripe-config";
@@ -17,22 +17,31 @@ export interface TokenCheckoutFulfillment {
   error?: string;
 }
 
-function resolveCheckoutTokens(session: Stripe.Checkout.Session): {
+async function resolveCheckoutTokens(session: Stripe.Checkout.Session): Promise<{
   tokens?: number;
   packId?: string;
-} {
+  priceChf?: number;
+}> {
   const packId = session.metadata?.packId;
   const tokensRaw = session.metadata?.tokens;
-  const tokens =
-    tokensRaw != null
-      ? Number(tokensRaw)
-      : packId
-        ? getTokenPack(packId)?.tokens
-        : undefined;
+  const priceRaw = session.metadata?.priceChf;
+  let tokens =
+    tokensRaw != null ? Number(tokensRaw) : undefined;
+  let priceChf =
+    priceRaw != null ? Number(priceRaw) : undefined;
+
+  if (packId && (!tokens || tokens <= 0 || !priceChf)) {
+    const pack = await getTokenPackById(packId);
+    if (pack) {
+      if (!tokens || tokens <= 0) tokens = pack.tokens;
+      if (!priceChf || priceChf <= 0) priceChf = pack.priceChf;
+    }
+  }
 
   return {
     packId,
     tokens: tokens && tokens > 0 ? tokens : undefined,
+    priceChf: priceChf && priceChf > 0 ? priceChf : undefined,
   };
 }
 
@@ -72,7 +81,7 @@ export async function fulfillTokenPackCheckout(
   }
 
   const userId = session.metadata?.userId;
-  const { tokens, packId } = resolveCheckoutTokens(session);
+  const { tokens, packId, priceChf } = await resolveCheckoutTokens(session);
 
   if (!userId || !tokens) {
     return { ok: false, credited: false, duplicate: false, error: "invalid_metadata" };
@@ -105,7 +114,9 @@ export async function fulfillTokenPackCheckout(
       userId,
       tokens,
       packId,
-      priceChf: session.amount_total ? session.amount_total / 100 : undefined,
+      priceChf:
+        priceChf ??
+        (session.amount_total ? session.amount_total / 100 : undefined),
       referenceId,
       purchasedAt: new Date().toISOString(),
       receiptUrl,

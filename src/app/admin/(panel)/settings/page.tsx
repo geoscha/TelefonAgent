@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { adminPanelClass } from "@/components/admin/admin-ui";
 import { AdminSecretsSection } from "@/components/admin/AdminSecretsSection";
+import { AdminTokenPacksSection } from "@/components/admin/AdminTokenPacksSection";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,6 +60,8 @@ export default function AdminSettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-3">
       <AdminSecretsSection />
+
+      <AdminTokenPacksSection />
 
       <form
         onSubmit={handleSave}

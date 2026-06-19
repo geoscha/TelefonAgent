@@ -14,11 +14,11 @@ import {
   userTitleClass,
 } from "@/components/user/user-styles";
 import {
-  TOKEN_PACKS,
   tokenBalanceHighlight,
   type TokenBalanceView,
 } from "@/lib/billing/quota-display";
 import { formatChf } from "@/lib/billing/billing-history-format";
+import type { TokenPackConfig } from "@/lib/billing/token-pack-types";
 import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +51,20 @@ function BillingPageContent() {
     paymentsEnabled: boolean;
   } | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const [packs, setPacks] = useState<TokenPackConfig[]>([]);
+  const [packsLoading, setPacksLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/billing/packs")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok && Array.isArray(data.packs)) {
+          setPacks(data.packs as TokenPackConfig[]);
+        }
+      })
+      .catch(() => toast.error("Token-Pakete konnten nicht geladen werden."))
+      .finally(() => setPacksLoading(false));
+  }, []);
 
   useEffect(() => {
     fetch("/api/billing/status")
@@ -212,33 +226,43 @@ function BillingPageContent() {
         </div>
 
         <div className="grid gap-5 lg:grid-cols-3">
-          {TOKEN_PACKS.map((pack) => (
-            <div key={pack.id} className={cn(userPanelClass, "flex flex-col p-6")}>
-              <p className={userTitleClass}>{pack.label}</p>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-[28px] font-normal leading-none text-[#0E121B]">
-                  CHF {formatChf(pack.priceChf)}
-                </span>
-              </div>
-              <div className="mt-auto pt-6">
-                <button
-                  type="button"
-                  onClick={() => buyPack(pack.id)}
-                  disabled={
-                    loadingPack === pack.id ||
-                    verifying ||
-                    (billingStatus !== null && !billingStatus.paymentsEnabled)
-                  }
-                  className={cn(landingBtnPrimary, "w-full justify-center")}
-                >
-                  {(loadingPack === pack.id || verifying) && (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  )}
-                  Jetzt kaufen
-                </button>
-              </div>
+          {packsLoading ? (
+            <div className="col-span-full flex items-center justify-center py-12 text-[#525866]">
+              <Loader2 className="h-5 w-5 animate-spin" />
             </div>
-          ))}
+          ) : packs.length === 0 ? (
+            <p className={`${userLabelClass} col-span-full`}>
+              Keine Token-Pakete verfügbar.
+            </p>
+          ) : (
+            packs.map((pack) => (
+              <div key={pack.id} className={cn(userPanelClass, "flex flex-col p-6")}>
+                <p className={userTitleClass}>{pack.label}</p>
+                <div className="mt-4 flex items-baseline gap-1">
+                  <span className="text-[28px] font-normal leading-none text-[#0E121B]">
+                    CHF {formatChf(pack.priceChf)}
+                  </span>
+                </div>
+                <div className="mt-auto pt-6">
+                  <button
+                    type="button"
+                    onClick={() => buyPack(pack.id)}
+                    disabled={
+                      loadingPack === pack.id ||
+                      verifying ||
+                      (billingStatus !== null && !billingStatus.paymentsEnabled)
+                    }
+                    className={cn(landingBtnPrimary, "w-full justify-center")}
+                  >
+                    {(loadingPack === pack.id || verifying) && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
+                    Jetzt kaufen
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         <BillingHistorySection />

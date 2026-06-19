@@ -1,5 +1,21 @@
 /** Client-safe token display (no server-only imports). */
 
+import {
+  DEFAULT_TOKEN_PACKS,
+  findTokenPack,
+  type TokenPackConfig,
+} from "@/lib/billing/token-pack-types";
+
+export type { TokenPackConfig } from "@/lib/billing/token-pack-types";
+export {
+  DEFAULT_TOKEN_PACKS,
+  STRIPE_MIN_PRICE_CHF,
+  TOKEN_PACKS,
+  formatTokenPackLabel,
+  isValidStripeCheckoutPrice,
+  stripeUnitAmountFromChf,
+} from "@/lib/billing/token-pack-types";
+
 export interface TokenBalanceView {
   balance: number;
   exhausted: boolean;
@@ -41,39 +57,6 @@ export function tokenBalanceHighlight(view: TokenBalanceView): {
     value: formatTokenCount(Math.max(0, view.balance)),
     suffix: view.phonePaused ? "Tokens (pausiert)" : "Tokens",
   };
-}
-
-/** Stripe minimum charge for CHF (50 Rappen). */
-export const STRIPE_MIN_PRICE_CHF = 0.5;
-
-/** Public token packs shown on billing (prices only — no per-token rate). */
-export const TOKEN_PACKS = [
-  {
-    id: "pack_5k",
-    tokens: 5_000,
-    priceChf: 0.5,
-    label: "5'000 Tokens",
-  },
-  {
-    id: "pack_20k",
-    tokens: 20_000,
-    priceChf: 1.0,
-    label: "20'000 Tokens",
-  },
-  {
-    id: "pack_100k",
-    tokens: 100_000,
-    priceChf: 1.3,
-    label: "100'000 Tokens",
-  },
-] as const;
-
-export function stripeUnitAmountFromChf(priceChf: number): number {
-  return Math.round(priceChf * 100);
-}
-
-export function isValidStripeCheckoutPrice(priceChf: number): boolean {
-  return stripeUnitAmountFromChf(priceChf) >= Math.round(STRIPE_MIN_PRICE_CHF * 100);
 }
 
 /** Token cost to preview the agent greeting (TTS). */
@@ -122,8 +105,8 @@ export const WELCOME_TOKEN_AMOUNT = 2_000;
 /** Header warning styling when balance falls below the welcome amount. */
 export const TOKEN_LOW_BALANCE_THRESHOLD = WELCOME_TOKEN_AMOUNT;
 
-export function getTokenPack(packId: string) {
-  return TOKEN_PACKS.find((p) => p.id === packId);
+export function getTokenPack(packId: string): TokenPackConfig | undefined {
+  return findTokenPack(DEFAULT_TOKEN_PACKS, packId);
 }
 
 export function formatBillingDateTime(iso: string): string {
