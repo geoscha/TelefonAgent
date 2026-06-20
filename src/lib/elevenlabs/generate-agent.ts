@@ -16,6 +16,11 @@ import {
 import { buildSystemPrompt } from "@/lib/elevenlabs/prompt";
 import { getEnrichmentConfig } from "@/lib/admin/enrichment-config";
 import { fetchWebsiteContext } from "@/lib/enrichment/website-context";
+import {
+  extractBusinessHoursFromText,
+  normalizeBusinessHours,
+  type BusinessHoursSchedule,
+} from "@/lib/integrations/business-hours";
 import type { AgentVoiceGender } from "@/lib/elevenlabs/pick-voice";
 
 export interface GenerateAgentInput {
@@ -33,6 +38,7 @@ export interface GeneratedAgentDraft {
   language: AgentLanguageLabel;
   aiGenerated: boolean;
   websiteAnalyzed: boolean;
+  businessHours?: BusinessHoursSchedule;
 }
 
 const SECTION_KEYS: (keyof PromptSections)[] = [
@@ -90,6 +96,7 @@ function finalizeDraft(
     language: AgentLanguageLabel;
     aiGenerated: boolean;
     websiteAnalyzed: boolean;
+    businessHours?: BusinessHoursSchedule;
   }
 ): GeneratedAgentDraft {
   const sections: PromptSections = {
@@ -109,12 +116,22 @@ function finalizeDraft(
     language: params.language,
     aiGenerated: params.aiGenerated,
     websiteAnalyzed: params.websiteAnalyzed,
+    businessHours: params.businessHours,
   };
+}
+
+function resolveBusinessHoursFromWebsite(
+  websiteContext: { excerpt: string } | null
+): BusinessHoursSchedule | undefined {
+  if (!websiteContext?.excerpt) return undefined;
+  const extracted = extractBusinessHoursFromText(websiteContext.excerpt);
+  return extracted ? normalizeBusinessHours(extracted) : undefined;
 }
 
 function fallbackDraft(
   input: GenerateAgentInput,
-  websiteAnalyzed = false
+  websiteAnalyzed = false,
+  websiteContext: { url: string; excerpt: string } | null = null
 ): GeneratedAgentDraft {
   const language = normalizeAgentLanguage(input.language);
   const industry = input.industry.trim() || "Ihr Unternehmen";
@@ -135,6 +152,7 @@ function fallbackDraft(
     language,
     aiGenerated: false,
     websiteAnalyzed,
+    businessHours: resolveBusinessHoursFromWebsite(websiteContext),
   });
 }
 
@@ -226,7 +244,7 @@ export async function generateAgentDraft(
   const websiteAnalyzed = Boolean(websiteContext);
 
   if (!config.apiKey) {
-    return fallbackDraft(input, websiteAnalyzed);
+    return fallbackDraft(input, websiteAnalyzed, websiteContext);
   }
 
   const userBlock = [
@@ -266,7 +284,7 @@ export async function generateAgentDraft(
   });
 
   if (!response.ok) {
-    return fallbackDraft(input, websiteAnalyzed);
+    return fallbackDraft(input, websiteAnalyzed, websiteContext);
   }
 
   const json = (await response.json()) as {
@@ -274,12 +292,12 @@ export async function generateAgentDraft(
   };
   const raw = json.choices?.[0]?.message?.content;
   if (!raw) {
-    return fallbackDraft(input, websiteAnalyzed);
+    return fallbackDraft(input, websiteAnalyzed, websiteContext);
   }
 
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const fb = fallbackDraft(input, websiteAnalyzed);
+    const fb = fallbackDraft(input, websiteAnalyzed, websiteContext);
     const name =
       typeof parsed.name === "string" && parsed.name.trim()
         ? parsed.name.trim()
@@ -302,8 +320,9 @@ export async function generateAgentDraft(
       language,
       aiGenerated: true,
       websiteAnalyzed,
+      businessHours: resolveBusinessHoursFromWebsite(websiteContext),
     });
   } catch {
-    return fallbackDraft(input, websiteAnalyzed);
+    return fallbackDraft(input, websiteAnalyzed, websiteContext);
   }
 }

@@ -9,6 +9,7 @@ import {
 } from "@/lib/integrations/agent-calendar";
 import { buildSystemPrompt } from "@/lib/elevenlabs/prompt";
 import { normalizeEscalationPhone } from "@/lib/integrations/medical-guardrails";
+import { normalizeBusinessHours, type BusinessHoursSchedule } from "@/lib/integrations/business-hours";
 import { buildLiveAgentConversationConfig, syncAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
 import {
   filterAgentVoices,
@@ -35,6 +36,7 @@ interface AgentBody {
   phoneNumberId?: string;
   euComplianceEnabled?: boolean;
   website?: string;
+  businessHours?: BusinessHoursSchedule;
   escalationPhoneNumber?: string;
   medicalGuardrailsEnabled?: boolean;
   /** Save to app settings only — used for auto-save in the detail panel. */
@@ -78,6 +80,10 @@ async function persistAgentRecord(params: {
     phoneNumberId: body.phoneNumberId ?? existing?.phoneNumberId,
     euComplianceEnabled,
     website: body.website?.trim() || existing?.website,
+    businessHours:
+      body.businessHours !== undefined
+        ? normalizeBusinessHours(body.businessHours)
+        : existing?.businessHours,
     calendarProvider: existing?.calendarProvider ?? null,
     calendarPermissions: existing?.calendarPermissions,
     appointmentBookingEnabled: existing?.appointmentBookingEnabled,

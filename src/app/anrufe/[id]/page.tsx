@@ -9,6 +9,7 @@ import {
   Coins,
 } from "lucide-react";
 import { CallDetailBillingSync } from "@/components/anrufe/CallDetailBillingSync";
+import { DeleteCallButton } from "@/components/anrufe/DeleteCallButton";
 import { ExecuteCallActionButton } from "@/components/anrufe/ExecuteCallActionButton";
 import { CategoryBadge } from "@/components/dashboard/CallCard";
 import { Badge } from "@/components/ui/badge";
@@ -74,9 +75,12 @@ export default async function CallDetailPage({ params }: PageProps) {
             </Badge>
           </div>
         </div>
-        <p className="text-body text-text-muted">
-          {formatDateTime(call.startedAt)} · {formatDuration(call.durationSeconds)}
-        </p>
+        <div className="flex flex-col items-end gap-2">
+          <p className="text-body text-text-muted">
+            {formatDateTime(call.startedAt)} · {formatDuration(call.durationSeconds)}
+          </p>
+          <DeleteCallButton callId={call.id} redirectTo="/anrufe" />
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -212,10 +216,13 @@ export default async function CallDetailPage({ params }: PageProps) {
             </CardContent>
           </Card>
 
-          {call.suggestedActions.length > 0 && (
+          {(call.suggestedActions.length > 0 ||
+            /nicht eingetragen|konnte nicht|fehlgeschlagen|nicht gefunden/i.test(
+              call.structuredSummary.notes ?? ""
+            )) && (
             <Card>
               <CardHeader>
-                <CardTitle>Vorgeschlagene Aktionen</CardTitle>
+                <CardTitle>Termin eintragen</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {call.suggestedActions.map((action) => {
@@ -232,7 +239,9 @@ export default async function CallDetailPage({ params }: PageProps) {
                     </div>
                   );
                 })}
-                <Separator className="my-3" />
+                {call.suggestedActions.length > 0 ? (
+                  <Separator className="my-3" />
+                ) : null}
                 <ExecuteCallActionButton call={call} />
               </CardContent>
             </Card>

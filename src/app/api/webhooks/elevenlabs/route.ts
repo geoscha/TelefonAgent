@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { buildCallFromWebhook, type WebhookCallData } from "@/lib/calls/build-call";
+import { markCallPendingScreening, screenAllCallsForUser } from "@/lib/calls/call-screening";
 import { resolveUserIdForIncomingCall } from "@/lib/calls/resolve-user";
 import { chargeCallTokens } from "@/lib/billing/tokens";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
@@ -74,8 +75,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    const call = await buildCallFromWebhook(data);
+    let call = await buildCallFromWebhook(data);
+    call = markCallPendingScreening(call);
     await addCallForUser(userId, call);
+
+    try {
+      const summary = await screenAllCallsForUser(userId);
+      console.info("[webhook] calls screened after new call:", {
+        callId: call.id,
+        ...summary,
+      });
+    } catch (bookingError) {
+      console.error("[webhook] call screening failed:", bookingError);
+    }
+
     const charge = await chargeCallTokens(userId, call.id, call.durationSeconds);
     if (!charge.ok && !charge.duplicate) {
       console.error("[webhook] call charge failed:", {

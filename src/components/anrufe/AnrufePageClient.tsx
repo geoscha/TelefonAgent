@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/brand/EmptyState";
 import { userPanelClass } from "@/components/user/user-styles";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  screenCallsInBackground,
   syncCallsInBackground,
   useBackgroundSync,
 } from "@/lib/hooks/useBackgroundSync";
@@ -40,6 +41,10 @@ export function AnrufePageClient() {
   });
 
   useEffect(() => {
+    void screenCallsInBackground(refreshCalls);
+  }, [refreshCalls]);
+
+  useEffect(() => {
     if (loading || revalidating) return;
     const id = window.setInterval(() => {
       void syncCallsInBackground(refreshCalls);
@@ -66,7 +71,7 @@ export function AnrufePageClient() {
           ) : list.length > 0 ? (
             <div className="divide-y divide-[#E1E4EA]">
               {list.map((call) => (
-                <CallRow key={call.id} call={call} />
+                <CallRow key={call.id} call={call} onDeleted={refreshCalls} />
               ))}
             </div>
           ) : (

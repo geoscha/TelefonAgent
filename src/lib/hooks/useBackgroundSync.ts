@@ -29,6 +29,7 @@ export function useBackgroundSync(options?: {
     if (syncCalls && sessionThrottle("calls-sync", 90_000)) {
       tasks.push(
         fetch("/api/calls/sync", { method: "POST" })
+          .then(() => fetch("/api/calls/screen", { method: "POST" }))
           .then(() => onCallsSynced?.())
           .catch(() => {})
       );
@@ -42,6 +43,17 @@ export function useBackgroundSync(options?: {
 export async function syncCallsInBackground(onDone?: () => void): Promise<void> {
   try {
     await fetch("/api/calls/sync", { method: "POST" });
+    await fetch("/api/calls/screen", { method: "POST" });
+    onDone?.();
+  } catch {
+    /* non-fatal */
+  }
+}
+
+/** Screens unanalyzed calls for calendar bookings. */
+export async function screenCallsInBackground(onDone?: () => void): Promise<void> {
+  try {
+    await fetch("/api/calls/screen", { method: "POST" });
     onDone?.();
   } catch {
     /* non-fatal */

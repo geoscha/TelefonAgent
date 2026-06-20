@@ -1,3 +1,5 @@
+import { parseDurationMinutes } from "@/lib/integrations/resolve-appointment-start";
+
 export interface AppointmentToolBody {
   action?:
     | "check_availability"
@@ -6,12 +8,14 @@ export interface AppointmentToolBody {
     | "cancel_appointment";
   agentId?: string;
   title?: string;
+  appointmentTypeId?: string;
   startIso?: string;
   durationMinutes?: number;
   attendeeName?: string;
   attendeePhone?: string;
   notes?: string;
   appointmentDate?: string;
+  appointmentTime?: string;
   eventId?: string;
   eventUrl?: string;
 }
@@ -52,6 +56,55 @@ function readNumber(
   return undefined;
 }
 
+function readDurationMinutes(
+  source: Record<string, unknown>
+): number | undefined {
+  const direct = readNumber(source, "durationMinutes", "duration_minutes");
+  if (direct !== undefined) return direct;
+
+  const raw = readString(
+    source,
+    "duration",
+    "durationMinutes",
+    "duration_minutes"
+  );
+  return parseDurationMinutes(raw);
+}
+
+const CALLER_PHONE_KEYS = [
+  "attendeePhone",
+  "attendee_phone",
+  "system__caller_id",
+  "caller_id",
+  "callerId",
+] as const;
+
+function readCallerPhone(
+  source: Record<string, unknown>,
+  record: Record<string, unknown>
+): string | undefined {
+  for (const key of CALLER_PHONE_KEYS) {
+    const value = readString(source, key);
+    if (value) return value;
+  }
+
+  const dynamicVars =
+    record.dynamic_variables && typeof record.dynamic_variables === "object"
+      ? (record.dynamic_variables as Record<string, unknown>)
+      : record.dynamicVariables && typeof record.dynamicVariables === "object"
+        ? (record.dynamicVariables as Record<string, unknown>)
+        : null;
+
+  if (dynamicVars) {
+    for (const key of ["system__caller_id", "caller_id", "callerId"]) {
+      const value = readString(dynamicVars, key);
+      if (value) return value;
+    }
+  }
+
+  return undefined;
+}
+
 /** Normalizes ElevenLabs webhook payloads (flat, nested, snake_case). */
 export function parseAppointmentToolBody(
   raw: unknown
@@ -75,15 +128,29 @@ export function parseAppointmentToolBody(
     action: action as AppointmentToolBody["action"],
     agentId: readString(source, "agentId", "agent_id"),
     title: readString(source, "title"),
+    appointmentTypeId: readString(
+      source,
+      "appointmentTypeId",
+      "appointment_type_id",
+      "appointmentType",
+      "appointment_type"
+    ),
     startIso: readString(source, "startIso", "start_iso", "start"),
-    durationMinutes: readNumber(source, "durationMinutes", "duration_minutes"),
+    durationMinutes: readDurationMinutes(source),
     attendeeName: readString(source, "attendeeName", "attendee_name"),
-    attendeePhone: readString(source, "attendeePhone", "attendee_phone"),
+    attendeePhone: readCallerPhone(source, record),
     notes: readString(source, "notes"),
     appointmentDate: readString(
       source,
       "appointmentDate",
-      "appointment_date"
+      "appointment_date",
+      "date"
+    ),
+    appointmentTime: readString(
+      source,
+      "appointmentTime",
+      "appointment_time",
+      "time"
     ),
     eventId: readString(source, "eventId", "event_id"),
     eventUrl: readString(source, "eventUrl", "event_url"),

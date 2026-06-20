@@ -13,5 +13,5 @@ export default function IntegrationsPage({
     else if (Array.isArray(value)) value.forEach((v) => qs.append(key, v));
   }
   const query = qs.toString();
-  redirect(query ? `/einstellungen?${query}#kalender` : "/einstellungen#kalender");
+  redirect(query ? `/integrationen?${query}` : "/integrationen");
 }

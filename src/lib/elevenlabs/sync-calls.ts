@@ -5,12 +5,14 @@ import {
 } from "@elevenlabs/elevenlabs-js/api/resources/conversationalAi/resources/conversations/types/ConversationsListRequestExcludeStatusesItem";
 
 import { buildCallFromConversation } from "@/lib/calls/build-call";
+import { markCallPendingScreening, screenAllCallsForUser } from "@/lib/calls/call-screening";
 import { reconcileCallTokenCharges } from "@/lib/billing/call-charges";
 import { chargeCallTokens } from "@/lib/billing/tokens";
 import { hasApiKey, getElevenLabsClient } from "@/lib/elevenlabs/client";
 import {
   addCallForUser,
   getCallsForUser,
+  getPermanentlyDeletedCallIdsForUser,
   getSettingsForUser,
   type ElevenLabsSettings,
 } from "@/lib/store";
@@ -33,7 +35,11 @@ export async function syncCallsForUser(userId: string): Promise<number> {
   if (agentIds.length === 0) return 0;
 
   const existing = await getCallsForUser(userId);
-  const existingIds = new Set(existing.map((c) => c.id));
+  const deletedIds = await getPermanentlyDeletedCallIdsForUser(userId);
+  const existingIds = new Set([
+    ...existing.map((c) => c.id),
+    ...Array.from(deletedIds),
+  ]);
 
   const client = getElevenLabsClient();
   let synced = 0;
@@ -67,8 +73,9 @@ export async function syncCallsForUser(userId: string): Promise<number> {
             const full = await client.conversationalAi.conversations.get(id);
             const call = await buildCallFromConversation(full);
             call.agentId = call.agentId ?? agentId;
-            await addCallForUser(userId, call);
-            const charge = await chargeCallTokens(userId, call.id, call.durationSeconds);
+            const pending = markCallPendingScreening(call);
+            await addCallForUser(userId, pending);
+            const charge = await chargeCallTokens(userId, pending.id, pending.durationSeconds);
             if (!charge.ok && !charge.duplicate) {
               console.error("[sync-calls] charge failed:", {
                 callId: call.id,
@@ -91,6 +98,8 @@ export async function syncCallsForUser(userId: string): Promise<number> {
       console.warn(`[sync-calls] agent ${agentId}:`, err);
     }
   }
+
+  await screenAllCallsForUser(userId);
 
   const allCalls = await getCallsForUser(userId);
   const reconciled = await reconcileCallTokenCharges(userId, allCalls);

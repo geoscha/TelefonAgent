@@ -4,6 +4,11 @@ import { mergeAgentChatDraft } from "@/lib/elevenlabs/chat-overrides";
 import type { AgentChatDraft } from "@/lib/elevenlabs/agent-chat-types";
 import { syncAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
 import {
+  probeAppointmentWebhook,
+  resolveAppointmentWebhookBaseUrl,
+} from "@/lib/integrations/appointment-webhook-probe";
+import { probeAgentCalendar } from "@/lib/integrations/check-slot";
+import {
   describeElevenLabsError,
   getElevenLabsClient,
   hasApiKey,
@@ -61,9 +66,13 @@ export async function POST(req: NextRequest) {
 
     const merged = mergeAgentChatDraft(existing, body.draft);
     const client = getElevenLabsClient();
+    const webhookBaseUrl = resolveAppointmentWebhookBaseUrl(req);
 
     try {
-      await syncAgentConversationConfig(client, merged, { chatMode: true });
+      await syncAgentConversationConfig(client, merged, {
+        chatMode: true,
+        siteUrl: webhookBaseUrl,
+      });
     } catch (syncError) {
       console.error("[chat/session] agent sync failed:", syncError);
       if (merged.appointmentBookingEnabled) {
@@ -72,6 +81,30 @@ export async function POST(req: NextRequest) {
           {
             ok: false,
             error: `Termin-Tools konnten nicht synchronisiert werden: ${message}`,
+          },
+          { status: 502 }
+        );
+      }
+    }
+
+    if (merged.appointmentBookingEnabled) {
+      const calendarProbe = await probeAgentCalendar(agentId);
+      if (!calendarProbe.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Kalender nicht erreichbar: ${calendarProbe.message}`,
+          },
+          { status: 502 }
+        );
+      }
+
+      const webhookProbe = await probeAppointmentWebhook(webhookBaseUrl);
+      if (!webhookProbe.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: webhookProbe.message,
           },
           { status: 502 }
         );

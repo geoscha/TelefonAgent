@@ -1,4 +1,18 @@
-export type AppointmentIndustryPresetId = "hausarzt" | "immobilien";
+import { CUSTOMER_CONFIRMATION_PROMPT } from "@/lib/integrations/customer-confirmation";
+
+const POST_CALL_PHONE_BOOKING_BLOCK = `### Buchung nach dem Anruf (automatisch, verbindlich)
+- Während des Anrufs: **check_availability** aufrufen, Name/Datum/Uhrzeit erfassen, Slot mündlich bestätigen.
+- **book_appointment während des Anrufs NICHT aufrufen** — der Termin wird nach dem Auflegen automatisch aus dem Transkript eingetragen.
+- Wenn du sagst «notiert», «vereinbart» oder «bestätigt», ist das **verbindlich** — das System trägt den Termin danach in den Kalender ein.
+- Formuliere immer mit **konkretem Datum und Uhrzeit**: «Perfekt, [Nachname] am [Datum] um [Uhrzeit] — wir haben das vereinbart.»
+- Dann **sofort** end_call.
+- Sage nicht «im Kalender eingetragen» während des Anrufs — die Eintragung erfolgt nach dem Gespräch.`;
+
+export type AppointmentIndustryPresetId =
+  | "allgemein"
+  | "restaurant"
+  | "garage"
+  | "beauty";
 
 export interface AppointmentTypeConfig {
   id: string;
@@ -14,7 +28,6 @@ export interface AppointmentConfig {
   allowBooking: boolean;
   allowCancellation: boolean;
   requireCallerName: boolean;
-  requireCallerPhone: boolean;
   /** Storno nur möglich, wenn der Anrufer den Tag des Termins kennt. */
   requireAppointmentDateForCancel: boolean;
   appointmentTypes: AppointmentTypeConfig[];
@@ -27,57 +40,118 @@ export interface AppointmentIndustryPreset {
   config: AppointmentConfig;
 }
 
+const LEGACY_PRESET_IDS = new Set(["hausarzt", "immobilien"]);
+
+export function migrateIndustryPresetId(
+  value: unknown
+): AppointmentIndustryPresetId {
+  if (
+    value === "allgemein" ||
+    value === "restaurant" ||
+    value === "garage" ||
+    value === "beauty"
+  ) {
+    return value;
+  }
+  if (typeof value === "string" && LEGACY_PRESET_IDS.has(value)) {
+    return "allgemein";
+  }
+  return "allgemein";
+}
+
 export const APPOINTMENT_INDUSTRY_PRESETS: Record<
   AppointmentIndustryPresetId,
   AppointmentIndustryPreset
 > = {
-  hausarzt: {
-    id: "hausarzt",
-    label: "Hausarztpraxis",
+  allgemein: {
+    id: "allgemein",
+    label: "Allgemein (Dienstleistung)",
     description:
-      "Patienten vereinbaren Sprechstunden nach Nennung des Namens und können Termine am bekannten Tag stornieren.",
+      "Einfache Terminvereinbarung per Name — für kleine Unternehmen ohne besondere Vorschriften.",
     config: {
-      industryPreset: "hausarzt",
-      allowedCallersDescription: "Patienten der Hausarztpraxis",
+      industryPreset: "allgemein",
+      allowedCallersDescription: "Kundinnen und Kunden",
       allowBooking: true,
       allowCancellation: true,
       requireCallerName: true,
-      requireCallerPhone: false,
       requireAppointmentDateForCancel: true,
       appointmentTypes: [
         {
-          id: "sprechstunde",
-          label: "Sprechstunde",
-          durationMinutes: 15,
+          id: "termin",
+          label: "Termin",
+          durationMinutes: 30,
           enabled: true,
         },
       ],
     },
   },
-  immobilien: {
-    id: "immobilien",
-    label: "Immobilienverwaltung",
+  restaurant: {
+    id: "restaurant",
+    label: "Restaurant",
     description:
-      "Mieter und Interessenten vereinbaren Besichtigungen oder Rückrufe.",
+      "Tischreservierungen auf Namen — Gäste nennen Datum, Uhrzeit und Personenzahl.",
     config: {
-      industryPreset: "immobilien",
-      allowedCallersDescription: "Mieter, Eigentümer und Interessenten",
+      industryPreset: "restaurant",
+      allowedCallersDescription: "Gäste und Reservierungsanfragen",
       allowBooking: true,
-      allowCancellation: false,
+      allowCancellation: true,
       requireCallerName: true,
-      requireCallerPhone: true,
-      requireAppointmentDateForCancel: false,
+      requireAppointmentDateForCancel: true,
       appointmentTypes: [
         {
-          id: "besichtigung",
-          label: "Besichtigung",
+          id: "tischreservation",
+          label: "Tischreservation",
+          durationMinutes: 90,
+          enabled: true,
+        },
+      ],
+    },
+  },
+  garage: {
+    id: "garage",
+    label: "Garage / Werkstatt",
+    description:
+      "Werkstatttermine auf Namen — Kunden nennen Fahrzeug und gewünschte Zeit.",
+    config: {
+      industryPreset: "garage",
+      allowedCallersDescription: "Kundinnen und Kunden der Werkstatt",
+      allowBooking: true,
+      allowCancellation: true,
+      requireCallerName: true,
+      requireAppointmentDateForCancel: true,
+      appointmentTypes: [
+        {
+          id: "werkstatttermin",
+          label: "Werkstatttermin",
+          durationMinutes: 60,
+          enabled: true,
+        },
+      ],
+    },
+  },
+  beauty: {
+    id: "beauty",
+    label: "Beauty / Coiffeur",
+    description:
+      "Haareschneiden und Behandlungen — Nachname, Datum und Uhrzeit genügen.",
+    config: {
+      industryPreset: "beauty",
+      allowedCallersDescription: "Kundinnen und Kunden des Salons",
+      allowBooking: true,
+      allowCancellation: true,
+      requireCallerName: true,
+      requireAppointmentDateForCancel: true,
+      appointmentTypes: [
+        {
+          id: "haareschneiden",
+          label: "Haareschneiden",
           durationMinutes: 30,
           enabled: true,
         },
         {
-          id: "rueckruf",
-          label: "Rückruf",
-          durationMinutes: 15,
+          id: "behandlung",
+          label: "Behandlung",
+          durationMinutes: 60,
           enabled: true,
         },
       ],
@@ -86,7 +160,7 @@ export const APPOINTMENT_INDUSTRY_PRESETS: Record<
 };
 
 export const DEFAULT_APPOINTMENT_CONFIG: AppointmentConfig = {
-  ...APPOINTMENT_INDUSTRY_PRESETS.hausarzt.config,
+  ...APPOINTMENT_INDUSTRY_PRESETS.allgemein.config,
 };
 
 export function getAppointmentPreset(
@@ -139,10 +213,7 @@ export function normalizeAppointmentConfig(value: unknown): AppointmentConfig {
   }
 
   const raw = value as Record<string, unknown>;
-  const presetId =
-    raw.industryPreset === "immobilien" || raw.industryPreset === "hausarzt"
-      ? raw.industryPreset
-      : DEFAULT_APPOINTMENT_CONFIG.industryPreset;
+  const presetId = migrateIndustryPresetId(raw.industryPreset);
   const presetDefaults = configFromPreset(presetId);
 
   return {
@@ -158,7 +229,6 @@ export function normalizeAppointmentConfig(value: unknown): AppointmentConfig {
       raw.requireCallerName !== undefined
         ? Boolean(raw.requireCallerName)
         : presetDefaults.requireCallerName,
-    requireCallerPhone: Boolean(raw.requireCallerPhone),
     requireAppointmentDateForCancel:
       raw.requireAppointmentDateForCancel !== undefined
         ? Boolean(raw.requireAppointmentDateForCancel)
@@ -175,80 +245,165 @@ export function getEnabledAppointmentTypes(
 
 export function resolveAppointmentType(
   config: AppointmentConfig,
-  title?: string
+  title?: string,
+  typeId?: string
 ): AppointmentTypeConfig | undefined {
   const enabled = getEnabledAppointmentTypes(config);
   if (enabled.length === 0) return undefined;
 
+  const normalizedId = typeId?.trim().toLowerCase();
+  if (normalizedId) {
+    const byId = enabled.find((type) => type.id.toLowerCase() === normalizedId);
+    if (byId) return byId;
+  }
+
   const normalizedTitle = title?.trim().toLowerCase() ?? "";
   if (!normalizedTitle) return enabled[0];
 
-  return (
-    enabled.find(
-      (type) =>
-        normalizedTitle.includes(type.label.toLowerCase()) ||
-        normalizedTitle.includes(type.id.toLowerCase())
-    ) ?? enabled[0]
-  );
+  const synonyms: Record<string, string[]> = {
+    termin: ["termin", "appointment", "buchung"],
+    tischreservation: [
+      "tischreservation",
+      "tisch",
+      "reservation",
+      "reservierung",
+      "tisch reservieren",
+    ],
+    werkstatttermin: [
+      "werkstatttermin",
+      "werkstatt",
+      "service",
+      "reparatur",
+      "inspektion",
+    ],
+    behandlung: [
+      "behandlung",
+      "haareschneiden",
+      "haare schneiden",
+      "haarschnitt",
+      "coiffeur",
+      "frisör",
+      "friseur",
+      "salon",
+      "kosmetik",
+      "massage",
+      "schnitt",
+    ],
+    haareschneiden: [
+      "haareschneiden",
+      "haare schneiden",
+      "haarschnitt",
+      "schnitt",
+      "coiffeur",
+      "frisör",
+      "friseur",
+    ],
+  };
+
+  const byLabel = enabled.find((type) => {
+    if (
+      normalizedTitle.includes(type.label.toLowerCase()) ||
+      normalizedTitle.includes(type.id.toLowerCase())
+    ) {
+      return true;
+    }
+    const aliases = synonyms[type.id] ?? [];
+    return aliases.some((alias) => normalizedTitle.includes(alias));
+  });
+
+  return byLabel ?? enabled[0];
 }
 
-export function buildAppointmentPrompt(configInput?: AppointmentConfig): string {
+function buildIndustryFastPathBlock(presetId: AppointmentIndustryPresetId): string {
+  if (presetId === "beauty") {
+    return `### Salon-Schnellablauf (strikt)
+- **Nachname + Datum + Uhrzeit** genügen. Vorname, Telefonnummer und Dauer **niemals** erfragen.
+- «Haareschneiden» → appointmentTypeId=haareschneiden (30 Min, automatisch). Andere Behandlung → behandlung (60 Min).
+- durationMinutes **nicht** vom Kunden erfragen — aus der Terminart übernehmen.
+- Hat der Kunde Nachname, Datum und Uhrzeit genannt und check_availability liefert available=true: mündlich bestätigen («notiert»), dann **sofort** end_call — **kein** book_appointment während des Anrufs.
+- Maximal **eine** Rückfrage im ganzen Gespräch — nur wenn Nachname oder Datum/Uhrzeit wirklich fehlen.
+- Keine Wiederholung der Dauer, keine «Passt 60 Minuten?»-Frage.`;
+  }
+
+  if (presetId === "restaurant" || presetId === "garage" || presetId === "allgemein") {
+    return `### Schnellablauf
+- Nachname + Datum + Uhrzeit genügen. Telefonnummer wird bei Anrufen automatisch übernommen.
+- Dauer aus der Terminart ableiten — nicht vom Kunden erfragen, wenn Terminart klar ist.
+- Bei available=true: mündlich bestätigen, end_call. Eintragung erfolgt nach dem Gespräch automatisch.`;
+  }
+
+  return "";
+}
+
+export function buildAppointmentPrompt(
+  configInput?: AppointmentConfig,
+  businessHoursBlock?: string
+): string {
   const config = normalizeAppointmentConfig(configInput);
   const preset = getAppointmentPreset(config.industryPreset);
   const enabledTypes = getEnabledAppointmentTypes(config);
   const typeList =
     enabledTypes.length > 0
       ? enabledTypes
-          .map(
-            (type) =>
-              `${type.label} (${type.durationMinutes} Min.)`
-          )
+          .map((type) => `${type.label} (${type.durationMinutes} Min.)`)
           .join(", ")
       : "keine Terminarten aktiviert";
 
-  const prerequisites = [
-    config.requireCallerName ? "vollständigen Namen der anrufenden Person" : null,
-    config.requireCallerPhone ? "Telefonnummer der anrufenden Person" : null,
-  ].filter(Boolean);
+  const fastPath = buildIndustryFastPathBlock(config.industryPreset);
+  const fastPathSection = fastPath ? `${fastPath}\n` : "";
 
-  const prerequisiteBlock =
-    prerequisites.length > 0
-      ? `- Bevor du buchst oder stornierst, erfrage: ${prerequisites.join(" und ")}.`
-      : "- Erfasse die Kontaktdaten der anrufenden Person.";
+  const businessHoursSection = businessHoursBlock
+    ? `\n## Geschäftszeiten\n${businessHoursBlock}\n`
+    : "";
 
-  const bookingBlock = config.allowBooking
-    ? `## Termine vereinbaren
-- Erlaubte Anrufer: ${config.allowedCallersDescription}
-- Erlaubte Terminarten: ${typeList}
-- Prüfe zuerst mit «check_availability», ob Terminvereinbarung möglich ist.
-- Frage gezielt nach dem gewünschten Datum, der Uhrzeit und der passenden Terminart.
-${prerequisiteBlock}
-- Wiederhole Datum, Uhrzeit, Terminart und Name zur Bestätigung, bevor du buchst.
-- Trage den Termin mit «book_appointment» ein:
-  - title: kurzer Titel mit Terminart und Name (wird im Kalender als «[Cura Agent] …» gespeichert)
-  - startIso: ISO 8601 mit Zeitzone Europe/Zurich
-  - durationMinutes: passend zur Terminart
-  - attendeeName${config.requireCallerPhone ? " und attendeePhone" : ""}: Kontaktdaten der anrufenden Person
-- Bestätige den eingetragenen Termin freundlich mit Datum, Uhrzeit und Terminart — aber NUR wenn «book_appointment» mit booked: true zurückkam.
-- Sage niemals «ich habe notiert» oder «Termin eingetragen», ohne dass book_appointment erfolgreich war.`
-    : "## Termine vereinbaren\n- Terminvereinbarung ist deaktiviert. Biete einen Rückruf an.";
+  let bookingBlock: string;
+  if (config.allowBooking) {
+    bookingBlock = [
+      "## Termine vereinbaren",
+      `- Erlaubte Anrufer: ${config.allowedCallersDescription}`,
+      `- Erlaubte Terminarten: ${typeList}`,
+      businessHoursSection.trimEnd(),
+      fastPathSection.trimEnd(),
+      CUSTOMER_CONFIRMATION_PROMPT,
+      POST_CALL_PHONE_BOOKING_BLOCK,
+      "### Ablauf",
+      "1. **Nachname** und **Datum/Uhrzeit** erfassen — wenn der Kunde alles in einem Satz nennt, sofort nutzen.",
+      "2. Sofort «check_availability» mit appointmentDate (YYYY-MM-DD) und appointmentTime (HH:mm).",
+      "3. Ergebnis mitteilen — nie vorher «ich prüfe» sagen.",
+      "4. available=false → Alternativen nennen, neue Zeit, erneut prüfen.",
+      "5. available=true → Termin mündlich bestätigen und notieren, dann **sofort** end_call.",
+      "6. Nach dem Auflegen trägt das System den Termin automatisch in den Kalender ein.",
+      "7. Nach Zielerreichung (Termin notiert oder Stornierung): höflich bedanken und end_call.",
+      "",
+      "### Regeln",
+      "- Keine unnötigen Rückfragen. Ziel: Termin in unter 1 Minute buchen und auflegen.",
+      "- attendeeName = **Nachname** des Kunden (Vorname nicht nötig).",
+      "- Telefonnummer **nicht** erfragen — bei Anrufen wird sie automatisch aus der Anrufer-ID übernommen.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  } else {
+    bookingBlock =
+      "## Termine vereinbaren\n- Terminvereinbarung ist deaktiviert. Biete einen Rückruf an.";
+  }
 
   const cancellationBlock = config.allowCancellation
     ? `## Termine stornieren
-- Anrufer dürfen Termine stornieren, wenn sie ${config.requireAppointmentDateForCancel ? "den Tag des Termins und " : ""}ihren Namen nennen.
-- Frage bei Bedarf nach, bis du alle nötigen Angaben hast.
-- Nutze «find_appointments» mit appointmentDate (YYYY-MM-DD) und attendeeName, um den Termin zu finden.
-- Wenn mehrere Treffer: frage nach der Uhrzeit und suche erneut.
-- Storniere mit «cancel_appointment» (eventId aus find_appointments). Der Termin bleibt im Kalender sichtbar und wird als «[Abgesagt · Cura Agent]» markiert.
-- Bestätige die Stornierung freundlich.`
+- Frage nach dem **Namen** und dem **Tag des Termins**.
+- Nutze «find_appointments» mit appointmentDate (YYYY-MM-DD) und attendeeName.
+- Bei mehreren Treffern: Uhrzeit erfragen.
+- Storniere mit «cancel_appointment». Bestätige freundlich und beende mit «end_call».`
+    : "";
+
+  const cancellationSection = cancellationBlock
+    ? `\n${cancellationBlock}`
     : "";
 
   return `
 
 # Terminvereinbarung (${preset.label})
-Du unterstützt ${config.allowedCallersDescription} bei Terminanfragen für ${preset.label.toLowerCase()}.
+Du bist die Telefonassistenz für ${preset.label.toLowerCase()} und hilfst ${config.allowedCallersDescription} bei Terminanfragen.
 
-${bookingBlock}
-${cancellationBlock ? `\n${cancellationBlock}` : ""}
+${bookingBlock}${cancellationSection}
 - Wenn Terminvereinbarung nicht möglich ist, biete einen Rückruf durch das Team an.`;
 }

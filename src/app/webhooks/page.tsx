@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function WebhooksPage() {
-  redirect("/einstellungen#kalender");
+  redirect("/integrationen");
 }

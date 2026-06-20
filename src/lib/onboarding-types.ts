@@ -1,4 +1,5 @@
 import type { AppointmentConfig } from "@/lib/integrations/appointment-config";
+import type { BusinessHoursSchedule } from "@/lib/integrations/business-hours";
 import type { CalendarAgentPermissions } from "@/lib/integrations/calendar-agent-permissions";
 import type { CalendarProvider } from "@/lib/store";
 
@@ -38,4 +39,6 @@ export interface StoredAgent {
   escalationPhoneNumber?: string;
   /** Medizinische Guardrails erzwingen (keine Diagnosen, Weiterleitung bei Beschwerden). */
   medicalGuardrailsEnabled?: boolean;
+  /** Öffnungszeiten für Terminbuchungen (aus Website oder manuell). */
+  businessHours?: BusinessHoursSchedule;
 }

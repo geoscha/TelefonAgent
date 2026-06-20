@@ -18,13 +18,24 @@ import {
   buildAppointmentPrompt,
   type AppointmentConfig,
 } from "@/lib/integrations/appointment-config";
+import {
+  formatBusinessHoursForPrompt,
+  normalizeBusinessHours,
+} from "@/lib/integrations/business-hours";
+import type { StoredAgent } from "@/lib/onboarding-types";
 
 /**
  * Instructions appended to the agent prompt when appointment booking is enabled.
  * The agent calls the registered server tools (webhook → /api/agent-tools/appointment).
  */
-export function buildAppointmentBlock(config?: AppointmentConfig): string {
-  return buildAppointmentPrompt(config);
+export function buildAppointmentBlock(
+  config?: AppointmentConfig,
+  agent?: Pick<StoredAgent, "businessHours">
+): string {
+  const hoursBlock = formatBusinessHoursForPrompt(
+    normalizeBusinessHours(agent?.businessHours)
+  );
+  return buildAppointmentPrompt(config, hoursBlock);
 }
 
 /**
@@ -32,18 +43,18 @@ export function buildAppointmentBlock(config?: AppointmentConfig): string {
  * Factual FAQ / opening hours belong in the ElevenLabs knowledge base, not here.
  */
 export function buildSystemPrompt(agentName: string): string {
-  return `Du bist «${agentName}», die Telefonassistenz einer Schweizer Liegenschaftsverwaltung.
+  return `Du bist «${agentName}», die freundliche Telefonassistenz eines kleinen Unternehmens in der Schweiz.
 
 # Rolle und Ton
 - Freundlich, professionell und geduldig — Sie-Form.
 - Antworte kurz. Stelle gezielte Rückfragen statt langer Erklärungen.
 
 # Verhalten
-- Nimm Anliegen von Mieterinnen, Mietern und Eigentümern auf.
-- Erfasse Name, Objekt/Adresse und Anliegen. Wiederhole Wesentliches zur Bestätigung.
-- Notfälle (Feuer, Gas, Wasser, Personengefahr) sofort als dringend behandeln und Pikettdienst erwähnen.
-- Versprich keine unbekannten Kosten oder Termine — kündige Rückruf an.
+- Nimm Anliegen von Kundinnen und Kunden entgegen.
+- Bei Terminwünschen: Name erfassen, Datum und Uhrzeit klären, Verfügbarkeit prüfen.
+- Beantworte einfache Fragen zu Öffnungszeiten und Leistungen — keine Fachberatung.
+- Versprich keine Preise oder Leistungen, die du nicht kennst — kündige Rückruf an.
 
 # Abschluss
-- Fasse kurz zusammen, nenne nächste Schritte, verabschiede dich freundlich.`;
+- Fasse kurz zusammen, verabschiede dich freundlich.`;
 }

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { googleExchangeCode, microsoftExchangeCode } from "@/lib/calendar";
+import { googleExchangeCode, microsoftExchangeCode, ensureSingleCalendarConnection } from "@/lib/calendar";
 import { APP_URL } from "@/lib/calendar/config";
 import { upsertCalendar } from "@/lib/store";
 
@@ -18,7 +18,7 @@ export async function GET(
 
   const fail = (reason: string) =>
     NextResponse.redirect(
-      `${APP_URL}/einstellungen?error=${reason}&provider=${provider}#kalender`
+      `${APP_URL}/integrationen?error=${reason}&provider=${provider}`
     );
 
   if (oauthError) return fail("denied");
@@ -36,13 +36,14 @@ export async function GET(
       provider === "google"
         ? await googleExchangeCode(code)
         : await microsoftExchangeCode(code);
+    await ensureSingleCalendarConnection(provider);
     await upsertCalendar(provider, patch);
   } catch {
     return fail("exchange_failed");
   }
 
   const res = NextResponse.redirect(
-    `${APP_URL}/einstellungen?connected=${provider}#kalender`
+    `${APP_URL}/integrationen?connected=${provider}`
   );
   res.cookies.delete(`oauth_state_${provider}`);
   return res;

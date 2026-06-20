@@ -31,9 +31,6 @@ import {
   parseSystemPrompt,
 } from "@/lib/elevenlabs/prompt-sections";
 import type { StoredAgent } from "@/lib/onboarding-types";
-import {
-  agentUsesMedicalGuardrails,
-} from "@/lib/integrations/medical-guardrails";
 import { cn } from "@/lib/utils";
 import { useVoicePreview } from "@/lib/hooks/useVoicePreview";
 import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
@@ -266,12 +263,6 @@ export function AgentDetailPanel({
   const [ziel, setZiel] = useState(
     () => parseSystemPrompt(agent.systemPrompt).ziel
   );
-  const [escalationPhoneNumber, setEscalationPhoneNumber] = useState(
-    agent.escalationPhoneNumber ?? ""
-  );
-  const [medicalGuardrailsOverride, setMedicalGuardrailsOverride] = useState<
-    boolean | undefined
-  >(agent.medicalGuardrailsEnabled);
   const [aiLoading, setAiLoading] = useState(false);
   const [usageSeconds, setUsageSeconds] = useState<number | null>(null);
   const [usageLoading, setUsageLoading] = useState(true);
@@ -288,8 +279,6 @@ export function AgentDetailPanel({
     systemPrompt: agent.systemPrompt,
     euComplianceEnabled: Boolean(agent.euComplianceEnabled),
     website: agent.website ?? "",
-    escalationPhoneNumber: agent.escalationPhoneNumber ?? "",
-    medicalGuardrailsEnabled: agent.medicalGuardrailsEnabled,
   });
 
   useEffect(() => {
@@ -302,8 +291,6 @@ export function AgentDetailPanel({
     const parsed = parseSystemPrompt(agent.systemPrompt);
     setBranche(parsed.branche);
     setZiel(parsed.ziel);
-    setEscalationPhoneNumber(agent.escalationPhoneNumber ?? "");
-    setMedicalGuardrailsOverride(agent.medicalGuardrailsEnabled);
     latestDraft.current = {
       name: agent.name,
       greeting: agent.greeting,
@@ -313,8 +300,6 @@ export function AgentDetailPanel({
       systemPrompt: agent.systemPrompt,
       euComplianceEnabled: Boolean(agent.euComplianceEnabled),
       website: agent.website ?? "",
-      escalationPhoneNumber: agent.escalationPhoneNumber ?? "",
-      medicalGuardrailsEnabled: agent.medicalGuardrailsEnabled !== false,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when switching agents
   }, [agent.id]);
@@ -489,25 +474,6 @@ export function AgentDetailPanel({
     setEuComplianceEnabled(enabled);
     scheduleSave({ euComplianceEnabled: enabled }, true);
   }
-
-  function handleEscalationPhoneChange(value: string) {
-    setEscalationPhoneNumber(value);
-    scheduleSave({ escalationPhoneNumber: value }, true);
-  }
-
-  function handleMedicalGuardrailsToggle(enabled: boolean) {
-    setMedicalGuardrailsOverride(enabled);
-    scheduleSave({ medicalGuardrailsEnabled: enabled }, true);
-  }
-
-  const medicalContext = agentUsesMedicalGuardrails(
-    {
-      ...agent,
-      medicalGuardrailsEnabled: medicalGuardrailsOverride,
-      escalationPhoneNumber,
-    },
-    branche
-  );
 
   const canActivateAgent = phoneNumbers.length > 0;
 
@@ -685,8 +651,6 @@ export function AgentDetailPanel({
               language: agent.language,
               voiceId,
               euComplianceEnabled,
-              escalationPhoneNumber,
-              medicalGuardrailsEnabled: medicalGuardrailsOverride,
               appointmentBookingEnabled: agent.appointmentBookingEnabled,
               appointmentConfig: agent.appointmentConfig,
             }}
@@ -789,49 +753,6 @@ export function AgentDetailPanel({
                   className={fieldClass}
                 />
               </LabeledField>
-            </div>
-
-            <div className="space-y-3 rounded border border-[#E1E4EA] bg-[#FAFAFA] p-3">
-              <ToggleRow
-                label="Medizinische Guardrails"
-                checked={medicalContext}
-                onCheckedChange={handleMedicalGuardrailsToggle}
-                ariaLabel="Medizinische Guardrails aktivieren"
-              />
-              {medicalContext ? (
-                <>
-                  <p className="text-[12px] leading-relaxed text-[#525866]">
-                    Der Agent stellt keine Diagnosen und leitet bei Beschwerden
-                    oder medizinischen Fragen sofort an eine echte Person weiter.
-                  </p>
-                  <LabeledField label="Eskalationsnummer (echte Person)">
-                    <input
-                      type="tel"
-                      value={escalationPhoneNumber}
-                      onChange={(e) =>
-                        handleEscalationPhoneChange(e.target.value)
-                      }
-                      placeholder="+41 44 123 45 67"
-                      className={cn(fieldClass, "font-mono")}
-                    />
-                  </LabeledField>
-                  <p className="text-[11px] text-[#99A0AE]">
-                    Internationales Format (+41…). Der Agent nutzt diese Nummer
-                    für «transfer_to_number» bei Beschwerden und Notfällen.
-                  </p>
-                  {!escalationPhoneNumber.trim() ? (
-                    <p className="text-[11px] text-amber-700">
-                      Ohne Nummer kann der Agent bei Beschwerden nur einen
-                      Rückruf anbieten — keine Live-Weiterleitung.
-                    </p>
-                  ) : null}
-                </>
-              ) : (
-                <p className="text-[11px] text-[#99A0AE]">
-                  Aktiv bei medizinischer Branche (z. B. Hausarztpraxis) oder
-                  wenn die Kalender-Integration auf Hausarztpraxis steht.
-                </p>
-              )}
             </div>
 
             <button

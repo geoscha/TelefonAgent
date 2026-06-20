@@ -39,6 +39,16 @@ export interface SuggestedAction {
   status: CallStatus;
 }
 
+export interface CallScreening {
+  status: "pending" | "processed";
+  processedAt?: string;
+  appointmentAttempted?: boolean;
+  appointmentBooked?: boolean;
+  /** Agent verbally committed — retry until calendar write succeeds. */
+  agentCommitted?: boolean;
+  message?: string;
+}
+
 export interface Call {
   id: string;
   /** Short AI-generated intent, 2–4 words (e.g. "Defekter Aufzug"). */
@@ -59,11 +69,14 @@ export interface Call {
     concernType: string;
     urgency: Urgency;
     notes?: string;
+    callScreening?: CallScreening;
   };
   suggestedActions: SuggestedAction[];
   recordingUrl?: string;
   /** ElevenLabs agent that handled the call. */
   agentId?: string;
+  /** Post-call transcript analysis + optional calendar booking. */
+  screening?: CallScreening;
 }
 
 export interface Suggestion {

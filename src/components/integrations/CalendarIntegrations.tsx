@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,47 +24,69 @@ import {
   userPanelClass,
   userTitleClass,
 } from "@/components/user/user-styles";
+import {
+  CALENDAR_PROVIDERS,
+  PROVIDER_META,
+  type CalendarProviderId,
+} from "@/lib/calendar/provider-meta";
 import { cn } from "@/lib/utils";
 
 interface CalStatus {
-  provider: "apple";
+  provider: CalendarProviderId;
   connected: boolean;
   configured: boolean;
   accountLabel?: string;
   connectedAt?: string;
 }
 
-const APPLE_META = {
-  name: "Apple Kalender (iCloud)",
-  description: "Termine direkt in Ihren iCloud-Kalender eintragen.",
-};
-
 const APPLE_LINKS = {
   account: "https://account.apple.com/account/manage",
-  appPasswordHelp:
-    "https://support.apple.com/de-de/102654",
-  twoFactorHelp:
-    "https://support.apple.com/de-de/102660",
+  appPasswordHelp: "https://support.apple.com/de-de/102654",
+  twoFactorHelp: "https://support.apple.com/de-de/102660",
 } as const;
 
-export function CalendarIntegrations() {
-  const [status, setStatus] = useState<CalStatus | null>(null);
-  const [connectOpen, setConnectOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
+export function CalendarIntegrations({
+  layout = "compact",
+}: {
+  layout?: "compact" | "page";
+}) {
+  const [statuses, setStatuses] = useState<CalStatus[] | null>(null);
+  const [appleDialogOpen, setAppleDialogOpen] = useState(false);
+  const [switchTarget, setSwitchTarget] = useState<CalendarProviderId | null>(
+    null
+  );
+  const [busyProvider, setBusyProvider] = useState<CalendarProviderId | null>(
+    null
+  );
 
   async function load() {
     try {
       const res = await fetch("/api/integrations/status");
       const data = await res.json();
-      if (res.ok && data.ok) {
-        const calendars = data.calendars as CalStatus[];
-        const apple =
-          calendars.find((entry) => entry.provider === "apple") ?? {
-            provider: "apple" as const,
+      if (res.status === 401) {
+        setStatuses(
+          CALENDAR_PROVIDERS.map((provider) => ({
+            provider,
             connected: false,
-            configured: false,
-          };
-        setStatus(apple);
+            configured: provider === "apple",
+          }))
+        );
+        return;
+      }
+      if (res.ok && data.ok) {
+        const incoming = (data.calendars ?? []) as CalStatus[];
+        setStatuses(
+          CALENDAR_PROVIDERS.map((provider) => {
+            const found = incoming.find((entry) => entry.provider === provider);
+            return (
+              found ?? {
+                provider,
+                connected: false,
+                configured: provider === "apple",
+              }
+            );
+          })
+        );
       }
     } catch {
       toast.error("Status konnte nicht geladen werden");
@@ -74,43 +97,109 @@ export function CalendarIntegrations() {
     void load();
   }, []);
 
-  async function disconnect() {
-    setBusy(true);
+  const activeProvider = useMemo(
+    () => statuses?.find((entry) => entry.connected)?.provider ?? null,
+    [statuses]
+  );
+
+  const sortedStatuses = useMemo(() => {
+    if (!statuses) return [];
+
+    return [...statuses].sort((a, b) => {
+      if (a.connected !== b.connected) {
+        return a.connected ? -1 : 1;
+      }
+
+      return PROVIDER_META[a.provider].name.localeCompare(
+        PROVIDER_META[b.provider].name,
+        "de"
+      );
+    });
+  }, [statuses]);
+
+  async function disconnect(provider: CalendarProviderId) {
+    setBusyProvider(provider);
     try {
-      const res = await fetch("/api/integrations/apple/disconnect", {
+      const res = await fetch(`/api/integrations/${provider}/disconnect`, {
         method: "POST",
       });
       if (res.ok) {
-        toast.success(`${APPLE_META.name} getrennt`);
+        toast.success(`${PROVIDER_META[provider].name} getrennt`);
         await load();
       } else {
         toast.error("Trennen fehlgeschlagen");
       }
     } finally {
-      setBusy(false);
+      setBusyProvider(null);
     }
   }
 
-  if (!status) {
-    return <Skeleton className="h-40 w-full max-w-md rounded" />;
+  function startOAuthConnect(provider: "google" | "microsoft") {
+    window.location.href = `/api/integrations/${provider}/connect`;
+  }
+
+  function requestConnect(provider: CalendarProviderId) {
+    if (activeProvider && activeProvider !== provider) {
+      setSwitchTarget(provider);
+      return;
+    }
+    if (provider === "apple") {
+      setAppleDialogOpen(true);
+      return;
+    }
+    startOAuthConnect(provider);
+  }
+
+  async function confirmSwitch() {
+    if (!switchTarget || !activeProvider) return;
+    setBusyProvider(activeProvider);
+    try {
+      await disconnect(activeProvider);
+      setSwitchTarget(null);
+      if (switchTarget === "apple") {
+        setAppleDialogOpen(true);
+      } else {
+        startOAuthConnect(switchTarget);
+      }
+    } finally {
+      setBusyProvider(null);
+    }
+  }
+
+  if (!statuses) {
+    return <Skeleton className="h-48 w-full rounded" />;
   }
 
   return (
     <>
-      <div className="max-w-md">
-        <ProviderCard
-          status={status}
-          busy={busy}
-          onConnect={() => setConnectOpen(true)}
-          onDisconnect={() => void disconnect()}
-        />
+      <div className={cn("space-y-3", layout === "page" ? "w-full" : "max-w-md")}>
+        {sortedStatuses.map((status) => (
+          <ProviderCard
+            key={status.provider}
+            status={status}
+            isActive={status.provider === activeProvider}
+            busy={busyProvider === status.provider}
+            embedded={layout === "page"}
+            onConnect={() => requestConnect(status.provider)}
+            onDisconnect={() => void disconnect(status.provider)}
+          />
+        ))}
       </div>
 
+      <SwitchCalendarDialog
+        open={switchTarget !== null}
+        currentProvider={activeProvider}
+        targetProvider={switchTarget}
+        busy={busyProvider !== null}
+        onCancel={() => setSwitchTarget(null)}
+        onConfirm={() => void confirmSwitch()}
+      />
+
       <AppleConnectDialog
-        open={connectOpen}
-        onOpenChange={setConnectOpen}
+        open={appleDialogOpen}
+        onOpenChange={setAppleDialogOpen}
         onConnected={async () => {
-          setConnectOpen(false);
+          setAppleDialogOpen(false);
           await load();
         }}
       />
@@ -118,66 +207,179 @@ export function CalendarIntegrations() {
   );
 }
 
+const PROVIDER_LOGOS: Record<
+  CalendarProviderId,
+  { src: string; width: number; height: number }
+> = {
+  google: {
+    src: "/integrations/google-calendar.png",
+    width: 960,
+    height: 960,
+  },
+  microsoft: {
+    src: "/integrations/microsoft-outlook.png",
+    width: 960,
+    height: 894,
+  },
+  apple: {
+    src: "/integrations/apple-calendar.png",
+    width: 814,
+    height: 1000,
+  },
+};
+
+function ProviderLogo({ provider }: { provider: CalendarProviderId }) {
+  const logo = PROVIDER_LOGOS[provider];
+
+  return (
+    <Image
+      src={logo.src}
+      alt=""
+      width={logo.width}
+      height={logo.height}
+      className={cn(
+        "h-7 w-auto object-contain",
+        provider === "apple" ? "opacity-55" : ""
+      )}
+      aria-hidden
+    />
+  );
+}
+
 function ProviderCard({
   status,
+  isActive,
   busy,
   onConnect,
   onDisconnect,
+  embedded = false,
 }: {
   status: CalStatus;
+  isActive: boolean;
   busy: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  embedded?: boolean;
 }) {
+  const meta = PROVIDER_META[status.provider];
+  const unavailable = !status.configured;
+
   return (
-    <div className={userPanelClass}>
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h3 className={userTitleClass}>{APPLE_META.name}</h3>
-            <p className={`${userLabelClass} mt-1`}>{APPLE_META.description}</p>
+    <div
+      className={cn(
+        embedded
+          ? cn(
+              "w-full rounded-lg border p-4 sm:p-5",
+              isActive
+                ? "border-[#335cff]/30 bg-[#F8FAFF]"
+                : "border-[#E1E4EA] bg-[#FAFAFA]"
+            )
+          : cn(userPanelClass, "w-full")
+      )}
+    >
+      <div className={embedded ? undefined : "p-5 sm:p-6"}>
+        <div className="flex w-full items-center gap-4 sm:gap-5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#E1E4EA]/80 bg-[#F5F7FA]/80">
+            <ProviderLogo provider={status.provider} />
           </div>
-          {status.connected ? <ConnectedBadge /> : null}
-        </div>
-
-        {status.connected && status.accountLabel ? (
-          <p className={`${userLabelClass} mt-2`}>
-            Verbunden als{" "}
-            <span className="text-[#0E121B]">{status.accountLabel}</span>
-          </p>
-        ) : null}
-
-        <div className="mt-3">
-          {status.connected ? (
-            <button
-              type="button"
-              className={landingBtnSecondary}
-              onClick={onDisconnect}
-              disabled={busy}
-            >
-              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-              Trennen
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={landingBtnPrimary}
-              onClick={onConnect}
-            >
-              Verbinden
-            </button>
-          )}
+          <div className="min-w-0 flex-1">
+            <h3 className={userTitleClass}>{meta.name}</h3>
+            <p className={`${userLabelClass} mt-1`}>{meta.description}</p>
+            {status.connected && status.accountLabel ? (
+              <p className={`${userLabelClass} mt-2`}>
+                Verbunden als{" "}
+                <span className="text-[#0E121B]">{status.accountLabel}</span>
+              </p>
+            ) : null}
+            {unavailable ? (
+              <p className="mt-2 text-[12px] text-[#99A0AE]">
+                Derzeit nicht verfügbar — OAuth-Zugangsdaten fehlen.
+              </p>
+            ) : null}
+          </div>
+          <div className="shrink-0">
+            {status.connected ? (
+              <button
+                type="button"
+                className={landingBtnSecondary}
+                onClick={onDisconnect}
+                disabled={busy}
+              >
+                {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+                Trennen
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={landingBtnPrimary}
+                onClick={onConnect}
+                disabled={unavailable || busy}
+              >
+                Verbinden
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function ConnectedBadge() {
+function SwitchCalendarDialog({
+  open,
+  currentProvider,
+  targetProvider,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  currentProvider: CalendarProviderId | null;
+  targetProvider: CalendarProviderId | null;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!currentProvider || !targetProvider) return null;
+
   return (
-    <span className="shrink-0 rounded border border-[#335cff]/20 bg-[#EBEEF4] px-2 py-0.5 text-[12px] font-normal text-[#335cff]">
-      Verbunden
-    </span>
+    <Dialog open={open} onOpenChange={(next) => !next && onCancel()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Kalender wechseln?</DialogTitle>
+          <DialogDescription>
+            Es kann nur ein Kalender gleichzeitig verbunden sein.{" "}
+            <span className="font-medium text-[#0E121B]">
+              {PROVIDER_META[currentProvider].name}
+            </span>{" "}
+            wird getrennt, danach verbinden Sie{" "}
+            <span className="font-medium text-[#0E121B]">
+              {PROVIDER_META[targetProvider].name}
+            </span>
+            .
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            className={cn(landingBtnSecondary, "flex-1 justify-center")}
+            onClick={onCancel}
+            disabled={busy}
+          >
+            Abbrechen
+          </button>
+          <button
+            type="button"
+            className={cn(landingBtnPrimary, "flex-1 justify-center")}
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            Wechseln
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

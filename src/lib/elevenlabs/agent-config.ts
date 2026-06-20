@@ -24,6 +24,7 @@ type SystemToolConfigInput = {
 type BuiltInToolsInput = {
   voicemailDetection?: SystemToolConfigInput;
   transferToNumber?: SystemToolConfigInput;
+  endCall?: SystemToolConfigInput;
   [key: string]: unknown;
 };
 
@@ -48,23 +49,35 @@ export const ELEVENLABS_PROMPT_TEMPERATURE = 0.3;
 /** ~1–2 short spoken sentences in German. */
 export const ELEVENLABS_PROMPT_MAX_TOKENS = 120;
 /** Phone/voice agents with appointment tools need room for tool calls + confirmation. */
-export const ELEVENLABS_APPOINTMENT_MAX_TOKENS = 500;
+export const ELEVENLABS_APPOINTMENT_MAX_TOKENS = 1024;
 /** Chat test needs room for tool calls + booking confirmation. */
-export const ELEVENLABS_CHAT_MAX_TOKENS = 500;
+export const ELEVENLABS_CHAT_MAX_TOKENS = 1024;
 export const ELEVENLABS_TURN_TIMEOUT_SECONDS = 8;
-export const ELEVENLABS_CHAT_TURN_TIMEOUT_SECONDS = 20;
+export const ELEVENLABS_CHAT_TURN_TIMEOUT_SECONDS = 45;
 export const ELEVENLABS_MAX_DURATION_SECONDS = 300;
 
 const BREVITY_INSTRUCTION_BLOCK = `# Antwortstil (Telefon)
-- Antworte IMMER kurz und präzise: maximal 1–2 Sätze pro Turn.
-- Keine Monologe oder langen Aufzählungen am Telefon.
-- Lieber eine klärende Rückfrage als eine lange Erklärung.`;
+- Antworte IMMER kurz: maximal **ein Satz** pro Turn.
+- Terminbuchung ist das Ziel — Slot prüfen, mündlich bestätigen, auflegen. Keine Smalltalk-Schleifen.
+- **book_appointment während des Anrufs nicht aufrufen** — Termin wird nach dem Auflegen automatisch eingetragen.
+- **Nicht** nach Vorname, Telefonnummer oder Dauer fragen — Nachname, Datum und Uhrzeit genügen.
+- Verstehe Zustimmungen flexibel: ja, passt, gerne, super, machen wir, klingt gut, jo, passt scho.
+- **VERBOT:** Nie «eingetragen», «verbindlich», «ich trage ein» oder «ich buche» sagen, bevor book_appointment mit booked:true antwortete.
+- available=true → **still** book_appointment aufrufen, dann EIN Satz Bestätigung, dann **sofort** end_call. Keine Ankündigung vor dem Tool-Aufruf.
+- Nach booked:true oder erfolgreicher Stornierung: ein kurzer Danke-Satz, dann **Pflicht** end_call — kein weiteres Gespräch.`;
 
 const CHAT_INSTRUCTION_BLOCK = `# Antwortstil (Chat-Test)
 - Schreibe vollständige Antworten — brich niemals mitten im Satz ab.
-- Bei Terminanfragen: zuerst check_availability, dann book_appointment — erst danach bestätigen.
-- Leite nicht an Mitarbeitende weiter, wenn du den Termin selbst buchen kannst.
-- Einen Termin als «eingetragen» bezeichnen ist nur erlaubt, wenn book_appointment erfolgreich war.`;
+- Bei Terminanfragen: check_availability ZUERST aufrufen, DANN das Ergebnis mitteilen.
+- Sage NIEMALS «ich prüfe» oder «einen Moment» bevor check_availability aufgerufen wurde.
+- Wenn Name, Datum und Uhrzeit bereits genannt wurden: sofort check_availability aufrufen, keine Rückfragen.
+- durationMinutes aus Kundenangabe übernehmen (z. B. 30 für «30 Minuten»).
+- Einen Termin als «eingetragen» bezeichnen ist nur erlaubt, wenn book_appointment mit booked: true antwortete.
+- Dauer aus Kundenangabe (z. B. «30 Minuten») als durationMinutes übergeben.
+- Bei bookingError=true: book_appointment sofort erneut mit denselben Parametern — nicht weiterleiten.
+- Nach **klarer Kundenzustimmung** (ja, passt, gerne, super, machen wir, klingt gut, …): book_appointment mit attendeeName, appointmentDate, appointmentTime, appointmentTypeId.
+- **VERBOT:** Nie «eingetragen» oder «verbindlich» sagen, bevor book_appointment booked:true lieferte.
+- Nach booked:true: ein kurzer Bestätigungssatz, dann Gespräch beenden — keine weiteren Fragen.`;
 
 export function buildTtsConfig(voiceId: string) {
   return {
@@ -79,6 +92,18 @@ export function buildVoicemailDetectionTool(): SystemToolConfigInput {
     name: "voicemail_detection",
     params: {
       systemToolType: "voicemail_detection",
+    },
+  };
+}
+
+export function buildEndCallTool(): SystemToolConfigInput {
+  return {
+    type: "system",
+    name: "end_call",
+    description:
+      "Pflicht nach booked:true oder erfolgreicher Stornierung: sofort nach einem kurzen Danke-Satz aufrufen und das Gespräch beenden.",
+    params: {
+      systemToolType: "end_call",
     },
   };
 }
@@ -108,12 +133,16 @@ export function buildTransferToNumberTool(
 }
 
 export function buildBuiltInToolsDefaults(
-  existing?: BuiltInToolsInput | null
+  existing?: BuiltInToolsInput | null,
+  options?: { endCall?: boolean }
 ): BuiltInToolsInput {
   return {
     ...existing,
     voicemailDetection:
       existing?.voicemailDetection ?? buildVoicemailDetectionTool(),
+    ...(options?.endCall
+      ? { endCall: existing?.endCall ?? buildEndCallTool() }
+      : {}),
   };
 }
 

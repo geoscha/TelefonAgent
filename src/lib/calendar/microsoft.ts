@@ -7,7 +7,13 @@ import {
   type CalendarContext,
   type CalendarEventInput,
   type CreatedEvent,
+  type ListedCalendarEvent,
 } from "./types";
+import {
+  CURA_CALENDAR_LABEL,
+  isAgentCreatedCalendarEvent,
+  isCancelledCalendarEvent,
+} from "./agent-labels";
 
 const AUTH_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
@@ -142,6 +148,7 @@ export async function microsoftCreateEvent(
       location: input.location ? { displayName: input.location } : undefined,
       start: { dateTime: input.startIso, timeZone: input.timeZone ?? DEFAULT_TZ },
       end: { dateTime: input.endIso, timeZone: input.timeZone ?? DEFAULT_TZ },
+      categories: input.categories ?? ["Cura"],
     }),
   });
   if (!res.ok) {
@@ -151,4 +158,153 @@ export async function microsoftCreateEvent(
   }
   const j = (await res.json()) as { id: string; webLink?: string };
   return { id: j.id, htmlLink: j.webLink };
+}
+
+type MicrosoftEventItem = {
+  id?: string;
+  subject?: string;
+  body?: { content?: string };
+  start?: { dateTime: string; timeZone?: string };
+  end?: { dateTime: string; timeZone?: string };
+  categories?: string[];
+  isCancelled?: boolean;
+};
+
+function mapMicrosoftListedEvent(item: MicrosoftEventItem): ListedCalendarEvent | null {
+  const id = item.id?.trim();
+  const startIso = item.start?.dateTime;
+  if (!id || !startIso) return null;
+
+  const title = item.subject?.trim() || "Termin";
+  if (item.isCancelled || isCancelledCalendarEvent(title)) return null;
+
+  const description = item.body?.content;
+  const agentCreated =
+    item.categories?.includes(CURA_CALENDAR_LABEL) ||
+    isAgentCreatedCalendarEvent(title, description);
+
+  return {
+    id,
+    title,
+    description,
+    startIso: new Date(startIso).toISOString(),
+    endIso: item.end?.dateTime
+      ? new Date(item.end.dateTime).toISOString()
+      : startIso,
+    agentCreated,
+  };
+}
+
+export async function microsoftListEventsInRange(
+  rangeStartIso: string,
+  rangeEndIso: string,
+  ctx: CalendarContext
+): Promise<ListedCalendarEvent[]> {
+  const token = await microsoftAccessToken(ctx);
+  const params = new URLSearchParams({
+    startDateTime: new Date(rangeStartIso).toISOString(),
+    endDateTime: new Date(rangeEndIso).toISOString(),
+    $select: "id,subject,body,start,end,categories,isCancelled",
+    $orderby: "start/dateTime",
+  });
+
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/me/calendarView?${params}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    throw new Error(
+      `Microsoft Kalender konnte nicht gelesen werden: ${await res.text()}`
+    );
+  }
+
+  const data = (await res.json()) as { value?: MicrosoftEventItem[] };
+  return (data.value ?? [])
+    .map(mapMicrosoftListedEvent)
+    .filter((event): event is ListedCalendarEvent => event !== null);
+}
+
+export async function microsoftListEventsOnDay(
+  dayIso: string,
+  ctx: CalendarContext
+): Promise<ListedCalendarEvent[]> {
+  const start = `${dayIso}T00:00:00`;
+  const endDate = new Date(`${dayIso}T00:00:00Z`);
+  endDate.setUTCDate(endDate.getUTCDate() + 1);
+  const end = endDate.toISOString().slice(0, 19);
+  return microsoftListEventsInRange(start, end, ctx);
+}
+
+export async function microsoftDeleteEvent(
+  eventId: string,
+  ctx: CalendarContext
+): Promise<void> {
+  const token = await microsoftAccessToken(ctx);
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(eventId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  if (res.status === 404 || res.status === 204) return;
+  if (!res.ok) {
+    throw new Error(
+      `Microsoft Termin konnte nicht gelöscht werden: ${await res.text()}`
+    );
+  }
+}
+
+export async function microsoftRescheduleEvent(
+  input: {
+    eventId: string;
+    startIso: string;
+    endIso: string;
+  },
+  ctx: CalendarContext
+): Promise<void> {
+  const token = await microsoftAccessToken(ctx);
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(input.eventId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        start: { dateTime: input.startIso, timeZone: DEFAULT_TZ },
+        end: { dateTime: input.endIso, timeZone: DEFAULT_TZ },
+      }),
+    }
+  );
+  if (!res.ok) {
+    throw new Error(
+      `Microsoft Termin konnte nicht verschoben werden: ${await res.text()}`
+    );
+  }
+}
+
+export async function microsoftCancelEvent(
+  eventId: string,
+  ctx: CalendarContext
+): Promise<void> {
+  const token = await microsoftAccessToken(ctx);
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(eventId)}/cancel`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ comment: "Storniert via Cura" }),
+    }
+  );
+  if (res.status === 404) return;
+  if (!res.ok) {
+    throw new Error(
+      `Microsoft Termin konnte nicht storniert werden: ${await res.text()}`
+    );
+  }
 }

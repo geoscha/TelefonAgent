@@ -2,13 +2,15 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { parseAppointmentFromTranscript } from "@/lib/calls/parse-appointment-from-transcript";
 import { bookAppointmentForAgent } from "@/lib/integrations/book-appointment";
+import { markCallScreened } from "@/lib/calls/call-screening";
+import { applyPostCallBookingResult } from "@/lib/integrations/post-call-booking";
 import {
   getSettings,
   getStoredCalls,
   updateStoredCall,
 } from "@/lib/store";
 import { requireUserId } from "@/lib/supabase/server";
-import type { Call, SuggestedAction } from "@/lib/types";
+import type { Call } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -30,17 +32,6 @@ export async function POST(
       return NextResponse.json(
         { ok: false, error: "Anruf nicht gefunden." },
         { status: 404 }
-      );
-    }
-
-    const openCalendarAction = call.suggestedActions.find(
-      (action) =>
-        action.type === "Kalendereintrag" && action.status !== "erledigt"
-    );
-    if (!openCalendarAction) {
-      return NextResponse.json(
-        { ok: false, error: "Keine offene Kalenderaktion vorhanden." },
-        { status: 400 }
       );
     }
 
@@ -77,10 +68,15 @@ export async function POST(
     const booking = await bookAppointmentForAgent({
       agentId,
       title: parsed.title,
+      appointmentTypeId: parsed.appointmentTypeId,
       startIso: parsed.startIso,
       attendeeName: parsed.attendeeName,
       attendeePhone: call.callerPhone !== "Unbekannt" ? call.callerPhone : undefined,
-      notes: `Manuell aus Anruf ${call.id} erstellt.`,
+      notes: [
+        `Manuell aus Anruf ${call.id} erstellt.`,
+        `Zweck: ${parsed.title}`,
+      ].join(" "),
+      bookingSource: "post-call",
     });
 
     if (!booking.booked) {
@@ -90,24 +86,24 @@ export async function POST(
       );
     }
 
-    const nextActions: SuggestedAction[] = call.suggestedActions.map((action) =>
-      action.id === openCalendarAction.id
-        ? { ...action, status: "erledigt" }
-        : action
-    );
-
-    const updatedCall: Call = {
-      ...call,
-      agentId,
-      status: call.status === "offen" ? "erledigt" : call.status,
-      suggestedActions: nextActions,
+    const bookingResult = {
+      attempted: true as const,
+      booked: true as const,
+      duplicate: booking.duplicate,
+      agentCommitted: true,
+      message: booking.message,
     };
+    const updatedCall = markCallScreened(
+      applyPostCallBookingResult({ ...call, agentId }, bookingResult),
+      bookingResult
+    );
 
     await updateStoredCall(updatedCall);
 
     return NextResponse.json({
       ok: true,
       message: booking.message,
+      duplicate: booking.duplicate,
       call: updatedCall,
     });
   } catch (error) {

@@ -16,8 +16,13 @@ export function ExecuteCallActionButton({ call }: { call: Call }) {
     (action) =>
       action.type === "Kalendereintrag" && action.status !== "erledigt"
   );
+  const bookingNote = call.structuredSummary.notes ?? "";
+  const bookingFailed =
+    /nicht eingetragen|konnte nicht|fehlgeschlagen|nicht gefunden/i.test(
+      bookingNote
+    );
 
-  if (!hasOpenCalendarAction) return null;
+  if (!hasOpenCalendarAction && !bookingFailed) return null;
 
   async function executeAction() {
     setBusy(true);
@@ -25,7 +30,12 @@ export function ExecuteCallActionButton({ call }: { call: Call }) {
       const res = await fetch(`/api/calls/${call.id}/execute-action`, {
         method: "POST",
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; message?: string };
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        duplicate?: boolean;
+      };
 
       if (!res.ok || !data.ok) {
         toast.error("Aktion fehlgeschlagen", {
@@ -34,9 +44,12 @@ export function ExecuteCallActionButton({ call }: { call: Call }) {
         return;
       }
 
-      toast.success("Kalendereintrag erstellt", {
-        description: data.message,
-      });
+      toast.success(
+        data.duplicate ? "Termin bereits vorhanden" : "Kalendereintrag erstellt",
+        {
+          description: data.message,
+        }
+      );
       router.refresh();
     } catch {
       toast.error("Netzwerkfehler beim Ausführen der Aktion.");

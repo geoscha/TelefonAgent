@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "NEXT_DIST_DIR=.next-dev next dev",
+    "dev:tunnel": "npx --yes cloudflared tunnel --url http://localhost:3000",
     "dev:clean": "rm -rf .next .next-dev && NEXT_DIST_DIR=.next-dev next dev",
     "build": "next build",
     "start": "next start",

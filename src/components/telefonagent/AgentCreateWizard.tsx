@@ -16,6 +16,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useVoicePreview } from "@/lib/hooks/useVoicePreview";
 
+import type { BusinessHoursSchedule } from "@/lib/integrations/business-hours";
+
 export type AgentWizardDraft = {
   name: string;
   greeting: string;
@@ -24,6 +26,7 @@ export type AgentWizardDraft = {
   voiceName?: string;
   language: string;
   website?: string;
+  businessHours?: BusinessHoursSchedule;
 };
 
 interface VoiceOption {

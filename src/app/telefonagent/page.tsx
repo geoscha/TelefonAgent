@@ -345,6 +345,7 @@ export default function TelefonagentPage() {
             storedAgents.find((a) => a.id === (override?.agentId ?? selectedAgentId))
               ?.website ||
             undefined,
+          businessHours: override?.businessHours,
           agentId: isNew ? undefined : saveAgentId || undefined,
           createNew: isNew,
         }),

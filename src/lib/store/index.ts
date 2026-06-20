@@ -179,6 +179,16 @@ function rowToProfile(row: any): Profile {
 }
 
 function rowToCall(row: any): Call {
+  const structuredSummary =
+    row.structured_summary ?? {
+      property: row.property ?? "Unbekannt",
+      concernType: row.category ?? "Allgemein",
+      urgency: row.urgency ?? "niedrig",
+    };
+  const screening =
+    (structuredSummary.callScreening as Call["screening"] | undefined) ??
+    undefined;
+
   return {
     id: row.id,
     title: row.title ?? "",
@@ -192,14 +202,17 @@ function rowToCall(row: any): Call {
     urgency: row.urgency ?? "niedrig",
     status: row.status ?? "offen",
     transcript: (row.transcript ?? []) as TranscriptLine[],
-    structuredSummary:
-      row.structured_summary ?? {
-        property: row.property ?? "Unbekannt",
-        concernType: row.category ?? "Allgemein",
-        urgency: row.urgency ?? "niedrig",
-      },
+    structuredSummary,
     suggestedActions: (row.suggested_actions ?? []) as SuggestedAction[],
     agentId: row.agent_id ?? undefined,
+    screening,
+  };
+}
+
+function callStructuredSummary(call: Call) {
+  return {
+    ...call.structuredSummary,
+    ...(call.screening ? { callScreening: call.screening } : {}),
   };
 }
 
@@ -218,7 +231,7 @@ function callToRow(userId: string, call: Call): Record<string, unknown> {
     urgency: call.urgency,
     status: call.status,
     transcript: call.transcript,
-    structured_summary: call.structuredSummary,
+    structured_summary: callStructuredSummary(call),
     suggested_actions: call.suggestedActions,
     agent_id: call.agentId ?? null,
   };
@@ -353,6 +366,56 @@ export async function getCallsForUser(userId: string): Promise<Call[]> {
   return (data ?? []).map(rowToCall);
 }
 
+/** Call IDs the user permanently removed from history (blocks re-import). */
+export async function getPermanentlyDeletedCallIdsForUser(
+  userId: string
+): Promise<Set<string>> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("deleted_calls")
+    .select("call_id")
+    .eq("user_id", userId);
+  if (error) {
+    console.error("[calls] getPermanentlyDeletedCallIdsForUser:", error.message);
+    return new Set();
+  }
+  return new Set((data ?? []).map((row) => row.call_id));
+}
+
+async function isCallPermanentlyDeletedForUser(
+  userId: string,
+  callId: string
+): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("deleted_calls")
+    .select("call_id")
+    .eq("user_id", userId)
+    .eq("call_id", callId)
+    .maybeSingle();
+  if (error) {
+    console.error("[calls] isCallPermanentlyDeletedForUser:", error.message);
+    return false;
+  }
+  return Boolean(data?.call_id);
+}
+
+async function markCallPermanentlyDeleted(
+  userId: string,
+  callId: string
+): Promise<void> {
+  const admin = createAdminClient();
+  const { error } = await admin.from("deleted_calls").upsert(
+    {
+      user_id: userId,
+      call_id: callId,
+      deleted_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,call_id" }
+  );
+  if (error) throw error;
+}
+
 /** Upserts a batch of the current user's calls (used by normalisation). */
 export async function saveCalls(calls: Call[]): Promise<void> {
   if (calls.length === 0) return;
@@ -368,13 +431,48 @@ export async function updateStoredCall(call: Call): Promise<void> {
   await saveCalls([call]);
 }
 
-/** Inserts a call for a specific user (webhook context, admin client). */
+/** Upserts a call for a specific user (webhook context, admin client). */
 export async function addCallForUser(userId: string, call: Call): Promise<void> {
+  if (await isCallPermanentlyDeletedForUser(userId, call.id)) {
+    return;
+  }
+
   const admin = createAdminClient();
   const { error } = await admin
     .from("calls")
     .upsert(callToRow(userId, call), { onConflict: "id" });
   if (error) throw error;
+}
+
+/** Updates a call for a specific user (webhook context, admin client). */
+export async function updateCallForUser(userId: string, call: Call): Promise<void> {
+  if (await isCallPermanentlyDeletedForUser(userId, call.id)) {
+    return;
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("calls")
+    .upsert(callToRow(userId, call), { onConflict: "id" });
+  if (error) throw error;
+}
+
+/** Deletes one call for the signed-in user. */
+export async function deleteStoredCall(callId: string): Promise<boolean> {
+  const supabase = createClient();
+  const userId = await requireUserId();
+
+  await markCallPermanentlyDeleted(userId, callId);
+
+  const { data, error } = await supabase
+    .from("calls")
+    .delete()
+    .eq("id", callId)
+    .eq("user_id", userId)
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data?.id);
 }
 
 // ── Profile (session) ────────────────────────────────────────────────────────

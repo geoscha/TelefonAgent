@@ -22,6 +22,12 @@ import {
   type AppointmentIndustryPresetId,
 } from "@/lib/integrations/appointment-config";
 import type { StoredAgent } from "@/lib/onboarding-types";
+import {
+  businessHoursFromSummaryStrings,
+  DEFAULT_BUSINESS_HOURS,
+  normalizeBusinessHours,
+  type BusinessHoursSchedule,
+} from "@/lib/integrations/business-hours";
 import type { CalendarProvider } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -93,6 +99,9 @@ export function AgentIntegrationsSection({
   const [appointmentConfig, setAppointmentConfig] = useState<AppointmentConfig>(
     normalizeAppointmentConfig(agent.appointmentConfig ?? DEFAULT_APPOINTMENT_CONFIG)
   );
+  const [businessHours, setBusinessHours] = useState<BusinessHoursSchedule>(
+    normalizeBusinessHours(agent.businessHours ?? DEFAULT_BUSINESS_HOURS)
+  );
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -138,7 +147,10 @@ export function AgentIntegrationsSection({
     setAppointmentConfig(
       normalizeAppointmentConfig(agent.appointmentConfig ?? DEFAULT_APPOINTMENT_CONFIG)
     );
-  }, [agent.id, agent.calendarProvider, agent.appointmentBookingEnabled, agent.calendarPermissions, agent.appointmentConfig]);
+    setBusinessHours(
+      normalizeBusinessHours(agent.businessHours ?? DEFAULT_BUSINESS_HOURS)
+    );
+  }, [agent.id, agent.calendarProvider, agent.appointmentBookingEnabled, agent.calendarPermissions, agent.appointmentConfig, agent.businessHours]);
 
   useEffect(() => {
     return () => {
@@ -151,6 +163,7 @@ export function AgentIntegrationsSection({
     appointmentBookingEnabled?: boolean;
     calendarPermissions?: Partial<CalendarAgentPermissions>;
     appointmentConfig?: Partial<AppointmentConfig>;
+    businessHours?: { summary: BusinessHoursSchedule["summary"] };
     medicalGuardrailsEnabled?: boolean;
   }) {
     setSaving(true);
@@ -193,6 +206,19 @@ export function AgentIntegrationsSection({
     await persist({ calendarProvider: provider });
   }
 
+  function scheduleBusinessHoursSave(
+    patch: Partial<BusinessHoursSchedule["summary"]>
+  ) {
+    const nextSummary = { ...businessHours.summary, ...patch };
+    const nextHours = businessHoursFromSummaryStrings(nextSummary);
+    setBusinessHours(nextHours);
+
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void persist({ businessHours: { summary: nextSummary } });
+    }, 500);
+  }
+
   function scheduleAppointmentConfigSave(patch: Partial<AppointmentConfig>) {
     const nextConfig = normalizeAppointmentConfig({
       ...appointmentConfig,
@@ -209,10 +235,7 @@ export function AgentIntegrationsSection({
   function handlePresetChange(presetId: AppointmentIndustryPresetId) {
     const nextConfig = configFromPreset(presetId);
     setAppointmentConfig(nextConfig);
-    void persist({
-      appointmentConfig: nextConfig,
-      ...(presetId === "hausarzt" ? { medicalGuardrailsEnabled: true } : {}),
-    });
+    void persist({ appointmentConfig: nextConfig });
   }
 
   async function handleBookingToggle(enabled: boolean) {
@@ -255,14 +278,14 @@ export function AgentIntegrationsSection({
               Noch keine Integration verbunden
             </p>
             <p className="mt-1 text-[12px] text-[#99A0AE]">
-              Verbinden Sie z. B. Apple Kalender in Ihrem Profil, um Termine pro
-              Agent freizuschalten.
+              Verbinden Sie z. B. Apple Kalender unter Integrationen, um Termine
+              pro Agent freizuschalten.
             </p>
             <Link
-              href="/einstellungen#kalender"
+              href="/integrationen"
               className={cn(landingBtnPrimary, "mt-3 inline-flex px-3 py-1.5 text-[12px]")}
             >
-              Zum Profil
+              Zu den Integrationen
             </Link>
           </div>
         </div>
@@ -347,7 +370,7 @@ export function AgentIntegrationsSection({
 
           <PermissionToggleRow
             label="Termine durch den Agenten eintragen"
-            description="Dieser Agent darf Termine buchen und — je nach Branche — stornieren."
+            description="Dieser Agent darf Termine auf Namen buchen und — je nach Einstellung — stornieren."
             checked={appointmentBookingEnabled}
             disabled={saving || !activeProvider}
             onCheckedChange={(checked) => void handleBookingToggle(checked)}
@@ -408,6 +431,73 @@ export function AgentIntegrationsSection({
                 />
               </div>
 
+              <div className="space-y-2 rounded border border-[#E1E4EA] bg-white p-3">
+                <p className="text-[12px] font-medium text-[#0E121B]">
+                  Geschäftszeiten
+                </p>
+                <p className="text-[11px] text-[#99A0AE]">
+                  Termine werden nur in diesen Zeiten eingetragen. Beim Erstellen
+                  des Agenten aus einer Website automatisch übernommen, falls
+                  erkannt.
+                </p>
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor={`agent-${agent.id}-hours-weekdays`}
+                    className="text-[12px] text-[#525866]"
+                  >
+                    Mo–Fr
+                  </Label>
+                  <Input
+                    id={`agent-${agent.id}-hours-weekdays`}
+                    value={businessHours.summary.weekdays}
+                    disabled={saving}
+                    placeholder="Mo–Fr 08:00–12:00, 13:00–17:00"
+                    onChange={(event) =>
+                      scheduleBusinessHoursSave({ weekdays: event.target.value })
+                    }
+                    className="h-9 border-[#E1E4EA] bg-white text-[13px]"
+                  />
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor={`agent-${agent.id}-hours-saturday`}
+                      className="text-[12px] text-[#525866]"
+                    >
+                      Samstag
+                    </Label>
+                    <Input
+                      id={`agent-${agent.id}-hours-saturday`}
+                      value={businessHours.summary.saturday}
+                      disabled={saving}
+                      placeholder="Geschlossen"
+                      onChange={(event) =>
+                        scheduleBusinessHoursSave({ saturday: event.target.value })
+                      }
+                      className="h-9 border-[#E1E4EA] bg-white text-[13px]"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor={`agent-${agent.id}-hours-sunday`}
+                      className="text-[12px] text-[#525866]"
+                    >
+                      Sonntag
+                    </Label>
+                    <Input
+                      id={`agent-${agent.id}-hours-sunday`}
+                      value={businessHours.summary.sunday}
+                      disabled={saving}
+                      placeholder="Geschlossen"
+                      onChange={(event) =>
+                        scheduleBusinessHoursSave({ sunday: event.target.value })
+                      }
+                      className="h-9 border-[#E1E4EA] bg-white text-[13px]"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <PermissionToggleRow
                 label="Termine vereinbaren"
                 description="Neue Termine in den Kalender eintragen."
@@ -455,17 +545,6 @@ export function AgentIntegrationsSection({
                   ariaLabel="Termintag für Storno erforderlich"
                 />
               ) : null}
-
-              <PermissionToggleRow
-                label="Telefonnummer erforderlich"
-                description="Der Agent fragt zusätzlich nach der Telefonnummer."
-                checked={appointmentConfig.requireCallerPhone}
-                disabled={saving}
-                onCheckedChange={(checked) =>
-                  scheduleAppointmentConfigSave({ requireCallerPhone: checked })
-                }
-                ariaLabel="Telefonnummer erforderlich"
-              />
 
               <div className="space-y-2">
                 <p className="text-[12px] font-medium text-[#0E121B]">
@@ -550,10 +629,10 @@ export function AgentIntegrationsSection({
           </div>
 
           <Link
-            href="/einstellungen#kalender"
+            href="/integrationen"
             className="inline-flex text-[12px] text-[#335cff] underline"
           >
-            Kalender im Profil verwalten
+            Kalender unter Integrationen verwalten
           </Link>
         </div>
       ) : null}

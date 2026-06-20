@@ -36,6 +36,24 @@ function nextId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function toolResultIndicatesGoalComplete(
+  toolName: string,
+  rawResult: string | undefined
+): boolean {
+  if (!rawResult?.trim()) return false;
+  try {
+    const parsed = JSON.parse(rawResult) as {
+      booked?: boolean;
+      cancelled?: boolean;
+    };
+    if (toolName === "book_appointment") return parsed.booked === true;
+    if (toolName === "cancel_appointment") return parsed.cancelled === true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 export function AgentTestChat({
   agentId,
   agentName,
@@ -44,6 +62,7 @@ export function AgentTestChat({
 }: AgentTestChatProps) {
   const [sessionState, setSessionState] = useState<SessionState>("idle");
   const [agentTyping, setAgentTyping] = useState(false);
+  const [calendarChecking, setCalendarChecking] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -53,6 +72,8 @@ export function AgentTestChat({
   const streamIdRef = useRef<string | null>(null);
   const draftRef = useRef(draft);
   const mountedRef = useRef(true);
+  const pendingCloseRef = useRef(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasStreamingMessage = messages.some((m) => m.streaming);
 
   const chatOpen = sessionState !== "idle";
@@ -66,6 +87,10 @@ export function AgentTestChat({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
       const session = conversationRef.current;
       conversationRef.current = null;
       if (session) {
@@ -79,13 +104,14 @@ export function AgentTestChat({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [messages, agentTyping]);
+  }, [messages, agentTyping, calendarChecking]);
 
   const teardownSession = useCallback(async () => {
     const session = conversationRef.current;
     conversationRef.current = null;
     streamIdRef.current = null;
     setAgentTyping(false);
+    setCalendarChecking(false);
     if (session) {
       try {
         await session.endSession();
@@ -101,6 +127,11 @@ export function AgentTestChat({
   }, [agentId]);
 
   const closeChat = useCallback(async () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    pendingCloseRef.current = false;
     await teardownSession();
     if (!mountedRef.current) return;
     setSessionState("idle");
@@ -108,6 +139,14 @@ export function AgentTestChat({
     setMessages([]);
     setInput("");
   }, [teardownSession]);
+
+  const scheduleCloseAfterAgentReply = useCallback(() => {
+    if (!pendingCloseRef.current || closeTimerRef.current) return;
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
+      void closeChat();
+    }, 2000);
+  }, [closeChat]);
 
   const applyAgentMessage = useCallback((message: string) => {
     const trimmed = message.trim();
@@ -132,7 +171,9 @@ export function AgentTestChat({
       return [...prev, { id: nextId(), role: "agent", content: trimmed }];
     });
     setAgentTyping(false);
-  }, []);
+    setCalendarChecking(false);
+    scheduleCloseAfterAgentReply();
+  }, [scheduleCloseAfterAgentReply]);
 
   const connectChat = useCallback(async () => {
     if (disabled || sessionState === "connecting") return;
@@ -183,6 +224,7 @@ export function AgentTestChat({
           conversationRef.current = null;
           streamIdRef.current = null;
           setAgentTyping(false);
+          setCalendarChecking(false);
           setSessionState("error");
           const message =
             details.reason === "error"
@@ -201,11 +243,23 @@ export function AgentTestChat({
         },
         onAgentToolRequest: () => {
           if (!mountedRef.current) return;
+          setCalendarChecking(true);
           setAgentTyping(true);
         },
-        onAgentToolResponse: () => {
+        onAgentToolResponse: (props) => {
           if (!mountedRef.current) return;
+          setCalendarChecking(false);
           setAgentTyping(true);
+          const rawResult =
+            "full_tool_result" in props &&
+            typeof props.full_tool_result === "string"
+              ? props.full_tool_result
+              : undefined;
+          if (
+            toolResultIndicatesGoalComplete(props.tool_name, rawResult)
+          ) {
+            pendingCloseRef.current = true;
+          }
         },
         onAgentChatResponsePart: (part) => {
           if (!mountedRef.current) return;
@@ -241,6 +295,8 @@ export function AgentTestChat({
             setMessages((prev) =>
               prev.map((m) => (m.streaming ? { ...m, streaming: false } : m))
             );
+            setAgentTyping(false);
+            scheduleCloseAfterAgentReply();
           }
         },
         onMessage: ({ role, message }) => {
@@ -271,6 +327,7 @@ export function AgentTestChat({
     agentId,
     applyAgentMessage,
     disabled,
+    scheduleCloseAfterAgentReply,
     sessionState,
     teardownSession,
   ]);
@@ -348,7 +405,14 @@ export function AgentTestChat({
                 </div>
               </div>
             ))}
-            {agentTyping && !hasStreamingMessage && (
+            {calendarChecking && (
+              <div className="flex justify-start">
+                <div className="rounded-lg bg-[#EEF2FF] px-3 py-2 text-[11px] text-[#335cff]">
+                  Kalender wird geprüft…
+                </div>
+              </div>
+            )}
+            {agentTyping && !hasStreamingMessage && !calendarChecking && (
               <div className="flex justify-start">
                 <div className="rounded-lg bg-[#F3F5F8] px-3 py-2">
                   <div className="flex gap-1">

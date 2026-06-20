@@ -6,6 +6,7 @@ import type { AppointmentConfig } from "@/lib/integrations/appointment-config";
 import { getSiteUrl } from "@/lib/auth/site-url";
 
 const AGENT_ID_VARIABLE = "system__agent_id";
+const CALLER_ID_VARIABLE = "system__caller_id";
 
 type WebhookToolConfig = {
   type: "webhook";
@@ -25,8 +26,9 @@ type WebhookToolConfig = {
   };
 };
 
-function appointmentToolUrl(): string {
-  return `${getSiteUrl()}/api/agent-tools/appointment`;
+function appointmentToolUrl(siteUrl?: string): string {
+  const base = siteUrl?.replace(/\/$/, "") || getSiteUrl();
+  return `${base}/api/agent-tools/appointment`;
 }
 
 function appointmentToolHeaders(): Record<string, string> | undefined {
@@ -35,10 +37,13 @@ function appointmentToolHeaders(): Record<string, string> | undefined {
   return { Authorization: `Bearer ${secret}` };
 }
 
-function buildApiSchema(requestBodySchema: WebhookToolConfig["apiSchema"]["requestBodySchema"]) {
+function buildApiSchema(
+  requestBodySchema: WebhookToolConfig["apiSchema"]["requestBodySchema"],
+  siteUrl?: string
+) {
   const headers = appointmentToolHeaders();
   return {
-    url: appointmentToolUrl(),
+    url: appointmentToolUrl(siteUrl),
     method: "POST" as const,
     contentType: "application/json" as const,
     ...(headers ? { requestHeaders: headers } : {}),
@@ -62,6 +67,10 @@ function agentIdField() {
   return { type: "string", dynamicVariable: AGENT_ID_VARIABLE };
 }
 
+function callerIdField() {
+  return { type: "string", dynamicVariable: CALLER_ID_VARIABLE };
+}
+
 function baseBody(action: string) {
   return {
     action: constField(action),
@@ -69,47 +78,65 @@ function baseBody(action: string) {
   };
 }
 
-function buildCheckAvailabilityTool(): WebhookToolConfig {
+function buildCheckAvailabilityTool(siteUrl?: string): WebhookToolConfig {
   return {
     type: "webhook",
     name: "check_availability",
     description:
-      "Prüft, ob Terminvereinbarung und Stornierung verfügbar sind. Zu Beginn einer Terminanfrage aufrufen.",
-    responseTimeoutSecs: 30,
+      "Prüft live im Apple-Kalender ob ein Slot frei ist. Bei available=true: sofort book_appointment aufrufen — dem Kunden vorher nicht sagen dass eingetragen wird.",
+    responseTimeoutSecs: 60,
     apiSchema: buildApiSchema({
       type: "object",
       required: ["action", "agentId"],
-      properties: baseBody("check_availability"),
-    }),
+      properties: {
+        ...baseBody("check_availability"),
+        appointmentDate: textField("Termintag YYYY-MM-DD, z. B. 2026-06-25"),
+        appointmentTime: textField("Uhrzeit HH:mm, z. B. 11:00"),
+        startIso: textField(
+          "Optional — ISO 8601 Europe/Zurich, z. B. 2026-06-25T11:00:00+02:00"
+        ),
+        appointmentTypeId: textField(
+          "ID der Terminart, z. B. haareschneiden, behandlung, termin"
+        ),
+        durationMinutes: intField(
+          "Optional — Dauer aus Terminart; nicht erfragen bei Haareschneiden (30 Min)"
+        ),
+      },
+    }, siteUrl),
   };
 }
 
-function buildBookAppointmentTool(): WebhookToolConfig {
+function buildBookAppointmentTool(siteUrl?: string): WebhookToolConfig {
   return {
     type: "webhook",
     name: "book_appointment",
     description:
-      "Trägt einen Termin im verbundenen Kalender ein. Nur aufrufen, wenn Name, Datum, Uhrzeit und Terminart klar sind.",
-    responseTimeoutSecs: 60,
+      "Trägt einen Termin im Kalender ein. Nur nach available=true oder klarer Kundenzustimmung aufrufen. Erst bei booked:true dem Kunden bestätigen, dann end_call.",
+    responseTimeoutSecs: 90,
     apiSchema: buildApiSchema({
       type: "object",
-      required: ["action", "agentId", "title", "startIso", "attendeeName"],
+      required: ["action", "agentId", "attendeeName", "appointmentTypeId"],
       properties: {
         ...baseBody("book_appointment"),
-        title: textField("Kurzer Titel mit Terminart"),
+        appointmentDate: textField("Termintag YYYY-MM-DD"),
+        appointmentTime: textField("Uhrzeit HH:mm"),
+        appointmentTypeId: textField(
+          "ID der Terminart aus der Konfiguration, z. B. termin"
+        ),
+        title: textField("Optional — Terminart als Text"),
         startIso: textField(
-          "Startzeit ISO 8601 mit Zeitzone Europe/Zurich, z. B. 2026-06-23T10:00:00+02:00"
+          "Optional — ISO 8601 Europe/Zurich (alternativ appointmentDate + appointmentTime)"
         ),
         durationMinutes: intField("Dauer in Minuten passend zur Terminart"),
-        attendeeName: textField("Vollständiger Name der anrufenden Person"),
-        attendeePhone: textField("Telefonnummer, falls bekannt"),
+        attendeeName: textField("Nachname der Kundin oder des Kunden"),
+        attendeePhone: callerIdField(),
         notes: textField("Optionale Notiz"),
       },
-    }),
+    }, siteUrl),
   };
 }
 
-function buildFindAppointmentsTool(): WebhookToolConfig {
+function buildFindAppointmentsTool(siteUrl?: string): WebhookToolConfig {
   return {
     type: "webhook",
     name: "find_appointments",
@@ -124,11 +151,11 @@ function buildFindAppointmentsTool(): WebhookToolConfig {
         appointmentDate: textField("Termintag als YYYY-MM-DD"),
         attendeeName: textField("Name der anrufenden Person"),
       },
-    }),
+    }, siteUrl),
   };
 }
 
-function buildCancelAppointmentTool(): WebhookToolConfig {
+function buildCancelAppointmentTool(siteUrl?: string): WebhookToolConfig {
   return {
     type: "webhook",
     name: "cancel_appointment",
@@ -145,16 +172,23 @@ function buildCancelAppointmentTool(): WebhookToolConfig {
         attendeeName: textField("Name der anrufenden Person"),
         appointmentDate: textField("Termintag als YYYY-MM-DD"),
       },
-    }),
+    }, siteUrl),
   };
 }
 
 function buildToolConfigs(
-  appointmentConfig?: AppointmentConfig
+  appointmentConfig?: AppointmentConfig,
+  siteUrl?: string
 ): WebhookToolConfig[] {
-  const tools = [buildCheckAvailabilityTool(), buildBookAppointmentTool()];
+  const tools = [
+    buildCheckAvailabilityTool(siteUrl),
+    buildBookAppointmentTool(siteUrl),
+  ];
   if (appointmentConfig?.allowCancellation) {
-    tools.push(buildFindAppointmentsTool(), buildCancelAppointmentTool());
+    tools.push(
+      buildFindAppointmentsTool(siteUrl),
+      buildCancelAppointmentTool(siteUrl)
+    );
   }
   return tools;
 }
@@ -171,9 +205,10 @@ async function listWorkspaceWebhookTools(client: ElevenLabsClient) {
 /** Registers shared Cura appointment webhook tools and returns their IDs. */
 export async function ensureAppointmentToolIds(
   client: ElevenLabsClient,
-  appointmentConfig?: AppointmentConfig
+  appointmentConfig?: AppointmentConfig,
+  options?: { siteUrl?: string }
 ): Promise<string[]> {
-  const desired = buildToolConfigs(appointmentConfig);
+  const desired = buildToolConfigs(appointmentConfig, options?.siteUrl);
   const existing = await listWorkspaceWebhookTools(client);
   const byName = new Map(
     existing

@@ -17,6 +17,11 @@ import {
   normalizeAppointmentConfig,
   type AppointmentConfig,
 } from "@/lib/integrations/appointment-config";
+import {
+  businessHoursFromSummaryStrings,
+  normalizeBusinessHours,
+  type BusinessHoursSchedule,
+} from "@/lib/integrations/business-hours";
 import { normalizeEscalationPhone } from "@/lib/integrations/medical-guardrails";
 import {
   getCalendar,
@@ -35,6 +40,9 @@ interface Body {
   appointmentBookingEnabled?: boolean;
   calendarPermissions?: Partial<CalendarAgentPermissions>;
   appointmentConfig?: Partial<AppointmentConfig>;
+  businessHours?: Partial<BusinessHoursSchedule> & {
+    summary?: Partial<BusinessHoursSchedule["summary"]>;
+  };
   escalationPhoneNumber?: string;
   medicalGuardrailsEnabled?: boolean;
 }
@@ -97,6 +105,15 @@ export async function POST(req: NextRequest) {
       ...current.appointmentConfig,
       ...body.appointmentConfig,
     });
+    const businessHours =
+      body.businessHours !== undefined
+        ? body.businessHours.summary
+          ? businessHoursFromSummaryStrings(body.businessHours.summary)
+          : normalizeBusinessHours({
+              ...existing.businessHours,
+              ...body.businessHours,
+            })
+        : normalizeBusinessHours(existing.businessHours);
 
     if (appointmentBookingEnabled) {
       if (!calendarProvider) {
@@ -114,7 +131,7 @@ export async function POST(req: NextRequest) {
           {
             ok: false,
             error:
-              "Die gewählte Integration ist nicht verbunden. Bitte zuerst im Profil unter Kalender verbinden.",
+              "Die gewählte Integration ist nicht verbunden. Bitte zuerst unter Integrationen verbinden.",
           },
           { status: 400 }
         );
@@ -128,7 +145,7 @@ export async function POST(req: NextRequest) {
           {
             ok: false,
             error:
-              "Die gewählte Integration ist nicht verbunden. Bitte zuerst im Profil unter Kalender verbinden.",
+              "Die gewählte Integration ist nicht verbunden. Bitte zuerst unter Integrationen verbinden.",
           },
           { status: 400 }
         );
@@ -142,6 +159,7 @@ export async function POST(req: NextRequest) {
         calendarPermissions,
         appointmentConfig,
       }),
+      businessHours,
       ...(body.escalationPhoneNumber !== undefined
         ? {
             escalationPhoneNumber: normalizeEscalationPhone(

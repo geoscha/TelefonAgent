@@ -158,8 +158,20 @@ function heuristicFallback(input: EnrichmentInput): EnrichmentResult {
   // caller's own (German) words.
   const title = defaultTitleForCategory(category);
   const summary = germanSummaryFromTranscript(callerLines, category);
+  const suggestedActions: SuggestedAction[] = /termin|haareschneiden|haarschnitt|reserv|behandlung|uhr|frei|verfügbar/i.test(
+    text
+  )
+    ? [
+        {
+          id: `act-${Date.now()}-cal`,
+          label: "Termin eintragen",
+          type: "Kalendereintrag",
+          status: "offen",
+        },
+      ]
+    : [];
 
-  return { title, category, urgency, summary, callerName, suggestedActions: [] };
+  return { title, category, urgency, summary, callerName, suggestedActions };
 }
 
 /** Returns the caller's spoken lines (text only) from a "Speaker: text" dump. */

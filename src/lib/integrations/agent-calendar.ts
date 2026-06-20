@@ -5,8 +5,10 @@ import {
   DEFAULT_CALENDAR_AGENT_PERMISSIONS,
   normalizeCalendarAgentPermissions,
 } from "@/lib/integrations/calendar-agent-permissions";
+import { CALENDAR_PROVIDERS } from "@/lib/calendar/resolve-connected";
 import type { StoredAgent } from "@/lib/onboarding-types";
 import type { CalendarProvider, ElevenLabsSettings } from "@/lib/store";
+import { getCalendarForUser } from "@/lib/store";
 
 export interface AgentCalendarIntegration {
   appointmentBookingEnabled: boolean;
@@ -28,6 +30,25 @@ export function getAgentCalendarIntegration(
     ),
     appointmentConfig: normalizeAppointmentConfig(agent?.appointmentConfig),
   };
+}
+
+export async function resolveConnectedCalendarProvider(
+  userId: string,
+  agent: StoredAgent | undefined,
+  settings: Pick<ElevenLabsSettings, "appointmentProvider">
+): Promise<CalendarProvider | null> {
+  for (const provider of CALENDAR_PROVIDERS) {
+    const conn = await getCalendarForUser(userId, provider);
+    if (conn?.connected) return provider;
+  }
+
+  const preferred = agent?.calendarProvider ?? settings.appointmentProvider ?? null;
+  if (preferred) {
+    const preferredConn = await getCalendarForUser(userId, preferred);
+    if (preferredConn?.connected) return preferred;
+  }
+
+  return null;
 }
 
 export function patchStoredAgentCalendar(

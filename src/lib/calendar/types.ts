@@ -1,6 +1,8 @@
 import type { CalendarConnection, CalendarProvider } from "@/lib/store";
+import { PROVIDER_META } from "./provider-meta";
 
 export type { CalendarProvider };
+export { PROVIDER_META };
 
 /**
  * Decouples calendar providers from the store: callers pass the current
@@ -23,11 +25,15 @@ export interface CalendarEventInput {
   /** IANA time zone; defaults to Europe/Zurich. */
   timeZone?: string;
   location?: string;
+  /** Calendar category/label, e.g. «Cura». */
+  categories?: string[];
 }
 
 export interface CreatedEvent {
   id: string;
   htmlLink?: string;
+  /** iCloud collection URLs that received the event (connected + local default). */
+  calendarUrls?: string[];
 }
 
 export interface ListedCalendarEvent {
@@ -35,6 +41,7 @@ export interface ListedCalendarEvent {
   title: string;
   description?: string;
   startIso: string;
+  endIso?: string;
   eventUrl?: string;
   cancelled?: boolean;
   agentCreated?: boolean;
@@ -47,29 +54,5 @@ export interface ProviderMeta {
   logoInitials: string;
   description: string;
 }
-
-export const PROVIDER_META: Record<CalendarProvider, ProviderMeta> = {
-  google: {
-    id: "google",
-    name: "Google Kalender",
-    logoInitials: "G",
-    description:
-      "Termine und Besichtigungen direkt in Google Calendar eintragen.",
-  },
-  microsoft: {
-    id: "microsoft",
-    name: "Microsoft Outlook",
-    logoInitials: "O",
-    description:
-      "Termine in Outlook / Microsoft 365 über Microsoft Graph anlegen.",
-  },
-  apple: {
-    id: "apple",
-    name: "Apple Kalender (iCloud)",
-    logoInitials: "A",
-    description:
-      "iCloud-Kalender via CalDAV mit App-spezifischem Passwort verbinden.",
-  },
-};
 
 export const DEFAULT_TZ = "Europe/Zurich";
