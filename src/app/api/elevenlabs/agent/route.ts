@@ -19,7 +19,14 @@ import {
 import { linkAgentToPhone, reconcileUserPhoneAgentLink, unlinkUserPhonesFromAgent } from "@/lib/elevenlabs/sync-agent";
 import { completeAgentOnboarding } from "@/lib/phone/onboarding";
 import { listUserPhoneNumbers } from "@/lib/phone/numbers";
-import { getSettings, updateSettings, type StoredAgent } from "@/lib/store";
+import { CALENDAR_PROVIDERS } from "@/lib/calendar/resolve-connected";
+import {
+  branchAppointmentPatch,
+  inferAssistantBranch,
+  normalizeAssistantBranch,
+  type AssistantBranchId,
+} from "@/lib/assistant-branch";
+import { getCalendars, getSettings, updateSettings, type StoredAgent } from "@/lib/store";
 import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +46,7 @@ interface AgentBody {
   businessHours?: BusinessHoursSchedule;
   escalationPhoneNumber?: string;
   medicalGuardrailsEnabled?: boolean;
+  assistantBranch?: AssistantBranchId;
   /** Save to app settings only — used for auto-save in the detail panel. */
   persistOnly?: boolean;
   /** Clear the active agent without deleting it. */
@@ -64,6 +72,13 @@ async function persistAgentRecord(params: {
   const existingAgents = settings.agents ?? [];
   const existing = existingAgents.find((a) => a.id === agentId);
 
+  const assistantBranch =
+    body.assistantBranch !== undefined
+      ? normalizeAssistantBranch(body.assistantBranch)
+      : inferAssistantBranch(existing ?? { appointmentBookingEnabled: false });
+
+  const appointmentPatch = branchAppointmentPatch(assistantBranch);
+
   const euComplianceEnabled =
     typeof body.euComplianceEnabled === "boolean"
       ? body.euComplianceEnabled
@@ -80,14 +95,21 @@ async function persistAgentRecord(params: {
     phoneNumberId: body.phoneNumberId ?? existing?.phoneNumberId,
     euComplianceEnabled,
     website: body.website?.trim() || existing?.website,
+    assistantBranch,
     businessHours:
       body.businessHours !== undefined
         ? normalizeBusinessHours(body.businessHours)
         : existing?.businessHours,
     calendarProvider: existing?.calendarProvider ?? null,
     calendarPermissions: existing?.calendarPermissions,
-    appointmentBookingEnabled: existing?.appointmentBookingEnabled,
-    appointmentConfig: existing?.appointmentConfig,
+    appointmentBookingEnabled:
+      body.assistantBranch !== undefined
+        ? appointmentPatch.appointmentBookingEnabled
+        : existing?.appointmentBookingEnabled,
+    appointmentConfig:
+      body.assistantBranch !== undefined
+        ? appointmentPatch.appointmentConfig
+        : existing?.appointmentConfig,
     escalationPhoneNumber:
       body.escalationPhoneNumber !== undefined
         ? normalizeEscalationPhone(body.escalationPhoneNumber)
@@ -97,6 +119,20 @@ async function persistAgentRecord(params: {
         ? body.medicalGuardrailsEnabled
         : existing?.medicalGuardrailsEnabled,
   };
+
+  if (
+    assistantBranch === "coiffeur" &&
+    !stored.calendarProvider &&
+    appointmentPatch.appointmentBookingEnabled
+  ) {
+    const calendars = await getCalendars();
+    const connected = CALENDAR_PROVIDERS.map(
+      (provider) => calendars[provider]
+    ).find((entry) => entry?.connected);
+    if (connected) {
+      stored.calendarProvider = connected.provider;
+    }
+  }
 
   const phones = await listUserPhoneNumbers(userId);
   if (!stored.phoneNumberId && phones.length === 1) {
@@ -194,7 +230,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Bitte Agent-Name, Stimme und Begrüssungstext angeben.",
+        error: "Bitte Assistenten-Name, Stimme und Begrüssungstext angeben.",
       },
       { status: 400 }
     );
@@ -210,7 +246,7 @@ export async function POST(req: NextRequest) {
           {
             ok: false,
             error:
-              "Ohne Telefonnummer kann kein Agent aktiviert werden. Richten Sie zuerst eine Nummer unter Telefonnummern ein.",
+              "Ohne Telefonnummer kann kein Assistent aktiviert werden. Richten Sie zuerst eine Nummer unter Telefonnummern ein.",
           },
           { status: 400 }
         );
@@ -233,7 +269,7 @@ export async function POST(req: NextRequest) {
     if (body.persistOnly) {
       if (!targetAgentId) {
         return NextResponse.json(
-          { ok: false, error: "Agent nicht gefunden." },
+          { ok: false, error: "Assistent nicht gefunden." },
           { status: 400 }
         );
       }
@@ -276,6 +312,12 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedAgentId = body.createNew ? undefined : targetAgentId;
+    const assistantBranch =
+      body.assistantBranch !== undefined
+        ? normalizeAssistantBranch(body.assistantBranch)
+        : inferAssistantBranch(existing ?? { appointmentBookingEnabled: false });
+    const appointmentPatch = branchAppointmentPatch(assistantBranch);
+
     const draftAgent: StoredAgent = {
       ...(existing ?? {
         id: "draft",
@@ -294,6 +336,7 @@ export async function POST(req: NextRequest) {
       systemPrompt,
       euComplianceEnabled: complianceEnabled,
       website: body.website?.trim() || existing?.website,
+      assistantBranch,
       escalationPhoneNumber:
         body.escalationPhoneNumber !== undefined
           ? normalizeEscalationPhone(body.escalationPhoneNumber)
@@ -303,9 +346,15 @@ export async function POST(req: NextRequest) {
           ? body.medicalGuardrailsEnabled
           : existing?.medicalGuardrailsEnabled,
       appointmentBookingEnabled:
-        existing?.appointmentBookingEnabled ??
-        getAgentCalendarIntegration(settings, resolvedAgentId ?? "").appointmentBookingEnabled,
-      appointmentConfig: existing?.appointmentConfig,
+        body.assistantBranch !== undefined
+          ? appointmentPatch.appointmentBookingEnabled
+          : existing?.appointmentBookingEnabled ??
+            getAgentCalendarIntegration(settings, resolvedAgentId ?? "")
+              .appointmentBookingEnabled,
+      appointmentConfig:
+        body.assistantBranch !== undefined
+          ? appointmentPatch.appointmentConfig
+          : existing?.appointmentConfig,
       calendarProvider: existing?.calendarProvider ?? null,
       calendarPermissions: existing?.calendarPermissions,
       phoneNumberId: body.phoneNumberId ?? existing?.phoneNumberId,

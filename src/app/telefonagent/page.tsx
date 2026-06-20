@@ -13,6 +13,7 @@ import { RetellAgentSidebar } from "@/components/telefonagent/RetellAgentSidebar
 import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import { normalizeAgentLanguage } from "@/lib/elevenlabs/agent-config";
 import type { OnboardingPhase, StoredAgent } from "@/lib/onboarding-types";
+import { inferAssistantBranch } from "@/lib/assistant-branch";
 import { sessionThrottle, readStaleCache, writeStaleCache } from "@/lib/client/stale-cache";
 import { useWorkspace } from "@/lib/hooks/useWorkspace";
 import {
@@ -58,6 +59,8 @@ interface Capabilities {
 interface Voice {
   id: string;
   name: string;
+  displayName?: string;
+  gender?: "male" | "female";
   language: string;
   swissGerman?: boolean;
 }
@@ -346,6 +349,7 @@ export default function TelefonagentPage() {
               ?.website ||
             undefined,
           businessHours: override?.businessHours,
+          assistantBranch: override?.assistantBranch,
           agentId: isNew ? undefined : saveAgentId || undefined,
           createNew: isNew,
         }),
@@ -365,7 +369,7 @@ export default function TelefonagentPage() {
           await setupDemo.completeAgentStep();
         }
         if (!options?.silent) {
-          toast.success(isNew ? "Agent erstellt" : "Agent aktualisiert");
+          toast.success(isNew ? "Assistent erstellt" : "Assistent aktualisiert");
         }
         return true;
       }
@@ -430,6 +434,7 @@ export default function TelefonagentPage() {
         patch.escalationPhoneNumber ?? agent.escalationPhoneNumber ?? "",
       medicalGuardrailsEnabled:
         patch.medicalGuardrailsEnabled ?? agent.medicalGuardrailsEnabled,
+      assistantBranch: patch.assistantBranch ?? inferAssistantBranch(agent),
     };
 
     if (!draft.name.trim() || !draft.greeting.trim() || !draft.voiceId) {
@@ -457,7 +462,8 @@ export default function TelefonagentPage() {
           if (
             patch.euComplianceEnabled !== undefined ||
             patch.escalationPhoneNumber !== undefined ||
-            patch.medicalGuardrailsEnabled !== undefined
+            patch.medicalGuardrailsEnabled !== undefined ||
+            patch.assistantBranch !== undefined
           ) {
             void handleSaveAgent(
               { ...draft, agentId, createNew: false },
@@ -527,7 +533,7 @@ export default function TelefonagentPage() {
     if (phoneNumbers.length === 0) {
       toast.error("Keine Telefonnummer", {
         description:
-          "Richten Sie zuerst eine Nummer unter Telefonnummern ein, bevor Sie einen Agenten aktivieren.",
+          "Richten Sie zuerst eine Nummer unter Telefonnummern ein, bevor Sie den Assistenten aktivieren.",
       });
       return;
     }
@@ -609,7 +615,7 @@ export default function TelefonagentPage() {
         applySettings(data.settings as Settings);
         if (data.agents) setStoredAgents(data.agents as StoredAgent[]);
         if (detailAgentId === agentId) setDetailAgentId(null);
-        toast.success("Agent gelöscht");
+        toast.success("Assistent gelöscht");
       } else {
         toast.error("Löschen fehlgeschlagen", { description: data.error });
       }
@@ -689,7 +695,7 @@ export default function TelefonagentPage() {
           ) : (
             <div className="landing-panel flex flex-1 items-center justify-center self-stretch border border-dashed border-[#E1E4EA] p-8">
               <p className="landing-body text-[#99A0AE]">
-                Agent auswählen oder neuen Agent hinzufügen
+                Assistent auswählen oder neuen Assistenten hinzufügen
               </p>
             </div>
           )}

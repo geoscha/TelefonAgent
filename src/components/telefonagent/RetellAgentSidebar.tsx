@@ -33,7 +33,7 @@ export function RetellAgentSidebar({
         className={cn(landingBtnSecondary, "w-full justify-start gap-2")}
       >
         <Plus className="h-3.5 w-3.5 stroke-[1.75]" />
-        Agent hinzufügen
+        Assistent hinzufügen
       </button>
 
       <div
@@ -44,7 +44,7 @@ export function RetellAgentSidebar({
       >
         {agents.length === 0 ? (
           <p className="landing-body px-3 py-6 text-center text-[#99A0AE]">
-            Noch keine Agenten
+            Noch keine Assistenten
           </p>
         ) : (
           <ul className="divide-y divide-[#E1E4EA]">

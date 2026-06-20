@@ -47,11 +47,11 @@ export function AgentList({
   return (
     <div className="w-full overflow-hidden rounded-[18px] border border-stroke bg-white shadow-[0_8px_32px_-12px_rgba(20,36,46,0.12)]">
       <div className="flex items-center justify-between border-b border-stroke px-4 py-3">
-        <span className="text-[14px] font-medium text-navy">Agenten</span>
+        <span className="text-[14px] font-medium text-navy">Assistenten</span>
         <button
           type="button"
           onClick={onCreateNew}
-          aria-label="Neuer Agent"
+          aria-label="Neuer Assistent"
           className="flex h-8 w-8 items-center justify-center rounded-full text-navy transition-colors hover:bg-bg"
         >
           <Plus className="h-4 w-4" strokeWidth={1.75} />
@@ -64,10 +64,10 @@ export function AgentList({
           onClick={onCreateNew}
           className="w-full px-4 py-8 text-[13px] text-text-muted transition-colors hover:text-text"
         >
-          + Agent erstellen
+          + Assistent erstellen
         </button>
       ) : (
-        <ul className="divide-y divide-stroke" role="radiogroup" aria-label="Aktiver Agent">
+        <ul className="divide-y divide-stroke" role="radiogroup" aria-label="Aktiver Assistent">
           {agents.map((agent) => {
             const isActive = activeAgentId === agent.id;
             const isSelected = selectedAgentId === agent.id;

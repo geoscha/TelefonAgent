@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 
 import {
@@ -15,6 +15,16 @@ import {
 } from "@/components/user/user-styles";
 import { cn } from "@/lib/utils";
 import { useVoicePreview } from "@/lib/hooks/useVoicePreview";
+import { normalizeAgentLanguage } from "@/lib/elevenlabs/agent-config";
+import {
+  greetingForAssistantName,
+  shouldAutoRenameAssistant,
+} from "@/lib/elevenlabs/assistant-names";
+import {
+  ASSISTANT_BRANCH_OPTIONS,
+  assistantBranchLabel,
+  type AssistantBranchId,
+} from "@/lib/assistant-branch";
 
 import type { BusinessHoursSchedule } from "@/lib/integrations/business-hours";
 
@@ -27,25 +37,25 @@ export type AgentWizardDraft = {
   language: string;
   website?: string;
   businessHours?: BusinessHoursSchedule;
+  assistantBranch: AssistantBranchId;
 };
 
 interface VoiceOption {
   id: string;
   name: string;
+  displayName?: string;
   language: string;
 }
 
 type Step =
   | "branche"
   | "website"
-  | "ziel"
   | "gender"
   | "language"
   | "generating"
   | "review_name"
   | "review_voice"
-  | "review_greeting"
-  | "review_prompt";
+  | "review_greeting";
 
 interface AgentCreateWizardProps {
   onClose: () => void;
@@ -56,18 +66,7 @@ interface AgentCreateWizardProps {
 }
 
 const fieldClass =
-  "landing-body landing-radius-sm w-full border border-[#E1E4EA] bg-white px-3 py-2 text-[#0E121B] placeholder:text-[#99A0AE] focus:border-[#335cff] focus:outline-none focus:ring-2 focus:ring-[#335cff]/20";
-
-const textareaClass = cn(fieldClass, "min-h-[88px] resize-y");
-
-const textareaSubmitOnKeyDown = (
-  e: KeyboardEvent<HTMLTextAreaElement>
-) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    e.currentTarget.form?.requestSubmit();
-  }
-};
+  "landing-body landing-radius-sm h-10 w-full border border-[#E1E4EA] bg-white px-3 py-2 text-[#0E121B] placeholder:text-[#99A0AE] focus:border-[#335cff] focus:outline-none focus:ring-2 focus:ring-[#335cff]/20";
 
 export function AgentCreateWizard({
   onClose,
@@ -84,9 +83,9 @@ export function AgentCreateWizard({
   }
 
   const [step, setStep] = useState<Step>("branche");
-  const [industry, setIndustry] = useState("");
+  const [assistantBranch, setAssistantBranch] =
+    useState<AssistantBranchId>("private_assistant");
   const [website, setWebsite] = useState("");
-  const [goal, setGoal] = useState("");
   const [gender, setGender] = useState<"male" | "female">("female");
   const [language, setLanguage] = useState<"Deutsch" | "Schweizerdeutsch">(
     "Deutsch"
@@ -94,7 +93,19 @@ export function AgentCreateWizard({
   const [error, setError] = useState<string | null>(null);
   const [aiHint, setAiHint] = useState<string | null>(null);
   const [draft, setDraft] = useState<AgentWizardDraft | null>(null);
+  const nameIsAutoRef = useRef(true);
   const { previewVoice } = useVoicePreview();
+
+  function advanceAfterBranche() {
+    if (assistantBranch === "private_assistant") {
+      setWebsite("");
+      setStep("gender");
+      demoGoTo("agent_gender");
+      return;
+    }
+    setStep("website");
+    demoGoTo("agent_website");
+  }
 
   useEffect(() => {
     if (demoActive) demo?.goToSubStep("agent_branche");
@@ -104,14 +115,12 @@ export function AgentCreateWizard({
   const titles: Record<Step, string> = {
     branche: "Branche",
     website: "Website",
-    ziel: "Ziel",
     gender: "Stimme",
     language: "Sprache",
-    generating: "Agent wird erstellt…",
+    generating: "Assistent wird erstellt…",
     review_name: "Name",
     review_voice: "Stimme wählen",
     review_greeting: "Begrüssung",
-    review_prompt: "Anweisungen",
   };
 
   async function generate() {
@@ -123,7 +132,13 @@ export function AgentCreateWizard({
       const res = await fetch("/api/elevenlabs/agent/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ industry, website, goal, gender, language }),
+        body: JSON.stringify({
+          branch: assistantBranch,
+          website:
+            assistantBranch === "coiffeur" ? website.trim() || undefined : undefined,
+          gender,
+          language,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -134,6 +149,7 @@ export function AgentCreateWizard({
 
       const next = data.draft as AgentWizardDraft;
       setDraft(next);
+      nameIsAutoRef.current = true;
 
       const meta = data.meta as {
         aiGenerated?: boolean;
@@ -161,15 +177,35 @@ export function AgentCreateWizard({
 
   function handleVoicePick(voiceId: string) {
     const picked = voices.find((v) => v.id === voiceId);
-    updateDraft({
+    const displayName = picked?.displayName ?? picked?.name ?? "";
+    const previousDisplayName = voices.find((v) => v.id === draft?.voiceId)
+      ?.displayName;
+
+    const patch: Partial<AgentWizardDraft> = {
       voiceId,
       voiceName: picked?.name,
       language: picked?.language ?? draft?.language,
-    });
+    };
+
+    if (
+      draft &&
+      shouldAutoRenameAssistant(draft.name, previousDisplayName)
+    ) {
+      patch.name = displayName;
+      patch.greeting = greetingForAssistantName(
+        displayName,
+        normalizeAgentLanguage(draft.language ?? language),
+        assistantBranchLabel(assistantBranch)
+      );
+      nameIsAutoRef.current = true;
+    }
+
+    updateDraft(patch);
+
     if (picked) {
       void previewVoice(
         picked.id,
-        picked.name,
+        displayName,
         picked.language ?? draft?.language ?? language
       );
     }
@@ -180,19 +216,19 @@ export function AgentCreateWizard({
     await onSave({
       ...draft,
       website: website.trim() || undefined,
+      assistantBranch,
     });
   }
 
   function goBack() {
     const prev: Partial<Record<Step, Step>> = {
       website: "branche",
-      ziel: "website",
-      gender: "ziel",
+      gender:
+        assistantBranch === "coiffeur" ? "website" : "branche",
       language: "gender",
       review_name: "language",
       review_voice: "review_name",
       review_greeting: "review_voice",
-      review_prompt: "review_greeting",
     };
     const target = prev[step];
     if (target) setStep(target);
@@ -219,24 +255,23 @@ export function AgentCreateWizard({
 
       <div className="flex min-h-0 flex-1 flex-col px-5 py-5 sm:px-6 sm:py-6">
         {step === "branche" && (
-          <StepBody
-            onSubmit={() => {
-              setStep("website");
-              demoGoTo("agent_website");
-            }}
-            submitDisabled={!industry.trim()}
-          >
-            <FieldRow
-              label="In welcher Branche sind Sie tätig?"
-              nextDisabled={!industry.trim()}
-            >
-              <input
+          <StepBody onSubmit={advanceAfterBranche}>
+            <FieldRow label="Branche">
+              <select
                 autoFocus
                 data-setup-demo="setup-demo-agent-branche"
-                value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
+                value={assistantBranch}
+                onChange={(e) =>
+                  setAssistantBranch(e.target.value as AssistantBranchId)
+                }
                 className={fieldClass}
-              />
+              >
+                {ASSISTANT_BRANCH_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </FieldRow>
             <StepFooter />
           </StepBody>
@@ -245,8 +280,8 @@ export function AgentCreateWizard({
         {step === "website" && (
           <StepBody
             onSubmit={() => {
-              setStep("ziel");
-              demoGoTo("agent_ziel");
+              setStep("gender");
+              demoGoTo("agent_gender");
             }}
           >
             <FieldRow label="Website (optional)">
@@ -264,41 +299,10 @@ export function AgentCreateWizard({
                 secondaryLabel="Überspringen"
                 onSecondary={() => {
                   setWebsite("");
-                  setStep("ziel");
-                  demoGoTo("agent_ziel");
+                  setStep("gender");
+                  demoGoTo("agent_gender");
                 }}
               />
-            </StepFooter>
-          </StepBody>
-        )}
-
-        {step === "ziel" && (
-          <StepBody
-            onSubmit={() => {
-              setStep("gender");
-              demoGoTo("agent_gender");
-            }}
-            submitDisabled={!goal.trim()}
-            grow
-          >
-            <FieldRow
-              label="Wofür soll der Agent eingesetzt werden?"
-              align="start"
-              nextDisabled={!goal.trim()}
-              grow
-            >
-              <textarea
-                autoFocus
-                data-setup-demo="setup-demo-agent-ziel"
-                value={goal}
-                onChange={(e) => setGoal(e.target.value)}
-                onKeyDown={textareaSubmitOnKeyDown}
-                rows={4}
-                className={cn(textareaClass, "min-h-[6.5rem]")}
-              />
-            </FieldRow>
-            <StepFooter>
-              <SecondaryStepActions onBack={goBack} />
             </StepFooter>
           </StepBody>
         )}
@@ -337,7 +341,7 @@ export function AgentCreateWizard({
           <StepBody onSubmit={generate}>
             <FieldRow
               label="Sprache"
-              nextLabel="Agent erstellen"
+              nextLabel="Assistent erstellen"
               nextDataDemo="setup-demo-agent-language-create"
             >
               <div
@@ -376,7 +380,7 @@ export function AgentCreateWizard({
             <p className={userLabelClass}>
               {website.trim()
                 ? "Website wird analysiert…"
-                : "Agent wird vorbereitet…"}
+                : "Assistent wird vorbereitet…"}
             </p>
           </div>
         )}
@@ -393,14 +397,17 @@ export function AgentCreateWizard({
               <p className={cn(userLabelClass, "mb-2")}>{aiHint}</p>
             )}
             <FieldRow
-              label="Name des Agenten"
+              label="Name des Assistenten"
               nextDisabled={!draft.name.trim()}
             >
               <input
                 autoFocus
                 data-setup-demo="setup-demo-agent-review-name"
                 value={draft.name}
-                onChange={(e) => updateDraft({ name: e.target.value })}
+                onChange={(e) => {
+                  nameIsAutoRef.current = false;
+                  updateDraft({ name: e.target.value });
+                }}
                 className={fieldClass}
               />
             </FieldRow>
@@ -433,7 +440,7 @@ export function AgentCreateWizard({
                       key={voice.id}
                       active={draft.voiceId === voice.id}
                       onClick={() => handleVoicePick(voice.id)}
-                      label={voice.name.split(" ")[0]}
+                      label={voice.displayName ?? voice.name}
                     />
                   ))}
                 </div>
@@ -447,34 +454,6 @@ export function AgentCreateWizard({
 
         {step === "review_greeting" && draft && (
           <StepBody
-            onSubmit={() => setStep("review_prompt")}
-            submitDisabled={!draft.greeting.trim()}
-            grow
-          >
-            <FieldRow
-              label="Begrüssung"
-              align="start"
-              nextDisabled={!draft.greeting.trim()}
-              grow
-            >
-              <textarea
-                autoFocus
-                data-setup-demo="setup-demo-agent-review-greeting"
-                value={draft.greeting}
-                onChange={(e) => updateDraft({ greeting: e.target.value })}
-                onKeyDown={textareaSubmitOnKeyDown}
-                rows={4}
-                className={cn(textareaClass, "min-h-[6.5rem]")}
-              />
-            </FieldRow>
-            <StepFooter>
-              <SecondaryStepActions onBack={goBack} />
-            </StepFooter>
-          </StepBody>
-        )}
-
-        {step === "review_prompt" && draft && (
-          <StepBody
             onSubmit={handleSave}
             submitDisabled={
               saving ||
@@ -482,12 +461,10 @@ export function AgentCreateWizard({
               !draft.name.trim() ||
               !draft.greeting.trim()
             }
-            grow
           >
             <FieldRow
-              label="Anweisungen für den Agenten"
-              align="start"
-              nextLabel="Agent speichern"
+              label="Begrüssung"
+              nextLabel="Assistent speichern"
               nextDisabled={
                 saving ||
                 !draft.voiceId ||
@@ -496,18 +473,13 @@ export function AgentCreateWizard({
               }
               nextLoading={saving}
               nextDataDemo="setup-demo-agent-review-save"
-              grow
             >
-              <textarea
+              <input
                 autoFocus
-                value={draft.systemPrompt}
-                onChange={(e) => updateDraft({ systemPrompt: e.target.value })}
-                onKeyDown={textareaSubmitOnKeyDown}
-                rows={10}
-                className={cn(
-                  textareaClass,
-                  "min-h-[12rem] flex-1 font-mono text-[13px]"
-                )}
+                data-setup-demo="setup-demo-agent-review-greeting"
+                value={draft.greeting}
+                onChange={(e) => updateDraft({ greeting: e.target.value })}
+                className={fieldClass}
               />
             </FieldRow>
             <StepFooter>
@@ -608,7 +580,7 @@ function FieldRow({
           disabled={nextDisabled || nextLoading}
           className={cn(
             landingBtnPrimary,
-            "h-10 shrink-0 whitespace-nowrap px-4",
+            "h-10 shrink-0 self-center whitespace-nowrap px-4",
             nextLabel.length > 8 ? "min-w-[8.75rem]" : "min-w-[5.5rem]"
           )}
         >

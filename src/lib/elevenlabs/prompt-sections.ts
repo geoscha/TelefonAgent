@@ -46,7 +46,6 @@ export const PROMPT_SECTION_FIELDS: {
   { key: "eskalation", label: "Eskalation", rows: 3 },
   { key: "abschluss", label: "Abschluss", rows: 3 },
   { key: "branche", label: "Branche", rows: 2 },
-  { key: "ziel", label: "Ziel", rows: 2 },
   { key: "sonstiges", label: "Weitere Anweisungen", rows: 3 },
 ];
 

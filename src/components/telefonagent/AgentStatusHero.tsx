@@ -33,7 +33,7 @@ export function AgentStatusHero({
         aria-hidden
       />
       <div>
-        <p className={userLabelClass}>Agent aktiv</p>
+        <p className={userLabelClass}>Assistent aktiv</p>
         <p className={`${userTitleClass} mt-0.5`}>Telefonagent ist live</p>
         {phoneNumber && (
           <p className={`${userLabelClass} mt-1 tabular-nums`}>{phoneNumber}</p>

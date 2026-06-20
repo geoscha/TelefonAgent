@@ -9,6 +9,7 @@ import {
   ensureSingleCalendarConnection,
 } from "@/lib/calendar";
 import { upsertCalendar, type CalendarProvider } from "@/lib/store";
+import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,14 @@ export async function GET(
         error: `${provider === "google" ? "Google" : "Microsoft"} ist noch nicht konfiguriert.`,
       },
       { status: 503 }
+    );
+  }
+
+  try {
+    await requireUserId();
+  } catch {
+    return NextResponse.redirect(
+      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/login?next=/integrationen`
     );
   }
 

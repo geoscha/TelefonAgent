@@ -95,6 +95,7 @@ export interface FinanceDashboardData {
     };
   };
   series: FinanceTimePoint[];
+  weekSeries: FinanceTimePoint[];
 }
 
 function chf(value: number, decimals = 0): string {
@@ -120,6 +121,28 @@ const SLICE_COLORS: Record<string, string> = {
   openai: "#10b981",
 };
 
+type ChartRange = "week" | "month";
+
+function buildChartSeries(points: FinanceTimePoint[]) {
+  return [
+    {
+      key: "profit",
+      label: "Ergebnis",
+      color: "#16a34a",
+      values: points.map((p) => p.profitChf),
+    },
+  ];
+}
+
+function dayTooltipLabel(point: FinanceTimePoint): string {
+  const date = new Date(`${point.month}T12:00:00`);
+  return date.toLocaleDateString("de-CH", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  });
+}
+
 export function FinanceExecutiveDashboard({
   data,
   loading,
@@ -128,6 +151,7 @@ export function FinanceExecutiveDashboard({
   loading?: boolean;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [chartRange, setChartRange] = useState<ChartRange>("month");
   const k = data.kpis;
 
   const briefing = useMemo(
@@ -154,27 +178,10 @@ export function FinanceExecutiveDashboard({
     [data.integrations.stripeConfigured, k]
   );
 
-  const chartLabels = data.series.map((p) => p.label);
-  const chartSeries = [
-    {
-      key: "revenue",
-      label: "Umsatz",
-      color: "#335cff",
-      values: data.series.map((p) => p.revenueChf),
-    },
-    {
-      key: "cost",
-      label: "Kosten",
-      color: "#ef4444",
-      values: data.series.map((p) => p.costChf),
-    },
-    {
-      key: "profit",
-      label: "Ergebnis",
-      color: "#16a34a",
-      values: data.series.map((p) => p.profitChf),
-    },
-  ];
+  const activePoints =
+    chartRange === "week" ? (data.weekSeries ?? []) : data.series;
+  const chartLabels = activePoints.map((p) => p.label);
+  const chartSeries = buildChartSeries(activePoints);
 
   const profitPositive = k.monthlyProfitChf >= 0;
 
@@ -328,7 +335,25 @@ export function FinanceExecutiveDashboard({
       </section>
 
       <section className={`${adminPanelClass} p-4`}>
-        <p className="mb-3 landing-caption text-[#525866]">12 Monate</p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="landing-caption text-[#525866]">
+            {chartRange === "week" ? "Letzte 7 Tage" : "12 Monate"}
+          </p>
+          <div className="inline-flex rounded-lg border border-[#E1E4EA] bg-[#F5F7FA] p-0.5">
+            <ChartRangeButton
+              active={chartRange === "week"}
+              onClick={() => setChartRange("week")}
+            >
+              Woche
+            </ChartRangeButton>
+            <ChartRangeButton
+              active={chartRange === "month"}
+              onClick={() => setChartRange("month")}
+            >
+              Monat
+            </ChartRangeButton>
+          </div>
+        </div>
         <FinanceChart
           labels={chartLabels}
           series={chartSeries}
@@ -337,6 +362,25 @@ export function FinanceExecutiveDashboard({
             if (key === "profit" && n < 0) return `−${chf(Math.abs(n))}`;
             return chf(n);
           }}
+          extraTooltip={
+            chartRange === "week"
+              ? (index) => {
+                  const point = activePoints[index];
+                  if (!point) return [];
+                  return [
+                    { label: "Datum", value: dayTooltipLabel(point) },
+                    { label: "Anrufe", value: String(point.calls) },
+                    { label: "Neukunden", value: String(point.newSignups) },
+                    { label: "Twilio", value: chf(point.twilioCostChf, 2) },
+                    {
+                      label: "ElevenLabs",
+                      value: chf(point.elevenLabsCostChf, 2),
+                    },
+                    { label: "OpenAI", value: chf(point.openAiCostChf, 2) },
+                  ];
+                }
+              : undefined
+          }
         />
       </section>
 
@@ -423,6 +467,31 @@ export function FinanceExecutiveDashboard({
         )}
       </section>
     </div>
+  );
+}
+
+function ChartRangeButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-md px-3 py-1.5 landing-caption transition-colors",
+        active
+          ? "bg-white text-[#0E121B] shadow-sm"
+          : "text-[#525866] hover:text-[#0E121B]"
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

@@ -29,7 +29,7 @@ export function DeleteCallButton({
 
   async function deleteCall() {
     const confirmed = window.confirm(
-      "Diesen Anruf wirklich aus dem Verlauf löschen? Das kann nicht rückgängig gemacht werden."
+      "Diesen Anruf wirklich aus den Anrufen löschen? Das kann nicht rückgängig gemacht werden."
     );
     if (!confirmed) return;
 

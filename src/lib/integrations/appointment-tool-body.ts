@@ -20,7 +20,7 @@ export interface AppointmentToolBody {
   eventUrl?: string;
 }
 
-const TOOL_NAME_TO_ACTION: Record<string, AppointmentToolBody["action"]> = {
+export const TOOL_NAME_TO_ACTION: Record<string, AppointmentToolBody["action"]> = {
   check_availability: "check_availability",
   book_appointment: "book_appointment",
   find_appointments: "find_appointments",

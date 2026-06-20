@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { normalizeAssistantBranch, assistantBranchLabel } from "@/lib/assistant-branch";
+import {
+  greetingForAssistantName,
+  suggestAssistantName,
+} from "@/lib/elevenlabs/assistant-names";
 import {
   generateAgentDraft,
   type GenerateAgentInput,
@@ -23,23 +28,27 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
+      branch?: string;
       industry?: string;
       website?: string;
-      goal?: string;
       gender?: string;
       language?: string;
       keepVoice?: boolean;
     };
 
+    const branch = normalizeAssistantBranch(body.branch);
     const industry = body.industry?.trim();
-    const goal =
-      body.goal?.trim() ||
-      "Anrufe professionell entgegennehmen, Anliegen aufnehmen und bei Bedarf weiterleiten.";
-    if (!industry) {
-      return NextResponse.json(
-        { ok: false, error: "Bitte Branche angeben." },
-        { status: 400 }
-      );
+    if (!body.branch && industry) {
+      const lowered = industry.toLowerCase();
+      if (lowered.includes("coiff") || lowered.includes("salon")) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Bitte Branche aus der Liste wählen.",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const gender: AgentVoiceGender =
@@ -48,9 +57,8 @@ export async function POST(req: NextRequest) {
     const keepVoice = Boolean(body.keepVoice);
 
     const input: GenerateAgentInput = {
-      industry,
+      branch,
       website: body.website?.trim() || undefined,
-      goal,
       gender,
       language,
     };
@@ -59,6 +67,7 @@ export async function POST(req: NextRequest) {
 
     let voiceId: string | undefined;
     let voiceName: string | undefined;
+    let displayName = suggestAssistantName(gender);
 
     if (!keepVoice) {
       const client = getElevenLabsClient();
@@ -68,7 +77,9 @@ export async function POST(req: NextRequest) {
       const rawVoices = voiceRes.voices ?? [];
       voiceId = pickAgentVoiceId(rawVoices, gender, language);
       const catalog = filterAgentVoices(rawVoices);
-      voiceName = catalog.find((v) => v.id === voiceId)?.name;
+      const picked = catalog.find((v) => v.id === voiceId);
+      voiceName = picked?.name;
+      displayName = picked?.displayName ?? displayName;
 
       if (!voiceId) {
         return NextResponse.json(
@@ -78,10 +89,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const resolvedName = displayName;
+    const resolvedGreeting = greetingForAssistantName(
+      resolvedName,
+      language,
+      assistantBranchLabel(branch)
+    );
+
     return NextResponse.json({
       ok: true,
       draft: {
         ...draft,
+        name: resolvedName,
+        greeting: resolvedGreeting,
         ...(voiceId ? { voiceId, voiceName } : {}),
       },
       meta: {

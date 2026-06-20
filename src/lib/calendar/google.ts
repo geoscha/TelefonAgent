@@ -31,7 +31,7 @@ export function googleAuthUrl(state: string): string {
     scope: SCOPES.join(" "),
     access_type: "offline",
     include_granted_scopes: "true",
-    prompt: "consent",
+    prompt: "select_account consent",
     state,
   });
   return `${AUTH_URL}?${params.toString()}`;

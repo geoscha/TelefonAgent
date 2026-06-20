@@ -9,6 +9,7 @@ import {
   landingBtnSecondary,
 } from "@/components/landing/landing-buttons";
 import type { AgentWizardDraft } from "@/components/telefonagent/AgentCreateWizard";
+import { AgentCapabilityLogos } from "@/components/telefonagent/AgentCapabilityLogos";
 import { AgentIntegrationsSection } from "@/components/telefonagent/AgentIntegrationsSection";
 import { AgentTestChat } from "@/components/telefonagent/AgentTestChat";
 import { AgentDetailSection } from "@/components/telefonagent/AgentDetailSection";
@@ -23,6 +24,10 @@ import {
   formatAgentUsageDuration,
   formatGreetingPreviewCostLabel,
 } from "@/lib/billing/quota-display";
+import {
+  greetingForAssistantName,
+  shouldAutoRenameAssistant,
+} from "@/lib/elevenlabs/assistant-names";
 import { applyEuComplianceGreeting } from "@/lib/elevenlabs/compliance";
 import {
   composeSystemPrompt,
@@ -31,6 +36,12 @@ import {
   parseSystemPrompt,
 } from "@/lib/elevenlabs/prompt-sections";
 import type { StoredAgent } from "@/lib/onboarding-types";
+import {
+  ASSISTANT_BRANCH_OPTIONS,
+  assistantBranchLabel,
+  inferAssistantBranch,
+  type AssistantBranchId,
+} from "@/lib/assistant-branch";
 import { cn } from "@/lib/utils";
 import { useVoicePreview } from "@/lib/hooks/useVoicePreview";
 import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
@@ -38,6 +49,7 @@ import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
 interface VoiceOption {
   id: string;
   name: string;
+  displayName?: string;
   language: string;
 }
 
@@ -144,7 +156,7 @@ function AgentReachability({
   if (!isActive) {
     return (
       <p className="text-[12px] text-[#99A0AE]">
-        Agent ist inaktiv und nimmt keine Anrufe entgegen.
+        Assistent ist inaktiv und nimmt keine Anrufe entgegen.
       </p>
     );
   }
@@ -257,16 +269,16 @@ export function AgentDetailPanel({
     Boolean(agent.euComplianceEnabled)
   );
   const [website, setWebsite] = useState(agent.website ?? "");
-  const [branche, setBranche] = useState(
-    () => parseSystemPrompt(agent.systemPrompt).branche
-  );
-  const [ziel, setZiel] = useState(
-    () => parseSystemPrompt(agent.systemPrompt).ziel
+  const [assistantBranch, setAssistantBranch] = useState<AssistantBranchId>(() =>
+    inferAssistantBranch(agent)
   );
   const [aiLoading, setAiLoading] = useState(false);
   const [usageSeconds, setUsageSeconds] = useState<number | null>(null);
   const [usageLoading, setUsageLoading] = useState(true);
   const [greetingPreviewLoading, setGreetingPreviewLoading] = useState(false);
+  const nameIsAutoRef = useRef(
+    shouldAutoRenameAssistant(agent.name, agent.voiceName)
+  );
   const { previewVoice } = useVoicePreview();
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -288,9 +300,12 @@ export function AgentDetailPanel({
     setSystemPrompt(agent.systemPrompt);
     setEuComplianceEnabled(Boolean(agent.euComplianceEnabled));
     setWebsite(agent.website ?? "");
-    const parsed = parseSystemPrompt(agent.systemPrompt);
-    setBranche(parsed.branche);
-    setZiel(parsed.ziel);
+    setAssistantBranch(inferAssistantBranch(agent));
+    nameIsAutoRef.current = shouldAutoRenameAssistant(
+      agent.name,
+      voices.find((voice) => voice.id === agent.voiceId)?.displayName ??
+        agent.voiceName
+    );
     latestDraft.current = {
       name: agent.name,
       greeting: agent.greeting,
@@ -355,6 +370,7 @@ export function AgentDetailPanel({
 
   function handleNameChange(value: string) {
     setName(value);
+    nameIsAutoRef.current = false;
     scheduleSave({ name: value });
   }
 
@@ -365,22 +381,43 @@ export function AgentDetailPanel({
 
   function handleVoiceChange(nextVoiceId: string) {
     const picked = voices.find((v) => v.id === nextVoiceId);
+    const previous = voices.find((v) => v.id === voiceId);
+    const displayName = picked?.displayName ?? picked?.name ?? "Stimme";
     setVoiceId(nextVoiceId);
-    scheduleSave({
+
+    const patch: AgentDetailUpdate = {
       voiceId: nextVoiceId,
       voiceName: picked?.name,
       language: picked?.language ?? agent.language,
-    });
+    };
+
+    if (shouldAutoRenameAssistant(name, previous?.displayName)) {
+      const nextName = displayName;
+      const nextGreeting = greetingForAssistantName(
+        nextName,
+        (picked?.language ?? agent.language) as "Deutsch" | "Schweizerdeutsch",
+        assistantBranchLabel(assistantBranch)
+      );
+      setName(nextName);
+      setGreeting(nextGreeting);
+      patch.name = nextName;
+      patch.greeting = nextGreeting;
+      nameIsAutoRef.current = true;
+    }
+
+    scheduleSave(patch);
+
     if (picked) {
-      void previewVoice(picked.id, picked.name, picked.language ?? agent.language);
+      void previewVoice(
+        picked.id,
+        displayName,
+        picked.language ?? agent.language
+      );
     }
   }
 
   function handleSystemPromptChange(value: string) {
     setSystemPrompt(value);
-    const parsed = parseSystemPrompt(value);
-    setBranche(parsed.branche);
-    setZiel(parsed.ziel);
     scheduleSave({ systemPrompt: value });
   }
 
@@ -389,34 +426,28 @@ export function AgentDetailPanel({
     scheduleSave({ website: value });
   }
 
-  function handleBrancheChange(value: string) {
-    setBranche(value);
-    patchSystemPrompt({ branche: value });
-  }
-
-  function handleZielChange(value: string) {
-    setZiel(value);
-    patchSystemPrompt({ ziel: value });
+  function handleBranchChange(branch: AssistantBranchId) {
+    setAssistantBranch(branch);
+    const label = assistantBranchLabel(branch);
+    const nextPrompt = patchSystemPrompt({ branche: label, ziel: "" });
+    scheduleSave(
+      {
+        assistantBranch: branch,
+        systemPrompt: nextPrompt,
+      },
+      true
+    );
   }
 
   async function handleAiFill() {
-    const industry = branche.trim() || name.trim();
-    if (!industry) {
-      toast.error("Bitte zuerst eine Branche angeben.");
-      return;
-    }
-
     setAiLoading(true);
     try {
       const res = await fetch("/api/elevenlabs/agent/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          industry,
+          branch: assistantBranch,
           website: website.trim() || undefined,
-          goal:
-            ziel.trim() ||
-            "Anrufe professionell entgegennehmen, Anliegen aufnehmen und bei Bedarf weiterleiten.",
           gender: "female",
           language: agent.language,
           keepVoice: true,
@@ -442,8 +473,6 @@ export function AgentDetailPanel({
       setName(draft.name);
       setGreeting(draft.greeting);
       setSystemPrompt(composed);
-      setBranche(parsed.branche);
-      setZiel(parsed.ziel);
 
       scheduleSave(
         {
@@ -483,7 +512,7 @@ export function AgentDetailPanel({
       if (!canActivateAgent) {
         toast.error("Keine Telefonnummer", {
           description:
-            "Richten Sie zuerst eine Nummer unter Telefonnummern ein, bevor Sie den Agenten aktivieren.",
+            "Richten Sie zuerst eine Nummer unter Telefonnummern ein, bevor Sie den Assistenten aktivieren.",
         });
         return;
       }
@@ -507,7 +536,7 @@ export function AgentDetailPanel({
     try {
       const result = await previewVoice(
         voiceId,
-        picked?.name ?? agent.voiceName ?? "Stimme",
+        picked?.displayName ?? picked?.name ?? agent.voiceName ?? "Stimme",
         picked?.language ?? agent.language,
         spokenGreeting
       );
@@ -542,9 +571,18 @@ export function AgentDetailPanel({
 
   const voiceOptions =
     voices.length > 0
-      ? voices
+      ? voices.map((voice) => ({
+          ...voice,
+          name: voice.displayName ?? voice.name,
+        }))
       : voiceId
-        ? [{ id: voiceId, name: agent.voiceName ?? "Stimme", language: agent.language }]
+        ? [
+            {
+              id: voiceId,
+              name: agent.name || agent.voiceName || "Stimme",
+              language: agent.language,
+            },
+          ]
         : [];
 
   return (
@@ -561,7 +599,7 @@ export function AgentDetailPanel({
               <input
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                aria-label="Agentenname"
+                aria-label="Assistentenname"
                 className={cn(
                   fieldClass,
                   "text-[18px] font-semibold leading-tight sm:text-[20px]"
@@ -591,18 +629,15 @@ export function AgentDetailPanel({
                 <Switch
                   checked={isActive}
                   onCheckedChange={handleActiveToggle}
-                  aria-label="Agent aktivieren oder deaktivieren"
+                  aria-label="Assistent aktivieren oder deaktivieren"
                   disabled={activating || (!isActive && !canActivateAgent)}
                 />
               </div>
 
-              <div className="flex min-w-0 items-baseline gap-2 border-[#E1E4EA] sm:border-l sm:pl-4">
-                <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-[#99A0AE]">
-                  Erreichbar
-                </span>
+              <div className="flex min-w-0 items-center border-[#E1E4EA] sm:border-l sm:pl-4">
                 <span
                   className={cn(
-                    "truncate font-mono text-[15px] font-semibold tabular-nums sm:text-[16px]",
+                    "truncate font-mono text-[20px] font-semibold tabular-nums sm:text-[22px]",
                     primaryAgentNumber ? "text-[#0E121B]" : "text-[#99A0AE]"
                   )}
                 >
@@ -618,11 +653,17 @@ export function AgentDetailPanel({
             </p>
           )}
 
-          <p className={cn(userStatClass, "mt-3")}>
-            {usageLoading
-              ? "…"
-              : formatAgentUsageDuration(usageSeconds ?? 0)}
-          </p>
+          <div className="mt-3 flex items-center justify-between gap-4">
+            <p className={cn(userStatClass, "min-w-0")}>
+              {usageLoading
+                ? "…"
+                : formatAgentUsageDuration(usageSeconds ?? 0)}
+            </p>
+            <AgentCapabilityLogos
+              agent={agent}
+              agentPhoneNumberId={selectedPhoneId || agent.phoneNumberId}
+            />
+          </div>
 
           <button
             type="button"
@@ -740,18 +781,19 @@ export function AgentDetailPanel({
           >
             <div className="grid gap-3 sm:grid-cols-2">
               <LabeledField label="Branche">
-                <input
-                  value={branche}
-                  onChange={(e) => handleBrancheChange(e.target.value)}
+                <select
+                  value={assistantBranch}
+                  onChange={(e) =>
+                    handleBranchChange(e.target.value as AssistantBranchId)
+                  }
                   className={fieldClass}
-                />
-              </LabeledField>
-              <LabeledField label="Ziel">
-                <input
-                  value={ziel}
-                  onChange={(e) => handleZielChange(e.target.value)}
-                  className={fieldClass}
-                />
+                >
+                  {ASSISTANT_BRANCH_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </LabeledField>
             </div>
 
@@ -824,7 +866,7 @@ export function AgentDetailPanel({
               ) : (
                 <Trash2 className="h-3.5 w-3.5 stroke-[1.5]" />
               )}
-              Agent löschen
+              Assistent löschen
             </button>
           </AgentDetailSection>
         </div>

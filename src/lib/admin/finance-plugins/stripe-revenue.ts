@@ -41,6 +41,11 @@ function monthKeyFromUnix(ts: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function dayKeyFromUnix(ts: number): string {
+  const d = new Date(ts * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 async function withStripeTimeout<T>(
   promise: Promise<T>,
   fallback: T
@@ -130,6 +135,71 @@ async function fetchChargesByMonth(
   }
 
   return totals;
+}
+
+/** Stripe charges grouped by calendar day (YYYY-MM-DD). */
+async function fetchChargesByDay(
+  stripe: Stripe,
+  rangeStart: Date,
+  rangeEnd: Date,
+  dayKeys: string[],
+  usdToChfRate: number
+): Promise<Record<string, number>> {
+  const totals = Object.fromEntries(dayKeys.map((k) => [k, 0])) as Record<
+    string,
+    number
+  >;
+  let startingAfter: string | undefined;
+
+  while (true) {
+    const page = await stripe.charges.list({
+      created: {
+        gte: Math.floor(rangeStart.getTime() / 1000),
+        lte: Math.floor(rangeEnd.getTime() / 1000),
+      },
+      limit: 100,
+      starting_after: startingAfter,
+    });
+
+    for (const charge of page.data) {
+      const key = dayKeyFromUnix(charge.created);
+      if (!(key in totals)) continue;
+      totals[key] += chargeRevenueChf(charge, usdToChfRate);
+    }
+
+    if (!page.has_more || page.data.length === 0) break;
+    startingAfter = page.data[page.data.length - 1]!.id;
+  }
+
+  return totals;
+}
+
+export async function fetchStripeChargesByDay(
+  config: FinanceIntegrationConfig,
+  dayKeys: string[]
+): Promise<Record<string, number>> {
+  if (!config.stripeSecretKey || dayKeys.length === 0) {
+    return Object.fromEntries(dayKeys.map((k) => [k, 0]));
+  }
+
+  const rangeStart = new Date(`${dayKeys[0]}T00:00:00`);
+  const rangeEnd = new Date(`${dayKeys[dayKeys.length - 1]}T23:59:59.999`);
+
+  try {
+    const stripe = new Stripe(config.stripeSecretKey);
+    return await withStripeTimeout(
+      fetchChargesByDay(
+        stripe,
+        rangeStart,
+        rangeEnd,
+        dayKeys,
+        config.usdToChfRate
+      ),
+      Object.fromEntries(dayKeys.map((k) => [k, 0]))
+    );
+  } catch {
+    return Object.fromEntries(dayKeys.map((k) => [k, 0]));
+  }
 }
 
 export function unconfiguredStripeSeries(

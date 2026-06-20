@@ -1,7 +1,9 @@
 "use client";
 
-import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { IntegrationLogoTile } from "@/components/integrations/IntegrationLogoTile";
+import { GoogleOAuthConnectDialog } from "@/components/integrations/GoogleOAuthConnectDialog";
+import { CALENDAR_LOGOS } from "@/lib/integrations/integration-logos";
+import { matchesIntegrationSearch } from "@/lib/integrations/search";
 import { ArrowRight, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,6 +32,7 @@ import {
   type CalendarProviderId,
 } from "@/lib/calendar/provider-meta";
 import { cn } from "@/lib/utils";
+import { useEffect, useMemo, useState } from "react";
 
 interface CalStatus {
   provider: CalendarProviderId;
@@ -47,11 +50,16 @@ const APPLE_LINKS = {
 
 export function CalendarIntegrations({
   layout = "compact",
+  bare = false,
+  searchQuery = "",
 }: {
   layout?: "compact" | "page";
+  bare?: boolean;
+  searchQuery?: string;
 }) {
   const [statuses, setStatuses] = useState<CalStatus[] | null>(null);
   const [appleDialogOpen, setAppleDialogOpen] = useState(false);
+  const [googleDialogOpen, setGoogleDialogOpen] = useState(false);
   const [switchTarget, setSwitchTarget] = useState<CalendarProviderId | null>(
     null
   );
@@ -147,6 +155,10 @@ export function CalendarIntegrations({
       setAppleDialogOpen(true);
       return;
     }
+    if (provider === "google") {
+      setGoogleDialogOpen(true);
+      return;
+    }
     startOAuthConnect(provider);
   }
 
@@ -158,6 +170,8 @@ export function CalendarIntegrations({
       setSwitchTarget(null);
       if (switchTarget === "apple") {
         setAppleDialogOpen(true);
+      } else if (switchTarget === "google") {
+        setGoogleDialogOpen(true);
       } else {
         startOAuthConnect(switchTarget);
       }
@@ -170,21 +184,69 @@ export function CalendarIntegrations({
     return <Skeleton className="h-48 w-full rounded" />;
   }
 
+  const filteredStatuses = sortedStatuses.filter((status) => {
+    const meta = PROVIDER_META[status.provider];
+    return matchesIntegrationSearch(searchQuery, {
+      category: "calendar",
+      id: status.provider,
+      name: meta.name,
+      description: meta.description,
+      extra: status.accountLabel,
+    });
+  });
+
+  const cards = filteredStatuses.map((status) => (
+    <ProviderCard
+      key={status.provider}
+      status={status}
+      isActive={status.provider === activeProvider}
+      busy={busyProvider === status.provider}
+      embedded={layout === "page"}
+      onConnect={() => requestConnect(status.provider)}
+      onDisconnect={() => void disconnect(status.provider)}
+    />
+  ));
+
+  if (filteredStatuses.length === 0) {
+    return (
+      <>
+        <SwitchCalendarDialog
+          open={switchTarget !== null}
+          currentProvider={activeProvider}
+          targetProvider={switchTarget}
+          busy={busyProvider !== null}
+          onCancel={() => setSwitchTarget(null)}
+          onConfirm={() => void confirmSwitch()}
+        />
+
+        <GoogleOAuthConnectDialog
+          kind="calendar"
+          open={googleDialogOpen}
+          onOpenChange={setGoogleDialogOpen}
+          connectHref="/api/integrations/google/connect"
+        />
+
+        <AppleConnectDialog
+          open={appleDialogOpen}
+          onOpenChange={setAppleDialogOpen}
+          onConnected={async () => {
+            setAppleDialogOpen(false);
+            await load();
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <>
-      <div className={cn("space-y-3", layout === "page" ? "w-full" : "max-w-md")}>
-        {sortedStatuses.map((status) => (
-          <ProviderCard
-            key={status.provider}
-            status={status}
-            isActive={status.provider === activeProvider}
-            busy={busyProvider === status.provider}
-            embedded={layout === "page"}
-            onConnect={() => requestConnect(status.provider)}
-            onDisconnect={() => void disconnect(status.provider)}
-          />
-        ))}
-      </div>
+      {bare ? (
+        cards
+      ) : (
+        <div className={cn("space-y-3", layout === "page" ? "w-full" : "max-w-md")}>
+          {cards}
+        </div>
+      )}
 
       <SwitchCalendarDialog
         open={switchTarget !== null}
@@ -193,6 +255,13 @@ export function CalendarIntegrations({
         busy={busyProvider !== null}
         onCancel={() => setSwitchTarget(null)}
         onConfirm={() => void confirmSwitch()}
+      />
+
+      <GoogleOAuthConnectDialog
+        kind="calendar"
+        open={googleDialogOpen}
+        onOpenChange={setGoogleDialogOpen}
+        connectHref="/api/integrations/google/connect"
       />
 
       <AppleConnectDialog
@@ -207,41 +276,17 @@ export function CalendarIntegrations({
   );
 }
 
-const PROVIDER_LOGOS: Record<
-  CalendarProviderId,
-  { src: string; width: number; height: number }
-> = {
-  google: {
-    src: "/integrations/google-calendar.png",
-    width: 960,
-    height: 960,
-  },
-  microsoft: {
-    src: "/integrations/microsoft-outlook.png",
-    width: 960,
-    height: 894,
-  },
-  apple: {
-    src: "/integrations/apple-calendar.png",
-    width: 814,
-    height: 1000,
-  },
-};
+const PROVIDER_LOGOS = CALENDAR_LOGOS;
 
 function ProviderLogo({ provider }: { provider: CalendarProviderId }) {
   const logo = PROVIDER_LOGOS[provider];
 
   return (
-    <Image
+    <IntegrationLogoTile
       src={logo.src}
-      alt=""
       width={logo.width}
       height={logo.height}
-      className={cn(
-        "h-7 w-auto object-contain",
-        provider === "apple" ? "opacity-55" : ""
-      )}
-      aria-hidden
+      fit="contain"
     />
   );
 }
@@ -279,9 +324,7 @@ function ProviderCard({
     >
       <div className={embedded ? undefined : "p-5 sm:p-6"}>
         <div className="flex w-full items-center gap-4 sm:gap-5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#E1E4EA]/80 bg-[#F5F7FA]/80">
-            <ProviderLogo provider={status.provider} />
-          </div>
+          <ProviderLogo provider={status.provider} />
           <div className="min-w-0 flex-1">
             <h3 className={userTitleClass}>{meta.name}</h3>
             <p className={`${userLabelClass} mt-1`}>{meta.description}</p>
@@ -293,7 +336,8 @@ function ProviderCard({
             ) : null}
             {unavailable ? (
               <p className="mt-2 text-[12px] text-[#99A0AE]">
-                Derzeit nicht verfügbar — OAuth-Zugangsdaten fehlen.
+                Derzeit nicht verfügbar — Google OAuth ist auf dieser Instanz
+                noch nicht eingerichtet.
               </p>
             ) : null}
           </div>

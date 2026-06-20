@@ -14,13 +14,12 @@ import {
   type CalendarAgentPermissions,
 } from "@/lib/integrations/calendar-agent-permissions";
 import {
-  APPOINTMENT_INDUSTRY_PRESETS,
   configFromPreset,
   DEFAULT_APPOINTMENT_CONFIG,
   normalizeAppointmentConfig,
   type AppointmentConfig,
-  type AppointmentIndustryPresetId,
 } from "@/lib/integrations/appointment-config";
+import { inferAssistantBranch } from "@/lib/assistant-branch";
 import type { StoredAgent } from "@/lib/onboarding-types";
 import {
   businessHoursFromSummaryStrings,
@@ -103,7 +102,8 @@ export function AgentIntegrationsSection({
     normalizeBusinessHours(agent.businessHours ?? DEFAULT_BUSINESS_HOURS)
   );
 
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const assistantBranch = inferAssistantBranch(agent);
+  const isCoiffeur = assistantBranch === "coiffeur";
 
   const loadStatus = useCallback(async () => {
     try {
@@ -152,11 +152,7 @@ export function AgentIntegrationsSection({
     );
   }, [agent.id, agent.calendarProvider, agent.appointmentBookingEnabled, agent.calendarPermissions, agent.appointmentConfig, agent.businessHours]);
 
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, []);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function persist(patch: {
     calendarProvider?: CalendarProvider | null;
@@ -190,6 +186,51 @@ export function AgentIntegrationsSection({
       setSaving(false);
     }
   }
+
+  useEffect(() => {
+    if (
+      !isCoiffeur ||
+      connectedCalendars.length === 0 ||
+      agent.appointmentBookingEnabled
+    ) {
+      return;
+    }
+
+    const provider = connectedCalendars[0]?.provider ?? null;
+    void (async () => {
+      setSaving(true);
+      try {
+        const res = await fetch("/api/elevenlabs/agent/integrations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId: agent.id,
+            appointmentBookingEnabled: true,
+            appointmentConfig: configFromPreset("beauty"),
+            ...(provider ? { calendarProvider: provider } : {}),
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.ok && data.agents) {
+          onAgentsChange?.(data.agents as StoredAgent[]);
+        }
+      } finally {
+        setSaving(false);
+      }
+    })();
+  }, [
+    agent.appointmentBookingEnabled,
+    agent.id,
+    connectedCalendars,
+    isCoiffeur,
+    onAgentsChange,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
 
   function schedulePermissionSave(patch: Partial<CalendarAgentPermissions>) {
     const nextPermissions = { ...permissions, ...patch };
@@ -232,31 +273,17 @@ export function AgentIntegrationsSection({
     }, 500);
   }
 
-  function handlePresetChange(presetId: AppointmentIndustryPresetId) {
-    const nextConfig = configFromPreset(presetId);
-    setAppointmentConfig(nextConfig);
-    void persist({ appointmentConfig: nextConfig });
-  }
-
-  async function handleBookingToggle(enabled: boolean) {
-    let provider = calendarProvider;
-    if (enabled && !provider && connectedCalendars.length > 0) {
-      provider = connectedCalendars[0].provider;
-      setCalendarProvider(provider);
-    }
-
-    setAppointmentBookingEnabled(enabled);
-    await persist({
-      appointmentBookingEnabled: enabled,
-      ...(provider ? { calendarProvider: provider } : {}),
-      ...(enabled && !agent.appointmentConfig
-        ? { appointmentConfig: DEFAULT_APPOINTMENT_CONFIG }
-        : {}),
-    });
-    toast.success(
-      enabled
-        ? "Terminvereinbarung für diesen Agenten aktiviert"
-        : "Terminvereinbarung für diesen Agenten deaktiviert"
+  if (!isCoiffeur) {
+    return (
+      <div className="rounded border border-[#E1E4EA] bg-[#FAFAFA] p-4">
+        <p className="text-[13px] font-medium text-[#0E121B]">
+          Keine Terminbuchung
+        </p>
+        <p className="mt-1 text-[12px] text-[#99A0AE]">
+          Für Terminvereinbarungen wählen Sie unter Inhalte die Branche
+          «Coiffeur Betrieb».
+        </p>
+      </div>
     );
   }
 
@@ -279,7 +306,7 @@ export function AgentIntegrationsSection({
             </p>
             <p className="mt-1 text-[12px] text-[#99A0AE]">
               Verbinden Sie z. B. Apple Kalender unter Integrationen, um Termine
-              pro Agent freizuschalten.
+              pro Assistent freizuschalten.
             </p>
             <Link
               href="/integrationen"
@@ -319,7 +346,7 @@ export function AgentIntegrationsSection({
           </p>
           <p className="truncate text-[11px] text-[#99A0AE]">
             {activeCalendar?.accountLabel ??
-              "Integration und Berechtigungen für diesen Agenten"}
+              "Integration und Berechtigungen für diesen Assistenten"}
           </p>
         </div>
         <ChevronDown
@@ -368,49 +395,13 @@ export function AgentIntegrationsSection({
             </p>
           ) : null}
 
-          <PermissionToggleRow
-            label="Termine durch den Agenten eintragen"
-            description="Dieser Agent darf Termine auf Namen buchen und — je nach Einstellung — stornieren."
-            checked={appointmentBookingEnabled}
-            disabled={saving || !activeProvider}
-            onCheckedChange={(checked) => void handleBookingToggle(checked)}
-            ariaLabel="Termine durch den Agenten eintragen"
-          />
+          <p className="text-[12px] text-[#525866]">
+            Terminvereinbarung ist für Coiffeur Betrieb aktiv. Der Assistent kann
+            Termine auf Namen buchen und — je nach Einstellung — stornieren.
+          </p>
 
           {appointmentBookingEnabled ? (
             <div className="space-y-3 rounded border border-[#E1E4EA] bg-[#FAFAFA] p-3">
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor={`agent-${agent.id}-industry-preset`}
-                  className="text-[12px] text-[#525866]"
-                >
-                  Branche
-                </Label>
-                <select
-                  id={`agent-${agent.id}-industry-preset`}
-                  value={appointmentConfig.industryPreset}
-                  disabled={saving}
-                  onChange={(event) =>
-                    handlePresetChange(
-                      event.target.value as AppointmentIndustryPresetId
-                    )
-                  }
-                  className="landing-body landing-radius-sm h-9 w-full border border-[#E1E4EA] bg-white px-3 text-[13px] text-[#0E121B] focus:border-[#335cff] focus:outline-none focus:ring-2 focus:ring-[#335cff]/20"
-                >
-                  {Object.values(APPOINTMENT_INDUSTRY_PRESETS).map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-[#99A0AE]">
-                  {
-                    APPOINTMENT_INDUSTRY_PRESETS[appointmentConfig.industryPreset]
-                      .description
-                  }
-                </p>
-              </div>
-
               <div className="space-y-1.5">
                 <Label
                   htmlFor={`agent-${agent.id}-allowed-callers`}
@@ -437,7 +428,7 @@ export function AgentIntegrationsSection({
                 </p>
                 <p className="text-[11px] text-[#99A0AE]">
                   Termine werden nur in diesen Zeiten eingetragen. Beim Erstellen
-                  des Agenten aus einer Website automatisch übernommen, falls
+                  des Assistenten aus einer Website automatisch übernommen, falls
                   erkannt.
                 </p>
                 <div className="space-y-1.5">
@@ -522,7 +513,7 @@ export function AgentIntegrationsSection({
 
               <PermissionToggleRow
                 label="Name des Anrufers erforderlich"
-                description="Der Agent fragt vor Buchung oder Storno nach dem Namen."
+                description="Der Assistent fragt vor Buchung oder Storno nach dem Namen."
                 checked={appointmentConfig.requireCallerName}
                 disabled={saving}
                 onCheckedChange={(checked) =>
@@ -584,7 +575,7 @@ export function AgentIntegrationsSection({
 
           <PermissionToggleRow
             label="Zugriff auf private Termine"
-            description="Der Agent darf private Kalendereinträge berücksichtigen."
+            description="Der Assistent darf private Kalendereinträge berücksichtigen."
             checked={permissions.allowPrivateEvents}
             disabled={saving}
             onCheckedChange={(checked) =>

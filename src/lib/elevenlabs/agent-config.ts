@@ -40,8 +40,8 @@ export type AgentLanguageLabel = (typeof AGENT_LANGUAGE_OPTIONS)[number]["value"
 export const ELEVENLABS_TTS_MODEL = "eleven_flash_v2_5";
 
 /**
- * Default LLM — gemini-2.5-flash balances cost and quality for phone agents.
- * (gemini-2.5-flash-lite is cheaper but weaker on multi-step property-management calls.)
+ * Default LLM for **voice/phone** agents on ElevenLabs only.
+ * Written channels (E-Mail, WhatsApp, Chat) use OpenAI via ENRICHMENT_API_KEY — see lib/text-assistant/.
  */
 export const ELEVENLABS_LLM_MODEL = "gemini-2.5-flash";
 
@@ -66,7 +66,7 @@ const BREVITY_INSTRUCTION_BLOCK = `# Antwortstil (Telefon)
 - available=true → **still** book_appointment aufrufen, dann EIN Satz Bestätigung, dann **sofort** end_call. Keine Ankündigung vor dem Tool-Aufruf.
 - Nach booked:true oder erfolgreicher Stornierung: ein kurzer Danke-Satz, dann **Pflicht** end_call — kein weiteres Gespräch.`;
 
-const CHAT_INSTRUCTION_BLOCK = `# Antwortstil (Chat-Test)
+export const CHAT_INSTRUCTION_BLOCK = `# Antwortstil (Chat-Test)
 - Schreibe vollständige Antworten — brich niemals mitten im Satz ab.
 - Bei Terminanfragen: check_availability ZUERST aufrufen, DANN das Ergebnis mitteilen.
 - Sage NIEMALS «ich prüfe» oder «einen Moment» bevor check_availability aufgerufen wurde.
@@ -327,9 +327,19 @@ export interface RawElevenLabsVoice {
   }[];
 }
 
+import {
+  normalizeVoiceGender,
+  suggestAssistantName,
+  type AssistantVoiceGender,
+} from "@/lib/elevenlabs/assistant-names";
+
 export interface AgentVoiceOption {
   id: string;
+  /** ElevenLabs voice label (internal). */
   name: string;
+  /** Altdeutscher Anzeigename passend zum Stimmgeschlecht. */
+  displayName: string;
+  gender: AssistantVoiceGender;
   language: string;
   swissGerman: boolean;
 }
@@ -379,20 +389,32 @@ export function voiceDisplayLanguage(v: RawElevenLabsVoice): string {
 export function filterAgentVoices(
   voices: RawElevenLabsVoice[]
 ): AgentVoiceOption[] {
-  return voices
-    .filter((v) => v.voiceId && v.name && voiceSupportsGerman(v))
-    .map((v) => ({
+  const eligible = voices.filter(
+    (v) => v.voiceId && v.name && voiceSupportsGerman(v)
+  );
+
+  let femaleIndex = 0;
+  let maleIndex = 0;
+
+  const mapped = eligible.map((v) => {
+    const gender = normalizeVoiceGender(v.labels?.gender);
+    const index = gender === "male" ? maleIndex++ : femaleIndex++;
+    return {
       id: v.voiceId as string,
       name: v.name as string,
+      displayName: suggestAssistantName(gender, index),
+      gender,
       language: voiceDisplayLanguage(v),
       swissGerman: voiceIsSwissGerman(v),
-    }))
-    .sort((a, b) => {
-      const score = (x: AgentVoiceOption) =>
-        (x.swissGerman ? 2 : 0) + (x.language === "Deutsch" ? 1 : 0);
-      const diff = score(b) - score(a);
-      return diff !== 0 ? diff : a.name.localeCompare(b.name, "de");
-    });
+    };
+  });
+
+  return mapped.sort((a, b) => {
+    const score = (x: AgentVoiceOption) =>
+      (x.swissGerman ? 2 : 0) + (x.language === "Deutsch" ? 1 : 0);
+    const diff = score(b) - score(a);
+    return diff !== 0 ? diff : a.displayName.localeCompare(b.displayName, "de");
+  });
 }
 
 export function pickDefaultAgentVoice(

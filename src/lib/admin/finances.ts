@@ -10,7 +10,7 @@ import {
   fetchOpenAiCosts,
   fetchOpenAiSpend,
 } from "@/lib/admin/finance-plugins/openai-costs";
-import { fetchStripeRevenue } from "@/lib/admin/finance-plugins/stripe-revenue";
+import { fetchStripeRevenue, fetchStripeChargesByDay } from "@/lib/admin/finance-plugins/stripe-revenue";
 import {
   fetchTwilioBalance,
   fetchTwilioCosts,
@@ -107,6 +107,7 @@ export interface FinanceDashboard {
     balances: FinanceProviderBalance;
   };
   series: FinanceTimePoint[];
+  weekSeries: FinanceTimePoint[];
 }
 
 interface ProfileRow {
@@ -134,6 +135,7 @@ export interface TokenSpendStats {
 }
 
 const MONTHS = 12;
+const WEEK_DAYS = 7;
 const RETENTION_DAYS = 30;
 
 export async function getAdminFinances(): Promise<FinanceDashboard> {
@@ -273,6 +275,23 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
     stripeRevenue.byMonth
   );
 
+  const weekDayStarts = buildRollingWeekStarts(now);
+  const weekDayKeys = weekDayStarts.map(dayKey);
+  const stripeByDay = await fetchStripeChargesByDay(integrations, weekDayKeys);
+  const weekSeries = buildWeekSeries(
+    profiles,
+    registry,
+    calls,
+    weekDayStarts,
+    estimatedNumberCostChf,
+    config.elevenLabsPerMinuteChf,
+    config.elevenLabsPlatformMonthlyChf,
+    twilioCosts.byMonth,
+    elevenLabsCosts.byMonth,
+    openAiCosts.byMonth,
+    stripeByDay
+  );
+
   const totalRevenue12mChf = series.reduce((s, p) => s + p.revenueChf, 0);
   const totalProfit12mChf = series.reduce((s, p) => s + p.profitChf, 0);
   const totalLoss12mChf = series.reduce((s, p) => s + p.costChf, 0);
@@ -400,6 +419,7 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
       },
     },
     series,
+    weekSeries,
   };
 }
 
@@ -545,6 +565,133 @@ function buildSeries(
   }
 
   return points;
+}
+
+function buildWeekSeries(
+  profiles: ProfileRow[],
+  registry: CustomerRegistryRow[],
+  calls: CallRow[],
+  dayStarts: Date[],
+  estimatedNumberCostChf: number,
+  elevenLabsPerMinuteChf: number,
+  elevenLabsPlatformMonthlyChf: number,
+  twilioByMonth: Record<string, ProviderCostResult>,
+  elevenLabsByMonth: Record<string, ProviderCostResult>,
+  openAiByMonth: Record<string, ProviderCostResult>,
+  stripeByDay: Record<string, number>
+): FinanceTimePoint[] {
+  const points: FinanceTimePoint[] = [];
+
+  for (const start of dayStarts) {
+    const end = dayEnd(start);
+    const key = dayKey(start);
+    const month = monthKey(start);
+    const daysInMonth = daysInCalendarMonth(start);
+
+    const monthProfiles = profiles.filter(
+      (p) => new Date(p.created_at) <= end
+    );
+    const proInMonth = monthProfiles.filter((p) => p.plan === "pro");
+
+    const dayCalls = calls.filter((c) => {
+      const d = new Date(c.started_at);
+      return d >= start && d <= end;
+    });
+    const callMinutes =
+      dayCalls.reduce((s, c) => s + (c.duration_seconds ?? 0), 0) / 60;
+
+    const revenueChf = stripeByDay[key] ?? 0;
+
+    const twilioApi = twilioByMonth[month];
+    const elApi = elevenLabsByMonth[month];
+    const openAiApi = openAiByMonth[month];
+
+    const twilioMonthlyChf =
+      twilioApi?.source === "api" && !twilioApi.error
+        ? twilioApi.amountChf
+        : estimatedNumberCostChf;
+    const twilioCostChf = twilioMonthlyChf / daysInMonth;
+
+    const elevenLabsMonthlyChf =
+      elApi?.source === "api" && !elApi.error && elApi.amountChf > 0
+        ? elApi.amountChf
+        : callMinutes * elevenLabsPerMinuteChf +
+          elevenLabsPlatformMonthlyChf;
+    const elevenLabsCostChf =
+      elApi?.source === "api" && !elApi.error && elApi.amountChf > 0
+        ? elevenLabsMonthlyChf / daysInMonth
+        : callMinutes * elevenLabsPerMinuteChf +
+          elevenLabsPlatformMonthlyChf / daysInMonth;
+
+    const openAiMonthlyChf =
+      openAiApi?.source === "api" && !openAiApi.error
+        ? openAiApi.amountChf
+        : 0;
+    const openAiCostChf = openAiMonthlyChf / daysInMonth;
+
+    const costChf = twilioCostChf + elevenLabsCostChf + openAiCostChf;
+
+    const newSignups = registry.filter((r) => {
+      const d = new Date(r.created_at);
+      return d >= start && d <= end;
+    }).length;
+
+    const totalSignupsInDay = registry.filter(
+      (r) => new Date(r.created_at) <= end
+    ).length;
+
+    const activeInDay = new Set(dayCalls.map((c) => c.user_id));
+    const retentionPct =
+      monthProfiles.length > 0
+        ? (activeInDay.size / monthProfiles.length) * 100
+        : 0;
+
+    points.push({
+      month: key,
+      label: start.toLocaleDateString("de-CH", {
+        weekday: "short",
+        day: "2-digit",
+      }),
+      revenueChf,
+      costChf,
+      profitChf: revenueChf - costChf,
+      twilioCostChf,
+      elevenLabsCostChf,
+      openAiCostChf,
+      calls: dayCalls.length,
+      newSignups,
+      totalSignups: totalSignupsInDay,
+      proUsers: proInMonth.length,
+      retentionPct,
+    });
+  }
+
+  return points;
+}
+
+function buildRollingWeekStarts(now: Date): Date[] {
+  const base = new Date(now);
+  base.setHours(0, 0, 0, 0);
+
+  return Array.from({ length: WEEK_DAYS }, (_, i) => {
+    const day = new Date(base);
+    day.setDate(day.getDate() - (WEEK_DAYS - 1 - i));
+    return day;
+  });
+}
+
+function dayEnd(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function daysInCalendarMonth(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
 }
 
 function median(values: number[]): number {

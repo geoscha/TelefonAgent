@@ -18,6 +18,7 @@ interface FinanceChartProps {
   formatValue?: (n: number, seriesKey?: string) => string;
   height?: number;
   emptyLabel?: string;
+  extraTooltip?: (index: number) => { label: string; value: string }[];
 }
 
 function smoothPath(pts: { x: number; y: number }[]): string {
@@ -58,6 +59,7 @@ export function FinanceChart({
   formatValue = (n) => String(Math.round(n)),
   height = 240,
   emptyLabel = "Noch keine Daten",
+  extraTooltip,
 }: FinanceChartProps) {
   const [width, setWidth] = useState(720);
   const [hover, setHover] = useState<number | null>(null);
@@ -99,6 +101,7 @@ export function FinanceChart({
     minVal < 0 && maxVal > 0 ? yAt(0) : null;
 
   const hasData = series.some((s) => s.values.some((v) => v !== 0));
+  const showAllLabels = labels.length <= 7;
 
   function handleMove(e: React.PointerEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -197,7 +200,7 @@ export function FinanceChart({
             )}
 
             {labels.map((label, i) =>
-              i % 2 === 0 || i === labels.length - 1 ? (
+              showAllLabels || i % 2 === 0 || i === labels.length - 1 ? (
                 <text
                   key={i}
                   x={xAt(i)}
@@ -235,6 +238,14 @@ export function FinanceChart({
                   className="whitespace-nowrap text-caption text-text-muted"
                 >
                   {s.label}: {formatValue(s.values[hover] ?? 0, s.key)}
+                </p>
+              ))}
+              {extraTooltip?.(hover).map((line) => (
+                <p
+                  key={line.label}
+                  className="whitespace-nowrap text-caption text-text-muted"
+                >
+                  {line.label}: {line.value}
                 </p>
               ))}
             </div>

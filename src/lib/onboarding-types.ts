@@ -2,6 +2,7 @@ import type { AppointmentConfig } from "@/lib/integrations/appointment-config";
 import type { BusinessHoursSchedule } from "@/lib/integrations/business-hours";
 import type { CalendarAgentPermissions } from "@/lib/integrations/calendar-agent-permissions";
 import type { CalendarProvider } from "@/lib/store";
+import type { AssistantBranchId } from "@/lib/assistant-branch";
 
 export type OnboardingPhase =
   | "nummer_anfragen"
@@ -21,6 +22,8 @@ export interface StoredAgent {
   language: string;
   greeting: string;
   systemPrompt: string;
+  /** Branchenauswahl: Privater Assistent oder Coiffeur Betrieb. */
+  assistantBranch?: AssistantBranchId;
   /** user_phone_numbers.id — which inbound number this agent handles. */
   phoneNumberId?: string;
   /** Append EU/DE/CH compliance instructions to the live agent prompt. */

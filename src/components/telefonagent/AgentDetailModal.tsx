@@ -7,6 +7,7 @@ import { Loader2, Pencil, X } from "lucide-react";
 import { modalBackdropClass } from "@/components/landing/AuthFrame";
 import { cn } from "@/lib/utils";
 import type { StoredAgent } from "@/lib/onboarding-types";
+import { inferAssistantBranch } from "@/lib/assistant-branch";
 
 import type { AgentWizardDraft } from "./AgentCreateWizard";
 import {
@@ -67,6 +68,7 @@ export function AgentDetailModal({
       voiceId: agent.voiceId,
       voiceName: agent.voiceName,
       language: agent.language,
+      assistantBranch: inferAssistantBranch(agent),
     });
   }, [open, agent]);
 
@@ -136,7 +138,7 @@ export function AgentDetailModal({
         </div>
 
         <h2 className={cn(agentModalTitleClass, "pr-16")}>
-          {mode === "view" ? agent.name : "Agent bearbeiten"}
+          {mode === "view" ? agent.name : "Assistent bearbeiten"}
         </h2>
 
         <div className="mt-7 space-y-4">

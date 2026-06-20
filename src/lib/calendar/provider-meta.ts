@@ -19,7 +19,8 @@ export const PROVIDER_META: Record<CalendarProviderId, ProviderMeta> = {
     id: "google",
     name: "Google Kalender",
     logoInitials: "G",
-    description: "Termine direkt in Ihren Google Kalender eintragen.",
+    description:
+      "Persönlichen Google Kalender verbinden — Termine landen direkt in Ihrem Konto.",
   },
   microsoft: {
     id: "microsoft",

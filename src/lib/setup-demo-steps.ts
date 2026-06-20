@@ -100,15 +100,8 @@ export const SETUP_DEMO_GUIDE: SetupDemoGuideStep[] = [
     phase: "agent",
     target: "setup-demo-agent-review-greeting",
     title: "Begrüssung",
-    body: "Formulieren Sie die Begrüssung, die Anrufer zuerst hören.",
+    body: "Passen Sie die Begrüssung an und klicken Sie auf «Assistent speichern».",
     textInput: true,
-  },
-  {
-    id: "agent_review_save",
-    phase: "agent",
-    target: "setup-demo-agent-review-save",
-    title: "Agent speichern",
-    body: "Klicken Sie auf Speichern — Ihr Agent ist dann einsatzbereit.",
   },
   {
     id: "phone_intro",

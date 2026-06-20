@@ -1,6 +1,11 @@
 import "server-only";
 
 import {
+  assistantBranchLabel,
+  normalizeAssistantBranch,
+  type AssistantBranchId,
+} from "@/lib/assistant-branch";
+import {
   applyLanguageInstructions,
   normalizeAgentLanguage,
   type AgentLanguageLabel,
@@ -22,11 +27,14 @@ import {
   type BusinessHoursSchedule,
 } from "@/lib/integrations/business-hours";
 import type { AgentVoiceGender } from "@/lib/elevenlabs/pick-voice";
+import {
+  greetingForAssistantName,
+  suggestAssistantName,
+} from "@/lib/elevenlabs/assistant-names";
 
 export interface GenerateAgentInput {
-  industry: string;
+  branch: AssistantBranchId;
   website?: string;
-  goal: string;
   gender: AgentVoiceGender;
   language: AgentLanguageLabel;
 }
@@ -49,21 +57,28 @@ const SECTION_KEYS: (keyof PromptSections)[] = [
   "eskalation",
   "abschluss",
   "branche",
-  "ziel",
   "sonstiges",
 ];
+
+function industryLabel(input: GenerateAgentInput): string {
+  return assistantBranchLabel(normalizeAssistantBranch(input.branch));
+}
+
+function defaultTypicalRequests(branch: AssistantBranchId): string {
+  if (branch === "coiffeur") {
+    return "- Termine für Haareschneiden und Behandlungen\n- Fragen zu Öffnungszeiten und Verfügbarkeit\n- Terminverschiebungen und Stornos";
+  }
+  return "- Anrufe entgegennehmen und Anliegen aufnehmen\n- Rückrufwünsche notieren\n- Allgemeine Fragen beantworten";
+}
 
 function buildFallbackSections(
   input: GenerateAgentInput,
   agentName: string,
   websiteAnalyzed: boolean
 ): PromptSections {
-  const industry = input.industry.trim();
+  const branch = normalizeAssistantBranch(input.branch);
+  const industry = industryLabel(input);
   const parsed = parseSystemPrompt(buildSystemPrompt(agentName));
-
-  const typischeAnfragen =
-    parsed.typischeAnfragen.trim() ||
-    `- Anfragen zu ${industry}, Termine und Rückrufwünsche`;
 
   const sonstigesParts: string[] = [];
   if (parsed.sonstiges.trim()) sonstigesParts.push(parsed.sonstiges.trim());
@@ -74,15 +89,21 @@ function buildFallbackSections(
         : `Website des Unternehmens: ${input.website.trim()}`
     );
   }
-  sonstigesParts.push(
-    "Versprich keine verbindlichen Preise oder Termine ohne Rückfrage beim Team."
-  );
+  if (branch === "coiffeur") {
+    sonstigesParts.push(
+      "Termine nur auf Namen vereinbaren — Datum und Uhrzeit müssen klar bestätigt werden."
+    );
+  } else {
+    sonstigesParts.push(
+      "Versprich keine verbindlichen Zusagen ohne Rückfrage beim Auftraggeber."
+    );
+  }
 
   return {
     ...parsed,
-    typischeAnfragen,
+    typischeAnfragen: parsed.typischeAnfragen.trim() || defaultTypicalRequests(branch),
     branche: industry,
-    ziel: input.goal.trim(),
+    ziel: "",
     sonstiges: sonstigesParts.join("\n\n"),
   };
 }
@@ -101,8 +122,8 @@ function finalizeDraft(
 ): GeneratedAgentDraft {
   const sections: PromptSections = {
     ...params.sections,
-    branche: params.sections.branche.trim() || input.industry.trim(),
-    ziel: params.sections.ziel.trim() || input.goal.trim(),
+    branche: params.sections.branche.trim() || industryLabel(input),
+    ziel: "",
   };
 
   let systemPrompt = composeSystemPrompt(sections);
@@ -134,16 +155,11 @@ function fallbackDraft(
   websiteContext: { url: string; excerpt: string } | null = null
 ): GeneratedAgentDraft {
   const language = normalizeAgentLanguage(input.language);
-  const industry = input.industry.trim() || "Ihr Unternehmen";
-  const name = `${industry.split(/\s+/).slice(0, 2).join(" ")} Agent`.slice(
-    0,
-    40
-  );
+  const branch = normalizeAssistantBranch(input.branch);
+  const industry = industryLabel(input);
+  const name = suggestAssistantName(input.gender);
 
-  const greeting =
-    language === "Schweizerdeutsch"
-      ? `Grüezi, da isch de Telefonagänt vo ${industry}. Wie cha ich Ihne hälfe?`
-      : `Guten Tag, Sie sprechen mit dem Telefonagenten von ${industry}. Wie kann ich Ihnen helfen?`;
+  const greeting = greetingForAssistantName(name, language, industry);
 
   return finalizeDraft(input, {
     name,
@@ -152,7 +168,10 @@ function fallbackDraft(
     language,
     aiGenerated: false,
     websiteAnalyzed,
-    businessHours: resolveBusinessHoursFromWebsite(websiteContext),
+    businessHours:
+      branch === "coiffeur"
+        ? resolveBusinessHoursFromWebsite(websiteContext)
+        : undefined,
   });
 }
 
@@ -171,6 +190,8 @@ function sectionsFromAiResponse(
         merged[key] = value.trim();
       }
     }
+    merged.branche = industryLabel(input);
+    merged.ziel = "";
     return merged;
   }
 
@@ -179,18 +200,19 @@ function sectionsFromAiResponse(
     return {
       ...buildFallbackSections(input, fallbackName, websiteAnalyzed),
       ...fromPrompt,
-      branche: fromPrompt.branche.trim() || input.industry.trim(),
-      ziel: fromPrompt.ziel.trim() || input.goal.trim(),
+      branche: industryLabel(input),
+      ziel: "",
     };
   }
 
   return buildFallbackSections(input, fallbackName, websiteAnalyzed);
 }
 
-const AI_SYSTEM_PROMPT = (language: string, hasWebsite: boolean) =>
-  `Du konfigurierst KI-Telefonagenten für Schweizer Unternehmen.
+const AI_SYSTEM_PROMPT = (language: string, hasWebsite: boolean, branch: AssistantBranchId) =>
+  `Du konfigurierst KI-Telefonassistenten für Schweizer Kundinnen und Kunden.
 
-Analysiere Branche, Ziel${hasWebsite ? " und Website-Inhalt" : ""} und erstelle einen massgeschneiderten Telefonagenten.
+Branche: ${assistantBranchLabel(branch)}.
+Analysiere Branche${hasWebsite ? " und Website-Inhalt" : ""} und erstelle einen massgeschneiderten Telefonassistenten.
 
 Antworte NUR als JSON:
 {
@@ -204,35 +226,33 @@ Antworte NUR als JSON:
     "eskalation": string,
     "abschluss": string,
     "branche": string,
-    "ziel": string,
     "sonstiges": string
   }
 }
 
 Fülle die sections knapp aus — insgesamt höchstens ${MAX_AGENT_INSTRUCTION_PARAGRAPHS} Absätze und ${MAX_AGENT_INSTRUCTION_WORDS} Wörter im fertigen Anweisungstext:
-- rolle: 1 kurzer Satz, wer der Agent ist
-- leistungen: 2–3 Bulletpoints, was der Agent darf
+- rolle: 1 kurzer Satz, wer der Assistent ist
+- leistungen: 2–3 Bulletpoints, was der Assistent darf
 - typischeAnfragen: 2–3 häufige Anliegen${hasWebsite ? " (nur Wesentliches aus Website)" : ""}
 - gespraechsfuehrung: Ton, Rückfragen, keine verbindlichen Zusagen
 - eskalation: wann an Menschen übergeben
 - abschluss: kurz Verabschiedung
-- branche: 1 Satz Kontext
-- ziel: 1 Satz Hauptziel
+- branche: 1 Satz Kontext zur gewählten Branche
 - sonstiges: nur wenn nötig, 1 kurzer Hinweis
 
 Regeln:
 - Sprache: ${language}
 - Keine Emojis, keine langen Texte, kein Marketing-Floskeln
-- Nur das Nötigste — wenig Kontext, telefonisch umsetzbar`;
+- Nur das Nötigste — wenig Kontext, telefonisch umsetzbar${
+    branch === "coiffeur"
+      ? "\n- Coiffeur: Terminvereinbarung auf Namen ist zentral"
+      : "\n- Privater Assistent: keine Terminbuchung, Anliegen aufnehmen und weiterleiten"
+  }`;
 
 export async function generateAgentDraft(
   input: GenerateAgentInput
 ): Promise<GeneratedAgentDraft> {
-  const industry = input.industry.trim();
-  if (!industry) {
-    throw new Error("Branche fehlt.");
-  }
-
+  const branch = normalizeAssistantBranch(input.branch);
   const language = normalizeAgentLanguage(input.language);
   const genderLabel = input.gender === "male" ? "männlich" : "weiblich";
   const config = await getEnrichmentConfig();
@@ -248,8 +268,7 @@ export async function generateAgentDraft(
   }
 
   const userBlock = [
-    `Branche: ${industry}`,
-    `Ziel des Agenten: ${input.goal.trim()}`,
+    `Branche: ${industryLabel(input)}`,
     input.website?.trim() ? `Website-URL: ${input.website.trim()}` : null,
     websiteContext
       ? `\n--- Kurzauszug von ${websiteContext.url} ---\n${websiteContext.excerpt.slice(0, 2500)}`
@@ -276,7 +295,7 @@ export async function generateAgentDraft(
       messages: [
         {
           role: "system",
-          content: AI_SYSTEM_PROMPT(language, Boolean(websiteContext)),
+          content: AI_SYSTEM_PROMPT(language, Boolean(websiteContext), branch),
         },
         { role: "user", content: userBlock },
       ],
@@ -298,29 +317,28 @@ export async function generateAgentDraft(
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const fb = fallbackDraft(input, websiteAnalyzed, websiteContext);
-    const name =
-      typeof parsed.name === "string" && parsed.name.trim()
-        ? parsed.name.trim()
-        : fb.name;
-    const greeting =
-      typeof parsed.greeting === "string" && parsed.greeting.trim()
-        ? parsed.greeting.trim()
-        : fb.greeting;
     const sections = sectionsFromAiResponse(
       parsed,
       input,
-      name,
+      fb.name,
       websiteAnalyzed
     );
 
     return finalizeDraft(input, {
-      name,
-      greeting,
+      name: fb.name,
+      greeting: greetingForAssistantName(
+        fb.name,
+        language,
+        industryLabel(input)
+      ),
       sections,
       language,
       aiGenerated: true,
       websiteAnalyzed,
-      businessHours: resolveBusinessHoursFromWebsite(websiteContext),
+      businessHours:
+        branch === "coiffeur"
+          ? resolveBusinessHoursFromWebsite(websiteContext)
+          : undefined,
     });
   } catch {
     return fallbackDraft(input, websiteAnalyzed, websiteContext);
