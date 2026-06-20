@@ -106,6 +106,8 @@ const CALENDAR_LIST_PROPFIND = `<?xml version="1.0" encoding="utf-8"?>
   <prop>
     <resourcetype/>
     <c:supported-calendar-component-set/>
+    <current-user-privilege-set/>
+    <displayname/>
   </prop>
 </propfind>`;
 
@@ -126,6 +128,19 @@ async function discoverPrincipalUrl(auth: string): Promise<string> {
   throw new Error("CalDAV-Principal nicht gefunden.");
 }
 
+function calendarHrefIsExcluded(href: string): boolean {
+  return /inbox|outbox|notification|birthday|holiday|subscribe|suggest|feiertag/i.test(
+    href
+  );
+}
+
+function calendarBlockIsWritable(block: string): boolean {
+  return (
+    /<(?:[A-Za-z0-9]+:)?write-content\b/i.test(block) ||
+    /<(?:[A-Za-z0-9]+:)?write\b/i.test(block)
+  );
+}
+
 async function discoverCalendarUrl(auth: string): Promise<string> {
   const principalUrl = await discoverPrincipalUrl(auth);
 
@@ -143,6 +158,7 @@ async function discoverCalendarUrl(auth: string): Promise<string> {
 
   const listXml = await propfind(homeUrl, auth, "1", CALENDAR_LIST_PROPFIND);
 
+  const candidates: string[] = [];
   const responses = listXml.split(/<\/?(?:[A-Za-z0-9]+:)?response>/i);
   for (const block of responses) {
     if (!/calendar/i.test(block)) continue;
@@ -150,10 +166,26 @@ async function discoverCalendarUrl(auth: string): Promise<string> {
     const href = block.match(
       /<(?:[A-Za-z0-9]+:)?href(?:\s[^>]*)?>([^<]+)<\/(?:[A-Za-z0-9]+:)?href>/i
     )?.[1];
-    if (href && !/inbox|outbox|notification/i.test(href)) {
+    if (!href || calendarHrefIsExcluded(href)) continue;
+    if (!calendarBlockIsWritable(block)) continue;
+    candidates.push(absolutize(href.trim(), homeUrl));
+  }
+
+  if (candidates.length > 0) {
+    return candidates[0];
+  }
+
+  for (const block of responses) {
+    if (!/calendar/i.test(block)) continue;
+    if (!/VEVENT/i.test(block)) continue;
+    const href = block.match(
+      /<(?:[A-Za-z0-9]+:)?href(?:\s[^>]*)?>([^<]+)<\/(?:[A-Za-z0-9]+:)?href>/i
+    )?.[1];
+    if (href && !calendarHrefIsExcluded(href)) {
       return absolutize(href.trim(), homeUrl);
     }
   }
+
   throw new Error("Kein beschreibbarer iCloud-Kalender gefunden.");
 }
 
@@ -221,37 +253,69 @@ function foldIcsLine(line: string): string {
 }
 
 function icsTextLine(name: string, value: string): string {
-  const escaped = escapeIcs(value);
-  const property = /[^\x00-\x7F]/.test(value) ? `${name};CHARSET=UTF-8` : name;
-  return foldIcsLine(`${property}:${escaped}`);
+  return foldIcsLine(`${name}:${escapeIcs(value)}`);
 }
 
 function summarizeCalDavError(status: number, body: string): string {
   const trimmed = body.replace(/\s+/g, " ").trim().slice(0, 180);
-  return trimmed ? `Apple Termin anlegen fehlgeschlagen (${status}): ${trimmed}` : `Apple Termin anlegen fehlgeschlagen (${status}).`;
+  return trimmed
+    ? `Apple Termin anlegen fehlgeschlagen (${status}): ${trimmed}`
+    : `Apple Termin anlegen fehlgeschlagen (${status}).`;
 }
 
-function buildAppleEventIcs(input: CalendarEventInput, uid: string): string {
+const ZURICH_VTIMEZONE_BLOCK = [
+  "BEGIN:VTIMEZONE",
+  "TZID:Europe/Zurich",
+  "BEGIN:DAYLIGHT",
+  "TZOFFSETFROM:+0100",
+  "TZOFFSETTO:+0200",
+  "TZNAME:CEST",
+  "DTSTART:19700329T020000",
+  "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU",
+  "END:DAYLIGHT",
+  "BEGIN:STANDARD",
+  "TZOFFSETFROM:+0200",
+  "TZOFFSETTO:+0100",
+  "TZNAME:CET",
+  "DTSTART:19701025T030000",
+  "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU",
+  "END:STANDARD",
+  "END:VTIMEZONE",
+];
+
+function buildAppleEventIcs(
+  input: CalendarEventInput,
+  uid: string,
+  mode: "tzid" | "utc" = "tzid"
+): string {
   const timeZone = input.timeZone ?? "Europe/Zurich";
   const now = icsUtcDateTime(new Date().toISOString());
   const title = input.title.trim() || "Termin";
   const description = input.description?.trim() || AGENT_CREATED_DESCRIPTION;
+
+  const startValue =
+    mode === "utc"
+      ? `DTSTART:${icsUtcDateTime(input.startIso)}`
+      : `DTSTART;TZID=${timeZone}:${icsLocalDateTime(input.startIso, timeZone)}`;
+  const endValue =
+    mode === "utc"
+      ? `DTEND:${icsUtcDateTime(input.endIso)}`
+      : `DTEND;TZID=${timeZone}:${icsLocalDateTime(input.endIso, timeZone)}`;
 
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//Cura//Telefonagent//DE",
     "CALSCALE:GREGORIAN",
+    ...(mode === "tzid" ? ZURICH_VTIMEZONE_BLOCK : []),
     "BEGIN:VEVENT",
     `UID:${uid}`,
     `DTSTAMP:${now}`,
     `LAST-MODIFIED:${now}`,
-    `CREATED:${now}`,
-    `DTSTART;TZID=${timeZone}:${icsLocalDateTime(input.startIso, timeZone)}`,
-    `DTEND;TZID=${timeZone}:${icsLocalDateTime(input.endIso, timeZone)}`,
+    startValue,
+    endValue,
     icsTextLine("SUMMARY", title),
     icsTextLine("DESCRIPTION", description),
-    icsTextLine("CATEGORIES", AGENT_CALENDAR_SOURCE_LABEL),
     "STATUS:CONFIRMED",
     "TRANSP:OPAQUE",
     "SEQUENCE:0",
@@ -263,49 +327,60 @@ function buildAppleEventIcs(input: CalendarEventInput, uid: string): string {
   return `${lines.join("\r\n")}\r\n`;
 }
 
-async function createAppleEventResource(
+async function putAppleEvent(
   eventUrl: string,
-  calendarUrl: string,
   auth: string,
-  ics: string
-): Promise<void> {
-  const putRes = await fetch(eventUrl, {
+  ics: string,
+  options?: { ifNoneMatch?: boolean }
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    Authorization: auth,
+    "Content-Type": "text/calendar; charset=utf-8",
+  };
+  if (options?.ifNoneMatch) {
+    headers["If-None-Match"] = "*";
+  }
+
+  return fetch(eventUrl, {
     method: "PUT",
-    headers: {
-      Authorization: auth,
-      "Content-Type": "text/calendar; charset=utf-8",
-      "If-None-Match": "*",
-    },
+    headers,
     body: ics,
     redirect: "follow",
   });
+}
 
-  if (putRes.ok || putRes.status === 201 || putRes.status === 204) {
-    return;
-  }
+function putSucceeded(status: number): boolean {
+  return status === 200 || status === 201 || status === 204;
+}
 
-  if (putRes.status === 400 || putRes.status === 405) {
-    const collectionUrl = calendarUrl.endsWith("/")
-      ? calendarUrl
-      : `${calendarUrl}/`;
-    const postRes = await fetch(collectionUrl, {
-      method: "POST",
-      headers: {
-        Authorization: auth,
-        "Content-Type": "text/calendar; charset=utf-8",
-      },
-      body: ics,
-      redirect: "follow",
+async function createAppleEventResource(
+  eventUrl: string,
+  auth: string,
+  input: CalendarEventInput,
+  uid: string
+): Promise<void> {
+  const variants: Array<{ mode: "tzid" | "utc"; ifNoneMatch: boolean }> = [
+    { mode: "tzid", ifNoneMatch: true },
+    { mode: "tzid", ifNoneMatch: false },
+    { mode: "utc", ifNoneMatch: true },
+    { mode: "utc", ifNoneMatch: false },
+  ];
+
+  let lastStatus = 0;
+  let lastBody = "";
+
+  for (const variant of variants) {
+    const ics = buildAppleEventIcs(input, uid, variant.mode);
+    const res = await putAppleEvent(eventUrl, auth, ics, {
+      ifNoneMatch: variant.ifNoneMatch,
     });
-    if (postRes.ok || postRes.status === 201 || postRes.status === 204) {
-      return;
-    }
-    throw new Error(
-      summarizeCalDavError(postRes.status, await postRes.text())
-    );
+    if (putSucceeded(res.status)) return;
+
+    lastStatus = res.status;
+    lastBody = await res.text();
   }
 
-  throw new Error(summarizeCalDavError(putRes.status, await putRes.text()));
+  throw new Error(summarizeCalDavError(lastStatus, lastBody));
 }
 
 export async function appleCreateEvent(
@@ -317,19 +392,30 @@ export async function appleCreateEvent(
     throw new Error("Apple Kalender ist nicht verbunden.");
   }
   const auth = basicAuth(conn.accountLabel, conn.appPassword);
-  const uid = `${randomUUID()}@cura-agent`;
-  const base = conn.caldavCalendarUrl.endsWith("/")
-    ? conn.caldavCalendarUrl
-    : `${conn.caldavCalendarUrl}/`;
-  const eventUrl = `${base}${encodeURIComponent(uid)}.ics`;
-  const ics = buildAppleEventIcs(input, uid);
+  const uid = randomUUID();
 
-  await createAppleEventResource(
-    eventUrl,
-    conn.caldavCalendarUrl,
-    auth,
-    ics
-  );
+  const attemptCreate = async (calendarUrl: string) => {
+    const base = calendarUrl.endsWith("/") ? calendarUrl : `${calendarUrl}/`;
+    const eventUrl = `${base}${uid}.ics`;
+    await createAppleEventResource(eventUrl, auth, input, uid);
+  };
+
+  try {
+    await attemptCreate(conn.caldavCalendarUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const shouldRediscover =
+      /\(400\)|\(403\)|\(405\)|\(501\)/.test(message) ||
+      /valid-calendar-object-resource/i.test(message);
+
+    if (!shouldRediscover) throw error;
+
+    const refreshedUrl = await discoverCalendarUrl(auth);
+    if (refreshedUrl === conn.caldavCalendarUrl) throw error;
+
+    await ctx.save({ caldavCalendarUrl: refreshedUrl });
+    await attemptCreate(refreshedUrl);
+  }
 
   return { id: uid };
 }
