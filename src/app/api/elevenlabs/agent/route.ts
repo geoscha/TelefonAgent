@@ -10,7 +10,8 @@ import {
 import { buildSystemPrompt } from "@/lib/elevenlabs/prompt";
 import { normalizeEscalationPhone } from "@/lib/integrations/medical-guardrails";
 import { normalizeBusinessHours, type BusinessHoursSchedule } from "@/lib/integrations/business-hours";
-import { buildLiveAgentConversationConfig, syncAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
+import { buildLiveAgentConversationConfig, loadAgentEscalationContext, syncAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
+import { validateEscalationPhoneNumber } from "@/lib/phone/escalation-target";
 import { resolveAppointmentWebhookBaseUrl } from "@/lib/integrations/appointment-webhook-probe";
 import {
   filterAgentVoices,
@@ -357,28 +358,31 @@ export async function POST(req: NextRequest) {
       phoneNumberId: body.phoneNumberId ?? existing?.phoneNumberId,
     };
 
-    if (
-      body.escalationPhoneNumber?.trim() &&
-      !normalizeEscalationPhone(body.escalationPhoneNumber)
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Bitte eine gültige Eskalationsnummer im internationalen Format angeben (z. B. +41791234567).",
-        },
-        { status: 400 }
+    if (body.escalationPhoneNumber?.trim()) {
+      const escalationContext = await loadAgentEscalationContext(
+        targetAgentId ?? existing?.id ?? "",
+        userId
       );
+      const check = validateEscalationPhoneNumber(
+        body.escalationPhoneNumber,
+        escalationContext
+      );
+      if (!check.ok) {
+        return NextResponse.json({ ok: false, error: check.error }, { status: 400 });
+      }
     }
 
     let agentId = body.createNew ? undefined : targetAgentId;
     const webhookBaseUrl = resolveAppointmentWebhookBaseUrl(req);
+    const escalationContext = agentId
+      ? await loadAgentEscalationContext(agentId, userId)
+      : undefined;
 
     if (agentId) {
       await syncAgentConversationConfig(
         client,
         { ...draftAgent, id: agentId },
-        { siteUrl: webhookBaseUrl }
+        { siteUrl: webhookBaseUrl, escalationContext }
       );
     } else {
       const created = (await client.conversationalAi.agents.create({
@@ -395,7 +399,10 @@ export async function POST(req: NextRequest) {
       await syncAgentConversationConfig(
         client,
         { ...draftAgent, id: agentId },
-        { siteUrl: webhookBaseUrl }
+        {
+          siteUrl: webhookBaseUrl,
+          escalationContext: await loadAgentEscalationContext(agentId, userId),
+        }
       );
     }
 

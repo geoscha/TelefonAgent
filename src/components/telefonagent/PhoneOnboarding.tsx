@@ -10,15 +10,19 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
-
-type ForwardingType = "alle" | "bedingt";
+import {
+  ALL_CALLS_RESET_NOTE,
+  ALL_CALLS_SETUP_NOTE,
+  ALL_CALLS_VERIFY_NOTE,
+  forwardingActivateCodes,
+  forwardingResetAllCodes,
+  forwardingStatusCheckCodes,
+} from "@/lib/phone/forwarding-codes";
 
 interface PhoneOnboardingProps {
   phase: OnboardingPhase;
   linkerNumber: string;
   forwardingInstructions?: string;
-  forwardingType: ForwardingType;
-  onForwardingTypeChange: (v: ForwardingType) => void;
   requesting: boolean;
   confirming: boolean;
   onRequestNumber: () => void;
@@ -29,8 +33,6 @@ export function PhoneOnboarding({
   phase,
   linkerNumber,
   forwardingInstructions,
-  forwardingType,
-  onForwardingTypeChange,
   requesting,
   confirming,
   onRequestNumber,
@@ -38,11 +40,9 @@ export function PhoneOnboarding({
 }: PhoneOnboardingProps) {
   if (phase === "fertig" || phase === "agent") return null;
 
-  const linkerCode = linkerNumber.replace(/[\s()./-]/g, "");
-  const overflowCode = linkerCode ? `**61*${linkerCode}#` : "";
-  const allCallsCode = linkerCode ? `**21*${linkerCode}#` : "";
-  const activeCode =
-    forwardingType === "alle" ? allCallsCode : overflowCode;
+  const activateCodes = linkerNumber ? forwardingActivateCodes(linkerNumber) : [];
+  const resetCodes = forwardingResetAllCodes();
+  const statusCheckCodes = forwardingStatusCheckCodes();
 
   return (
     <div className="rounded-card border border-stroke bg-surface p-5">
@@ -82,43 +82,55 @@ export function PhoneOnboarding({
               {linkerNumber || "—"}
             </p>
             <p className="mt-2 text-body text-text-muted">
-              Richten Sie die Weiterleitung Ihrer Geschäftsnummer auf diese
-              Nummer ein.
+              Richten Sie die Weiterleitung Ihrer Ladennumer auf diese Nummer
+              ein — Ihr KI-Assistent nimmt jeden Anruf sofort entgegen.
             </p>
           </div>
 
-          <div className="border-t border-stroke pt-4">
-            <p className="text-caption font-medium text-text-muted">
-              Weiterleitungstyp
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <TypeButton
-                active={forwardingType === "bedingt"}
-                onClick={() => onForwardingTypeChange("bedingt")}
-                label="Nur Überlauf"
-              />
-              <TypeButton
-                active={forwardingType === "alle"}
-                onClick={() => onForwardingTypeChange("alle")}
-                label="Alle Anrufe"
-              />
-            </div>
-            <div className="mt-3 rounded-btn bg-baby-blue/40 p-3 text-caption text-text">
-              <p>
-                <strong>Nur Überlauf:</strong> Anrufe werden weitergeleitet, wenn
-                Sie nicht erreichbar sind oder besetzt ist.{" "}
-                <strong>Alle Anrufe:</strong> Jeder Anruf geht direkt an Linker —
-                Ihr Handy klingelt nicht mehr.
-              </p>
-            </div>
-          </div>
-
-          {activeCode && (
+          {activateCodes.length > 0 && (
             <div className="border-t border-stroke pt-4">
               <p className="text-caption font-medium text-text-muted">
-                Code für Ihr Handy
+                Schritt 1 — Alles zurücksetzen
               </p>
-              <CopyRow value={activeCode} mono className="mt-2" />
+              <p className="mt-2 text-caption text-text-muted">
+                {ALL_CALLS_RESET_NOTE}
+              </p>
+              <div className="mt-2 space-y-2">
+                {resetCodes.map((entry) => (
+                  <div key={entry.code}>
+                    <p className="text-[11px] text-text-muted">{entry.label}</p>
+                    <CopyRow value={entry.code} mono className="mt-1" />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-4 text-caption font-medium text-text-muted">
+                Schritt 2 — Alle Anrufe aktivieren
+              </p>
+              <p className="mt-2 text-caption text-text-muted">
+                {ALL_CALLS_SETUP_NOTE}
+              </p>
+              <div className="mt-2 space-y-2">
+                {activateCodes.map((entry) => (
+                  <div key={entry.code}>
+                    <p className="text-[11px] text-text-muted">{entry.label}</p>
+                    <CopyRow value={entry.code} mono className="mt-1" />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-4 text-caption font-medium text-text-muted">
+                Schritt 3 — Prüfen
+              </p>
+              <p className="mt-2 text-caption text-text-muted">
+                {ALL_CALLS_VERIFY_NOTE}
+              </p>
+              <div className="mt-2 space-y-2">
+                {statusCheckCodes.map((entry) => (
+                  <div key={entry.code}>
+                    <p className="text-[11px] text-text-muted">{entry.label}</p>
+                    <CopyRow value={entry.code} mono className="mt-1" />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -151,28 +163,6 @@ export function PhoneOnboarding({
         </div>
       )}
     </div>
-  );
-}
-
-function TypeButton({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full px-3 py-1.5 text-caption font-medium transition-colors ${
-        active ? "bg-accent text-white" : "bg-surface text-text-muted"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 

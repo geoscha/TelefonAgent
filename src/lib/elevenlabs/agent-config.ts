@@ -15,6 +15,8 @@ type SystemToolConfigInput = {
   type?: "system";
   name: string;
   description?: string;
+  toolCallSound?: "typing" | "elevator1" | "elevator2" | "elevator3" | "elevator4";
+  toolCallSoundBehavior?: "auto" | "always";
   params: {
     systemToolType: string;
     [key: string]: unknown;
@@ -123,7 +125,10 @@ export function buildEndCallTool(): SystemToolConfigInput {
 
 /** Fixed phrase spoken to the caller during transfer (via transfer_to_number client_message). */
 export const ESCALATION_CLIENT_MESSAGE =
-  "Einen Moment, ich leite Sie weiter.";
+  "Einen Moment, ich verbinde Sie mit dem Management.";
+
+/** Hold music while transfer_to_number dials and connects (ElevenLabs tool_call_sound). */
+export const ESCALATION_TRANSFER_HOLD_SOUND = "elevator1" as const;
 
 export function buildTransferToNumberTool(
   phoneNumber: string
@@ -133,8 +138,11 @@ export function buildTransferToNumberTool(
     name: "transfer_to_number",
     description:
       "Leitet den laufenden Anruf sofort an eine Person weiter. Pflicht-Parameter: transfer_number (exakt die konfigurierte Nummer), client_message (exakt der Weiterleitungssatz), agent_message (kurze Zusammenfassung für den Mitarbeiter). Nicht nur ankündigen — das Tool muss aufgerufen werden.",
+    toolCallSound: ESCALATION_TRANSFER_HOLD_SOUND,
+    toolCallSoundBehavior: "always",
     params: {
       systemToolType: "transfer_to_number",
+      enableClientMessage: true,
       transfers: [
         {
           transferDestination: {

@@ -33,7 +33,7 @@ export function SidebarSupportButton() {
               Support
             </DialogTitle>
           </DialogHeader>
-          <SupportChatPanel active={open} />
+          <SupportChatPanel active={open} onNavigate={() => setOpen(false)} />
         </DialogContent>
       </Dialog>
     </>

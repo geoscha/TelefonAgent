@@ -10,6 +10,11 @@ import {
   type ElevenLabsSettings,
 } from "@/lib/store";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
+import {
+  forwardingActivateCodes,
+  forwardingResetAllCodes,
+  forwardingStatusCheckCodes,
+} from "@/lib/phone/forwarding-codes";
 import { createUserRequest, listRequests, updateRequest } from "@/lib/admin/requests";
 import { isPhoneNumberRequest } from "@/lib/admin/request-types";
 import type { RequestStatus, UserRequest } from "@/lib/admin/request-types";
@@ -373,7 +378,7 @@ export async function assignPhoneNumberToUser(
     linkerForwardingNumber: normalized,
     elevenLabsPhoneNumberId: elevenLabsId ?? undefined,
     forwardingStatus: "anleitung",
-    forwardingType: "bedingt",
+    forwardingType: "alle",
     onboardingPhase: "weiterleitung",
     forwardingInstructions: instructions,
   });
@@ -387,15 +392,23 @@ export async function completeAgentOnboarding(): Promise<ElevenLabsSettings> {
 }
 
 export function defaultForwardingInstructions(linkerNumber: string): string {
-  const code = linkerNumber.replace(/[\s()./-]/g, "");
+  const reset = forwardingResetAllCodes();
+  const codes = forwardingActivateCodes(linkerNumber);
+  const check = forwardingStatusCheckCodes();
   return [
     "So richten Sie die Weiterleitung ein:",
     "",
-    "1. Wählen Sie auf Ihrem Handy den gewählten Code (Nur Überlauf oder Alle Anrufe) und drücken Sie die Anruftaste.",
-    "2. Alternativ können Sie die Weiterleitung in Ihrer Telefonanlage (PBX) auf die Linker-Nummer einrichten.",
+    "Schritt 1 — Alle Weiterleitungen löschen (Combox-Regeln inkl.):",
+    ...reset.map((entry) => `  ${entry.label}: ${entry.code}`),
+    "  Yallo: Mailbox zusätzlich in der App deaktivieren.",
     "",
+    "Schritt 2 — Alle Anrufe aktivieren (ohne Plus in der Nummer):",
     `Linker-Nummer: ${linkerNumber}`,
-    `Nur Überlauf: **61*${code}#`,
-    `Alle Anrufe: **21*${code}#`,
+    ...codes.map((entry) => `  ${entry.label}: ${entry.code}`),
+    "",
+    "Schritt 3 — Prüfen:",
+    ...check.map((entry) => `  ${entry.label}: ${entry.code}`),
+    "",
+    "Alternativ: Weiterleitung in Ihrer Telefonanlage (PBX) auf die Linker-Nummer einrichten.",
   ].join("\n");
 }

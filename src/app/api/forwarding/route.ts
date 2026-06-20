@@ -34,8 +34,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const forwardingType: ForwardingType =
-    body.forwardingType === "alle" ? "alle" : "bedingt";
+  const forwardingType: ForwardingType = "alle";
 
   const current = await getSettings();
   const updated = await updateSettings({

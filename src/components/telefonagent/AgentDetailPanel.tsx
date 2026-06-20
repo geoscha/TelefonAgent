@@ -46,6 +46,7 @@ import {
   inferAssistantBranch,
   type AssistantBranchId,
 } from "@/lib/assistant-branch";
+import { describeEscalationTarget } from "@/lib/phone/escalation-target";
 import { cn } from "@/lib/utils";
 import { useVoicePreview } from "@/lib/hooks/useVoicePreview";
 
@@ -168,6 +169,7 @@ function LabeledField({
 export function AgentDetailPanel({
   agent,
   isActive,
+  customerNumber,
   voices,
   voicesLoading,
   deleting,
@@ -479,6 +481,22 @@ export function AgentDetailPanel({
     agent.id
   );
 
+  const escalationContext = {
+    customerNumber,
+    phoneNumbers: phoneNumbers.map((p) => ({
+      id: p.id,
+      phoneNumber: p.phoneNumber,
+      customerNumber: p.customerNumber,
+    })),
+  };
+  const escalationPreview = describeEscalationTarget(
+    {
+      escalationPhoneNumber: escalationPhone,
+      phoneNumberId: agent.phoneNumberId,
+    },
+    escalationContext
+  );
+
   const primaryAgentNumber = resolvePrimaryAgentNumber(
     phoneNumbers,
     selectedPhoneId || undefined
@@ -652,7 +670,7 @@ export function AgentDetailPanel({
               </LabeledField>
             )}
 
-            <LabeledField label="Weiterleitungsnummer">
+            <LabeledField label="Eskalationsnummer (Zweitnummer)">
               <input
                 type="tel"
                 value={escalationPhone}
@@ -660,11 +678,16 @@ export function AgentDetailPanel({
                 placeholder="+41 79 123 45 67"
                 className={fieldClass}
               />
-              <p className="text-[11px] text-[#99A0AE]">
-                Der Assistent verbindet hierher, wenn der Anrufer eine Person
-                verlangt oder das Anliegen nicht lösbar ist. Leer lassen zum
-                Deaktivieren.
-              </p>
+              <div className="space-y-1.5">
+                <p className="text-[11px] text-[#99A0AE]">
+                  {escalationPreview.source === "explicit" && escalationPreview.phone
+                    ? `Bei Personenwunsch leitet der Assistent an ${escalationPreview.phone} weiter.`
+                    : "Optional: Zweitnummer für Live-Weiterleitung (z. B. Festnetz im Laden). Leer lassen zum Deaktivieren."}
+                </p>
+                {escalationPreview.source === "invalid" && escalationPreview.error ? (
+                  <p className="text-[11px] text-[#B42318]">{escalationPreview.error}</p>
+                ) : null}
+              </div>
             </LabeledField>
           </AgentDetailSection>
 

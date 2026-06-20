@@ -188,6 +188,7 @@ function rowToCall(row: any): Call {
   const screening =
     (structuredSummary.callScreening as Call["screening"] | undefined) ??
     undefined;
+  const callbackRequired = Boolean(structuredSummary.callbackRequired);
 
   return {
     id: row.id,
@@ -206,6 +207,7 @@ function rowToCall(row: any): Call {
     suggestedActions: (row.suggested_actions ?? []) as SuggestedAction[],
     agentId: row.agent_id ?? undefined,
     screening,
+    callbackRequired,
   };
 }
 
@@ -213,6 +215,7 @@ function callStructuredSummary(call: Call) {
   return {
     ...call.structuredSummary,
     ...(call.screening ? { callScreening: call.screening } : {}),
+    ...(call.callbackRequired ? { callbackRequired: true } : {}),
   };
 }
 

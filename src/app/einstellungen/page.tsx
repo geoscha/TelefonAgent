@@ -15,9 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
 import {
-  forwardingDeactivateCode,
+  forwardingDeactivateCodes,
   forwardingDeactivateHint,
-  type ForwardingType,
 } from "@/lib/phone/forwarding-codes";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
 import type { TokenBalanceView } from "@/lib/billing/quota-display";
@@ -53,8 +52,6 @@ export default function ProfilPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [linkerNumber, setLinkerNumber] = useState<string | null>(null);
-  const [forwardingType, setForwardingType] =
-    useState<ForwardingType>("bedingt");
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase | null>(null);
   const [startingDemo, setStartingDemo] = useState(false);
@@ -82,9 +79,6 @@ export default function ProfilPage() {
           null;
         if (typeof number === "string" && number.trim()) {
           setLinkerNumber(number.trim());
-        }
-        if (data.settings?.forwardingType === "alle") {
-          setForwardingType("alle");
         }
         if (data.phase) setOnboardingPhase(data.phase as OnboardingPhase);
       })
@@ -211,7 +205,7 @@ export default function ProfilPage() {
     (onboardingPhase === "weiterleitung" ||
       onboardingPhase === "agent" ||
       onboardingPhase === "fertig");
-  const deactivateCode = forwardingDeactivateCode(forwardingType);
+  const deactivateCodes = forwardingDeactivateCodes();
   const firstName =
     (profile?.name ?? name).trim().split(/\s+/)[0] ||
     profile?.name ||
@@ -386,11 +380,15 @@ export default function ProfilPage() {
                 Ihrer Geschäftsnummer — sonst gehen Anrufe weiter dorthin.
               </p>
               <p className="mt-2">
-                {forwardingDeactivateHint(forwardingType)}{" "}
-                <span className="font-mono font-medium text-navy">
-                  {deactivateCode}
-                </span>
+                {forwardingDeactivateHint()}
               </p>
+              <ul className="mt-1 space-y-0.5 font-mono text-[13px] font-medium text-navy">
+                {deactivateCodes.map((entry) => (
+                  <li key={entry.code}>
+                    {entry.label}: {entry.code}
+                  </li>
+                ))}
+              </ul>
               <p className="mt-1 text-text-muted">
                 Telefonanlage: Weiterleitung auf die Linker-Nummer löschen.
               </p>

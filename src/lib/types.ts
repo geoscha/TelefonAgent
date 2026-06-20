@@ -70,6 +70,7 @@ export interface Call {
     urgency: Urgency;
     notes?: string;
     callScreening?: CallScreening;
+    callbackRequired?: boolean;
   };
   suggestedActions: SuggestedAction[];
   recordingUrl?: string;
@@ -77,6 +78,8 @@ export interface Call {
   agentId?: string;
   /** Post-call transcript analysis + optional calendar booking. */
   screening?: CallScreening;
+  /** Caller asked for a human; agent promised a callback (no live transfer). */
+  callbackRequired?: boolean;
 }
 
 export interface Suggestion {

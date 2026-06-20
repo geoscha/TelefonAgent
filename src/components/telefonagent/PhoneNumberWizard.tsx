@@ -27,9 +27,14 @@ import {
 } from "@/components/ui/dialog";
 import { userLabelClass } from "@/components/user/user-styles";
 import {
-  forwardingActivateCode,
-  forwardingDeactivateCode,
+  forwardingActivateCodes,
+  forwardingDeactivateCodes,
   forwardingDeactivateHint,
+  forwardingResetAllCodes,
+  forwardingStatusCheckCodes,
+  ALL_CALLS_RESET_NOTE,
+  ALL_CALLS_SETUP_NOTE,
+  ALL_CALLS_VERIFY_NOTE,
   type ForwardingType,
 } from "@/lib/phone/forwarding-codes";
 import type { OnboardingPhase } from "@/lib/onboarding-types";
@@ -199,14 +204,13 @@ function PhoneNumberInfoDialog({
 }
 
 type WizardFlow = "overview" | "connect" | "disconnect" | "sip";
-type ConnectStep = "type" | "customer" | "code" | "confirm";
+type ConnectStep = "customer" | "code" | "confirm";
 type DisconnectStep = "code" | "confirm";
 
 interface PhoneNumberWizardProps {
   phase: OnboardingPhase;
   numbers: UserPhoneNumberView[];
   pendingRequests: PendingPhoneRequestView[];
-  forwardingType: ForwardingType;
   requesting: boolean;
   addingSip: boolean;
   confirming: boolean;
@@ -221,7 +225,6 @@ interface PhoneNumberWizardProps {
   onDisconnect: (phoneId: string) => Promise<boolean>;
   onActivate: (phoneId: string) => Promise<void>;
   onRemove: (phoneId: string) => Promise<void>;
-  onForwardingTypeChange: (v: ForwardingType) => void;
   canAffordPhoneNumber: boolean;
   agents?: AgentPhoneAssignment[];
 }
@@ -230,7 +233,6 @@ export function PhoneNumberWizard({
   phase,
   numbers,
   pendingRequests,
-  forwardingType,
   requesting,
   addingSip,
   confirming,
@@ -242,12 +244,11 @@ export function PhoneNumberWizard({
   onDisconnect,
   onActivate,
   onRemove,
-  onForwardingTypeChange,
   canAffordPhoneNumber,
   agents = [],
 }: PhoneNumberWizardProps) {
   const [flow, setFlow] = useState<WizardFlow>("overview");
-  const [connectStep, setConnectStep] = useState<ConnectStep>("type");
+  const [connectStep, setConnectStep] = useState<ConnectStep>("customer");
   const [disconnectStep, setDisconnectStep] = useState<DisconnectStep>("code");
   const [activePhoneId, setActivePhoneId] = useState<string | null>(null);
   const [customerNumber, setCustomerNumber] = useState("");
@@ -256,20 +257,21 @@ export function PhoneNumberWizard({
 
   const activePhone = numbers.find((n) => n.id === activePhoneId);
   const linkerNumber = activePhone?.phoneNumber ?? "";
-  const activeForwardingType = activePhone?.forwardingType ?? forwardingType;
 
-  const activateCode = useMemo(
-    () =>
-      linkerNumber
-        ? forwardingActivateCode(linkerNumber, activeForwardingType)
-        : "",
-    [linkerNumber, activeForwardingType]
+  const connectResetCodes = useMemo(() => forwardingResetAllCodes(), []);
+  const connectStatusCheckCodes = useMemo(() => forwardingStatusCheckCodes(), []);
+  const connectActivateCodes = useMemo(
+    () => (linkerNumber ? forwardingActivateCodes(linkerNumber) : []),
+    [linkerNumber]
   );
-  const deactivateCode = forwardingDeactivateCode(activeForwardingType);
+  const disconnectDeactivateCodes = useMemo(
+    () => forwardingDeactivateCodes(),
+    []
+  );
 
   function resetToOverview() {
     setFlow("overview");
-    setConnectStep("type");
+    setConnectStep("customer");
     setDisconnectStep("code");
     setActivePhoneId(null);
     setCustomerNumber("");
@@ -281,15 +283,12 @@ export function PhoneNumberWizard({
     const phone = numbers.find((n) => n.id === phoneId);
     setActivePhoneId(phoneId);
     setCustomerNumber(phone?.customerNumber ?? "");
-    if (phone?.forwardingType) onForwardingTypeChange(phone.forwardingType);
     setFlow("connect");
-    setConnectStep("type");
+    setConnectStep("customer");
   }
 
   function startDisconnect(phoneId: string) {
-    const phone = numbers.find((n) => n.id === phoneId);
     setActivePhoneId(phoneId);
-    if (phone?.forwardingType) onForwardingTypeChange(phone.forwardingType);
     setFlow("disconnect");
     setDisconnectStep("code");
   }
@@ -344,20 +343,11 @@ export function PhoneNumberWizard({
         <PhoneBillingDetails phone={activePhone} />
       )}
 
-      {flow === "connect" && connectStep === "type" && (
-        <ConnectTypeStep
-          forwardingType={activeForwardingType}
-          onChange={onForwardingTypeChange}
-          onBack={resetToOverview}
-          onNext={() => setConnectStep("customer")}
-        />
-      )}
-
       {flow === "connect" && connectStep === "customer" && (
         <ConnectCustomerStep
           customerNumber={customerNumber}
           onChange={setCustomerNumber}
-          onBack={() => setConnectStep("type")}
+          onBack={resetToOverview}
           onNext={() => setConnectStep("code")}
         />
       )}
@@ -366,7 +356,9 @@ export function PhoneNumberWizard({
         <ConnectCodeStep
           linkerNumber={linkerNumber}
           customerNumber={customerNumber}
-          activateCode={activateCode}
+          resetCodes={connectResetCodes}
+          statusCheckCodes={connectStatusCheckCodes}
+          activateCodes={connectActivateCodes}
           onBack={() => setConnectStep("customer")}
           onNext={() => setConnectStep("confirm")}
         />
@@ -388,8 +380,8 @@ export function PhoneNumberWizard({
       {flow === "disconnect" && disconnectStep === "code" && activePhone && (
         <DisconnectCodeStep
           customerNumber={activePhone.customerNumber}
-          deactivateCode={deactivateCode}
-          hint={forwardingDeactivateHint(activeForwardingType)}
+          deactivateCodes={disconnectDeactivateCodes}
+          hint={forwardingDeactivateHint()}
           onBack={resetToOverview}
           onNext={() => setDisconnectStep("confirm")}
         />
@@ -632,13 +624,22 @@ function OverviewStep({
                   )}
                   {showCoupling &&
                     (isConnected ? (
-                      <button
-                        type="button"
-                        className={landingBtnSecondary}
-                        onClick={() => onStartDisconnect(num.id)}
-                      >
-                        Entkoppeln
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className={landingBtnSecondary}
+                          onClick={() => onStartConnect(num.id)}
+                        >
+                          Weiterleitung anpassen
+                        </button>
+                        <button
+                          type="button"
+                          className={landingBtnSecondary}
+                          onClick={() => onStartDisconnect(num.id)}
+                        >
+                          Entkoppeln
+                        </button>
+                      </>
                     ) : (
                       <button
                         type="button"
@@ -759,62 +760,64 @@ function SipTrunkStep({
   );
 }
 
-function ConnectTypeStep({
-  forwardingType,
-  onChange,
-  onBack,
-  onNext,
-}: {
-  forwardingType: ForwardingType;
-  onChange: (v: ForwardingType) => void;
-  onBack: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <p className={userLabelClass}>
-        Koppeln Sie Ihre Handynummer mit der Linker-Nummer: Wählen Sie den
-        Weiterleitungstyp und folgen Sie den nächsten Schritten.
-      </p>
-      <p className={userLabelClass}>Weiterleitungstyp</p>
-      <div className="flex flex-wrap gap-1.5">
-        <TypeChip
-          active={forwardingType === "bedingt"}
-          label="Überlauf"
-          onClick={() => onChange("bedingt")}
-        />
-        <TypeChip
-          active={forwardingType === "alle"}
-          label="Alle"
-          onClick={() => onChange("alle")}
-        />
-      </div>
-      <StepNav onBack={onBack} onNext={onNext} nextLabel="Weiter" />
-    </div>
-  );
-}
-
 function ConnectCodeStep({
   linkerNumber,
   customerNumber,
-  activateCode,
+  resetCodes,
+  statusCheckCodes,
+  activateCodes,
   onBack,
   onNext,
 }: {
   linkerNumber: string;
   customerNumber: string;
-  activateCode: string;
+  resetCodes: { label: string; code: string }[];
+  statusCheckCodes: { label: string; code: string }[];
+  activateCodes: { label: string; code: string }[];
   onBack: () => void;
   onNext: () => void;
 }) {
   return (
     <div className="space-y-3">
       <p className={userLabelClass}>
-        Wählen Sie auf <strong>{customerNumber}</strong> den Code und drücken Sie
-        die Anruftaste.
+        Wählen Sie auf <strong>{customerNumber}</strong> die Codes und drücken
+        Sie jeweils die Anruftaste. Anrufe gehen danach sofort an Otto auf der
+        Linker-Nummer — Ihre Ladennumer klingelt nicht mehr.
       </p>
       <CopyRow label="Linker-Nummer" value={linkerNumber} mono />
-      {activateCode && <CopyRow label="Code" value={activateCode} mono />}
+      <div className="space-y-2 rounded border border-[#E1E4EA] bg-[#FAFAFA] p-3">
+        <p className="text-[12px] font-medium text-[#0E121B]">
+          Schritt 1 — Alles zurücksetzen
+        </p>
+        <p className="text-[12px] leading-relaxed text-[#525866]">
+          {ALL_CALLS_RESET_NOTE}
+        </p>
+        {resetCodes.map((entry) => (
+          <CopyRow key={entry.code} label={entry.label} value={entry.code} mono />
+        ))}
+      </div>
+      <div className="space-y-2 rounded border border-[#E1E4EA] bg-[#FAFAFA] p-3">
+        <p className="text-[12px] font-medium text-[#0E121B]">
+          Schritt 2 — Alle Anrufe aktivieren
+        </p>
+        <p className="text-[12px] leading-relaxed text-[#525866]">
+          {ALL_CALLS_SETUP_NOTE}
+        </p>
+        {activateCodes.map((entry) => (
+          <CopyRow key={entry.code} label={entry.label} value={entry.code} mono />
+        ))}
+      </div>
+      <div className="space-y-2 rounded border border-[#E1E4EA] bg-[#FAFAFA] p-3">
+        <p className="text-[12px] font-medium text-[#0E121B]">
+          Schritt 3 — Prüfen
+        </p>
+        <p className="text-[12px] leading-relaxed text-[#525866]">
+          {ALL_CALLS_VERIFY_NOTE}
+        </p>
+        {statusCheckCodes.map((entry) => (
+          <CopyRow key={entry.code} label={entry.label} value={entry.code} mono />
+        ))}
+      </div>
       <StepNav onBack={onBack} onNext={onNext} nextLabel="Weiter" />
     </div>
   );
@@ -850,13 +853,13 @@ function ConnectConfirmStep({
 
 function DisconnectCodeStep({
   customerNumber,
-  deactivateCode,
+  deactivateCodes,
   hint,
   onBack,
   onNext,
 }: {
   customerNumber?: string;
-  deactivateCode: string;
+  deactivateCodes: { label: string; code: string }[];
   hint: string;
   onBack: () => void;
   onNext: () => void;
@@ -869,7 +872,9 @@ function DisconnectCodeStep({
           : "Deaktivieren Sie die Weiterleitung auf Ihrer Telefonnummer."}
       </p>
       <p className="text-[12px] text-[#525866]">{hint}</p>
-      <CopyRow label="Code" value={deactivateCode} mono />
+      {deactivateCodes.map((entry) => (
+        <CopyRow key={entry.code} label={entry.label} value={entry.code} mono />
+      ))}
       <StepNav onBack={onBack} onNext={onNext} nextLabel="Weiter" />
     </div>
   );
@@ -940,28 +945,6 @@ function StepNav({
         {nextLabel}
       </button>
     </div>
-  );
-}
-
-function TypeChip({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded px-3 py-1.5 text-[12px] font-normal transition-colors ${
-        active ? "bg-[#050f1f] text-white" : "border border-[#E1E4EA] bg-[#F5F7FA] text-[#525866]"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 

@@ -34,8 +34,6 @@ export default function PhonesPage() {
   const statusLoading = workspaceLoading && workspace === null;
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("nummer_anfragen");
-  const [forwardingType, setForwardingType] =
-    useState<ForwardingType>("bedingt");
   const [forwardingStatus, setForwardingStatus] =
     useState<ForwardingStatus>("nicht_eingerichtet");
   const [numbers, setNumbers] = useState<UserPhoneNumberView[]>([]);
@@ -48,7 +46,6 @@ export default function PhonesPage() {
 
   const applySettings = useCallback((s: Settings) => {
     if (s.onboardingPhase) setOnboardingPhase(s.onboardingPhase);
-    if (s.forwardingType) setForwardingType(s.forwardingType);
     if (s.forwardingStatus) setForwardingStatus(s.forwardingStatus);
   }, []);
 
@@ -196,7 +193,7 @@ export default function PhonesPage() {
       const res = await fetch("/api/phone/confirm-forwarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ forwardingType, phoneId, customerNumber }),
+        body: JSON.stringify({ phoneId, customerNumber }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
@@ -296,7 +293,6 @@ export default function PhonesPage() {
             phase={onboardingPhase}
             numbers={numbers}
             pendingRequests={pendingRequests}
-            forwardingType={forwardingType}
             requesting={requestingNumber}
             addingSip={addingSip}
             confirming={confirmingForwarding}
@@ -308,7 +304,6 @@ export default function PhonesPage() {
             onDisconnect={handleDisconnectPhone}
             onActivate={handleActivate}
             onRemove={handleRemove}
-            onForwardingTypeChange={setForwardingType}
             canAffordPhoneNumber={canAffordPhoneNumber}
             agents={agents}
           />

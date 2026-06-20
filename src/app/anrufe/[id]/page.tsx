@@ -64,7 +64,16 @@ export default async function CallDetailPage({ params }: PageProps) {
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1>{call.callerName ?? call.callerPhone}</h1>
+          <h1>
+            {call.callbackRequired
+              ? call.title
+              : call.callerName ?? call.callerPhone}
+          </h1>
+          {call.callbackRequired ? (
+            <p className="mt-1 font-mono text-body text-[#335cff]">
+              {call.callerPhone}
+            </p>
+          ) : null}
           <div className="mt-2 flex flex-wrap gap-2">
             <CategoryBadge category={call.category} />
             <Badge variant={call.urgency === "hoch" ? "notfall" : "default"}>

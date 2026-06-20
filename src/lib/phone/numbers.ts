@@ -103,7 +103,7 @@ async function syncPrimaryToSettings(
   return updateSettingsForUser(userId, {
     linkerForwardingNumber: phone.phoneNumber,
     elevenLabsPhoneNumberId: phone.elevenLabsPhoneNumberId,
-    forwardingType: phone.forwardingType ?? "bedingt",
+    forwardingType: phone.forwardingType ?? "alle",
     forwardingStatus: phone.forwardingStatus ?? "anleitung",
     customerNumber: phone.customerNumber,
     onboardingPhase:
@@ -226,7 +226,7 @@ export async function addPoolPhoneNumber(
         source: "pool",
         label: "Linker Nummer",
         is_primary: makePrimary,
-        forwarding_type: "bedingt",
+        forwarding_type: "alle",
         forwarding_status: "anleitung",
         validation_status: "valid",
         validation_error: null,
@@ -395,7 +395,7 @@ export async function addSipTrunkPhoneNumber(
         source: "sip_trunk",
         label,
         is_primary: makePrimary,
-        forwarding_type: "bedingt",
+        forwarding_type: "alle",
         forwarding_status: "anleitung",
         sip_outbound_address: input.outboundAddress?.trim() || null,
         sip_outbound_transport: input.outboundTransport ?? null,
