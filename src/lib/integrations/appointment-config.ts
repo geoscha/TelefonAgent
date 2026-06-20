@@ -1,12 +1,17 @@
 import { CUSTOMER_CONFIRMATION_PROMPT } from "@/lib/integrations/customer-confirmation";
 
-const POST_CALL_PHONE_BOOKING_BLOCK = `### Buchung nach dem Anruf (automatisch, verbindlich)
-- Während des Anrufs: **check_availability** aufrufen, Name/Datum/Uhrzeit erfassen, Slot mündlich bestätigen.
-- **book_appointment während des Anrufs NICHT aufrufen** — der Termin wird nach dem Auflegen automatisch aus dem Transkript eingetragen.
-- Wenn du sagst «notiert», «vereinbart» oder «bestätigt», ist das **verbindlich** — das System trägt den Termin danach in den Kalender ein.
-- Formuliere immer mit **konkretem Datum und Uhrzeit**: «Perfekt, [Nachname] am [Datum] um [Uhrzeit] — wir haben das vereinbart.»
-- Dann **sofort** end_call.
-- Sage nicht «im Kalender eingetragen» während des Anrufs — die Eintragung erfolgt nach dem Gespräch.`;
+const RELATIVE_DATE_INSTRUCTION_BLOCK = `### Relative Datumsangaben
+- Anrufer dürfen natürlich formulieren: «Montag», «Montag nächste Woche», «übermorgen», «nächste Woche Dienstag», «am fünfzehnten».
+- Rechne das intern in **appointmentDate (YYYY-MM-DD)** für check_availability und book_appointment um.
+- Bei **relativen oder unklaren** Datumsangaben einmal **bestätigend nachfragen** mit konkretem Kalenderdatum und Uhrzeit, z. B.: «Meinen Sie Montag, den 23. Juni um 14 Uhr?»
+- Erst nach klarem «Ja» oder eindeutiger Bestätigung die Tools aufrufen.
+- Bei bereits **exaktem** Datum und Uhrzeit in einem Satz (z. B. «15. Juni um 10 Uhr») kann die Datums-Rückfrage entfallen, wenn eindeutig.`;
+
+const LIVE_PHONE_BOOKING_BLOCK = `### Terminbuchung (während des Anrufs)
+- **check_availability** mit appointmentDate (YYYY-MM-DD), appointmentTime (HH:mm) und passender durationMinutes.
+- Bei available=true: **book_appointment** aufrufen — dem Kunden **vorher nicht** sagen, dass eingetragen wird.
+- Erst bei **booked:true** laut bestätigen: Dank + **konkretes Datum und Uhrzeit** («Vielen Dank, [Nachname], Ihr Termin am Montag, den 23. Juni um 14 Uhr ist eingetragen.»).
+- **Sofort danach end_call** — kein weiteres Gespräch, keine Rückfragen.`;
 
 export type AppointmentIndustryPresetId =
   | "allgemein"
@@ -377,10 +382,8 @@ const FLEXIBLE_SCHEDULING_BLOCK = `### Flexible Terminplanung
 - Optional **title** mit kurzer Beschreibung (z. B. «Zahnarzt», «Mittagessen», «Besprechung»).
 - Datum und Uhrzeit frei wählen — nur Kalender-Konflikte beachten.`;
 
-const FLEXIBLE_LIVE_BOOKING_BLOCK = `### Terminbuchung
-- check_availability mit appointmentDate, appointmentTime und durationMinutes (geschätzte Dauer).
-- Bei available=true: book_appointment mit attendeeName, appointmentDate, appointmentTime, durationMinutes und optional title.
-- Einen Termin erst als «eingetragen» bezeichnen, wenn book_appointment booked:true antwortete.`;
+const FLEXIBLE_LIVE_BOOKING_BLOCK = `${LIVE_PHONE_BOOKING_BLOCK}
+${RELATIVE_DATE_INSTRUCTION_BLOCK}`;
 
 function buildIndustryFastPathBlock(
   presetId: AppointmentIndustryPresetId,
@@ -395,8 +398,8 @@ function buildIndustryFastPathBlock(
 - **Nachname + Datum + Uhrzeit** genügen. Vorname, Telefonnummer und Dauer **niemals** erfragen.
 - «Haareschneiden» → appointmentTypeId=haareschneiden (30 Min, automatisch). Andere Behandlung → behandlung (60 Min).
 - durationMinutes **nicht** vom Kunden erfragen — aus der Terminart übernehmen.
-- Hat der Kunde Nachname, Datum und Uhrzeit genannt und check_availability liefert available=true: mündlich bestätigen («notiert»), dann **sofort** end_call — **kein** book_appointment während des Anrufs.
-- Maximal **eine** Rückfrage im ganzen Gespräch — nur wenn Nachname oder Datum/Uhrzeit wirklich fehlen.
+- Hat der Kunde Nachname, Datum und Uhrzeit genannt und check_availability liefert available=true: **book_appointment** aufrufen, mit Datum/Uhrzeit bestätigen und bedanken, dann **sofort** end_call.
+- Maximal **eine** Rückfrage im ganzen Gespräch — nur wenn Nachname oder Datum/Uhrzeit wirklich fehlen, oder bei relativem Datum zur Bestätigung.
 - Keine Wiederholung der Dauer, keine «Passt 60 Minuten?»-Frage.`;
   }
 
@@ -404,7 +407,7 @@ function buildIndustryFastPathBlock(
     return `### Schnellablauf
 - Nachname + Datum + Uhrzeit genügen. Telefonnummer wird bei Anrufen automatisch übernommen.
 - Dauer aus der Terminart ableiten — nicht vom Kunden erfragen, wenn Terminart klar ist.
-- Bei available=true: mündlich bestätigen, end_call. Eintragung erfolgt nach dem Gespräch automatisch.`;
+- Bei available=true: **book_appointment** aufrufen, bestätigen, bedanken, **sofort** end_call.`;
   }
 
   return "";
@@ -451,7 +454,8 @@ export function buildAppointmentPrompt(
         "2. Name, Datum und Uhrzeit erfassen.",
         "3. check_availability mit appointmentDate, appointmentTime und durationMinutes.",
         "4. available=false → Alternativen nennen.",
-        "5. available=true → book_appointment aufrufen, dann kurz bestätigen.",
+        "5. available=true → book_appointment aufrufen.",
+        "6. booked:true → Dank + Datum/Uhrzeit bestätigen, dann **sofort** end_call.",
       ]
         .filter(Boolean)
         .join("\n");
@@ -462,19 +466,20 @@ export function buildAppointmentPrompt(
         `- Erlaubte Terminarten: ${typeList}`,
         businessHoursSection.trimEnd(),
         fastPathSection.trimEnd(),
+        RELATIVE_DATE_INSTRUCTION_BLOCK,
         CUSTOMER_CONFIRMATION_PROMPT,
-        POST_CALL_PHONE_BOOKING_BLOCK,
+        LIVE_PHONE_BOOKING_BLOCK,
         "### Ablauf",
-        "1. **Nachname** und **Datum/Uhrzeit** erfassen — wenn der Kunde alles in einem Satz nennt, sofort nutzen.",
-        "2. Sofort «check_availability» mit appointmentDate (YYYY-MM-DD) und appointmentTime (HH:mm).",
-        "3. Ergebnis mitteilen — nie vorher «ich prüfe» sagen.",
-        "4. available=false → Alternativen nennen, neue Zeit, erneut prüfen.",
-        "5. available=true → Termin mündlich bestätigen und notieren, dann **sofort** end_call.",
-        "6. Nach dem Auflegen trägt das System den Termin automatisch in den Kalender ein.",
-        "7. Nach Zielerreichung (Termin notiert oder Stornierung): höflich bedanken und end_call.",
+        "1. **Nachname** und **Datum/Uhrzeit** erfassen — auch relative Angaben wie «Montag nächste Woche».",
+        "2. Bei relativem Datum: einmal mit **konkretem Kalenderdatum** bestätigend nachfragen.",
+        "3. «check_availability» mit appointmentDate (YYYY-MM-DD) und appointmentTime (HH:mm).",
+        "4. Ergebnis mitteilen — nie vorher «ich prüfe» sagen.",
+        "5. available=false → Alternativen nennen, erneut prüfen.",
+        "6. available=true → **book_appointment** aufrufen.",
+        "7. booked:true → bedanken, Termin mit **Datum und Uhrzeit** bestätigen, **sofort** end_call.",
         "",
         "### Regeln",
-        "- Keine unnötigen Rückfragen. Ziel: Termin in unter 1 Minute buchen und auflegen.",
+        "- Keine unnötigen Rückfragen. Ziel: Termin buchen, bestätigen, auflegen.",
         "- attendeeName = **Nachname** des Kunden (Vorname nicht nötig).",
         "- Telefonnummer **nicht** erfragen — bei Anrufen wird sie automatisch aus der Anrufer-ID übernommen.",
       ]

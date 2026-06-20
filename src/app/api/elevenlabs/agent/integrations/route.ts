@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { syncAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
+import { resolveAppointmentWebhookBaseUrl } from "@/lib/integrations/appointment-webhook-probe";
 import {
   describeElevenLabsError,
   getElevenLabsClient,
@@ -50,12 +51,13 @@ interface Body {
 
 async function syncLiveAgentPrompt(
   agent: StoredAgent,
-  activeAgentId?: string
+  activeAgentId?: string,
+  siteUrl?: string
 ) {
   if (!activeAgentId || activeAgentId !== agent.id) return;
 
   const client = getElevenLabsClient();
-  await syncAgentConversationConfig(client, agent);
+  await syncAgentConversationConfig(client, agent, { siteUrl });
 }
 
 export async function POST(req: NextRequest) {
@@ -188,7 +190,11 @@ export async function POST(req: NextRequest) {
     const updatedSettings = await updateSettings({ agents: nextAgents });
 
     try {
-      await syncLiveAgentPrompt(updatedAgent, updatedSettings.agentId);
+      await syncLiveAgentPrompt(
+        updatedAgent,
+        updatedSettings.agentId,
+        resolveAppointmentWebhookBaseUrl(req)
+      );
     } catch (error) {
       const { message } = describeElevenLabsError(error);
       return NextResponse.json(

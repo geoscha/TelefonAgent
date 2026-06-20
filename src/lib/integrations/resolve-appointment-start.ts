@@ -94,6 +94,126 @@ export function parseDurationMinutes(value?: string): number | undefined {
   return minutes;
 }
 
+const WEEKDAY_TO_JS: Record<string, number> = {
+  sonntag: 0,
+  so: 0,
+  montag: 1,
+  mo: 1,
+  dienstag: 2,
+  di: 2,
+  mittwoch: 3,
+  mi: 3,
+  donnerstag: 4,
+  do: 4,
+  freitag: 5,
+  fr: 5,
+  samstag: 6,
+  sa: 6,
+};
+
+function zurichDateParts(reference: Date): {
+  year: number;
+  month: number;
+  day: number;
+  weekday: number;
+} {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: DEFAULT_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).formatToParts(reference);
+
+  const weekdayLabel = parts.find((p) => p.type === "weekday")?.value ?? "Mon";
+  const weekdayMap: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+
+  return {
+    year: Number(parts.find((p) => p.type === "year")?.value ?? "2026"),
+    month: Number(parts.find((p) => p.type === "month")?.value ?? "1"),
+    day: Number(parts.find((p) => p.type === "day")?.value ?? "1"),
+    weekday: weekdayMap[weekdayLabel] ?? 1,
+  };
+}
+
+function addCalendarDays(
+  year: number,
+  month: number,
+  day: number,
+  days: number
+): { year: number; month: number; day: number } | null {
+  const offset = zurichOffsetForMonth(month);
+  const local = `${year}-${pad2(month)}-${pad2(day)}T12:00:00${offset}`;
+  const parsed = new Date(local);
+  if (Number.isNaN(parsed.getTime())) return null;
+  parsed.setDate(parsed.getDate() + days);
+  const nextParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: DEFAULT_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(parsed);
+  return {
+    year: Number(nextParts.find((p) => p.type === "year")?.value),
+    month: Number(nextParts.find((p) => p.type === "month")?.value),
+    day: Number(nextParts.find((p) => p.type === "day")?.value),
+  };
+}
+
+function parseRelativeDateToken(
+  value: string,
+  reference: Date
+): { year: number; month: number; day: number } | null {
+  const lower = value.trim().toLowerCase();
+  const ref = zurichDateParts(reference);
+
+  if (/\bheute\b/.test(lower)) {
+    return { year: ref.year, month: ref.month, day: ref.day };
+  }
+  if (/\bübermorgen\b/.test(lower)) {
+    return addCalendarDays(ref.year, ref.month, ref.day, 2);
+  }
+  if (/\bmorgen\b/.test(lower)) {
+    return addCalendarDays(ref.year, ref.month, ref.day, 1);
+  }
+
+  const weekdayToken =
+    lower.match(
+      /(?:n[aä]chste?\s+woche\s+)?(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|mo|di|mi|do|fr|sa|so)\b(?:\s+n[aä]chste?\s+woche)?/
+    )?.[1] ?? null;
+
+  if (weekdayToken) {
+    const target = WEEKDAY_TO_JS[weekdayToken];
+    if (target === undefined) return null;
+    const nextWeek = /\bn[aä]chste?\s+woche\b/.test(lower);
+    let delta = target - ref.weekday;
+    if (delta <= 0) delta += 7;
+    if (nextWeek) delta += 7;
+    return addCalendarDays(ref.year, ref.month, ref.day, delta);
+  }
+
+  const prefixed = lower.match(
+    /(?:n[aä]chsten?|kommenden?|am|diesen)\s*(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|mo|di|mi|do|fr|sa|so)\b/
+  );
+  if (prefixed) {
+    const target = WEEKDAY_TO_JS[prefixed[1]];
+    if (target === undefined) return null;
+    let delta = target - ref.weekday;
+    if (delta <= 0) delta += 7;
+    return addCalendarDays(ref.year, ref.month, ref.day, delta);
+  }
+
+  return null;
+}
+
 function parseDateToken(
   value: string,
   reference: Date
@@ -134,7 +254,7 @@ function parseDateToken(
     return { year, month, day };
   }
 
-  return null;
+  return parseRelativeDateToken(trimmed, reference);
 }
 
 function parseFlexibleStartIso(raw: string, reference: Date): string | null {

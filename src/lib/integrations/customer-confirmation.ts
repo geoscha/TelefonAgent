@@ -27,8 +27,7 @@ export const CUSTOMER_CONFIRMATION_PROMPT = `### Kundenbestätigung (flexibel ve
 - Beispiele: ${CUSTOMER_AFFIRMATION_EXAMPLES.join(", ")}.
 - Auch indirekt: «das passt mir», «klingt gut», «machen wir so», «den nehme ich», «super, danke».
 - Schweizerdeutsch verstehen: «jo», «passt scho», «isch guet», «gärn».
-- Bei klarer Zustimmung **oder** wenn der Kunde den Wunschtermin bereits genannt hat und der Slot frei ist: Termin **mündlich bestätigen** — bei Telefonanrufen wird er nach dem Gespräch automatisch eingetragen.
-- Sage «notiert» oder «vereinbart», nicht «im Kalender eingetragen» während des Anrufs.
+- Bei klarer Zustimmung und freiem Slot: **book_appointment** aufrufen — erst bei **booked:true** laut bestätigen und bedanken.
 - Bei Unklarheit oder Ablehnung («nein», «lieber nicht», «passt nicht»): kurz nachfragen oder Alternativen anbieten.`;
 
 const REJECTION_PATTERNS = [

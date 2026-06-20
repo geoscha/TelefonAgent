@@ -90,7 +90,9 @@ function buildCheckAvailabilityTool(siteUrl?: string): WebhookToolConfig {
       required: ["action", "agentId"],
       properties: {
         ...baseBody("check_availability"),
-        appointmentDate: textField("Termintag YYYY-MM-DD, z. B. 2026-06-25"),
+        appointmentDate: textField(
+          "Termintag YYYY-MM-DD — auch aus «Montag nächste Woche» oder «übermorgen» berechnen"
+        ),
         appointmentTime: textField("Uhrzeit HH:mm, z. B. 11:00"),
         startIso: textField(
           "Optional — ISO 8601 Europe/Zurich, z. B. 2026-06-25T11:00:00+02:00"
@@ -111,14 +113,16 @@ function buildBookAppointmentTool(siteUrl?: string): WebhookToolConfig {
     type: "webhook",
     name: "book_appointment",
     description:
-      "Trägt einen Termin im Kalender ein. Nur nach available=true oder klarer Kundenzustimmung aufrufen. Erst bei booked:true dem Kunden bestätigen, dann end_call.",
+      "Trägt einen Termin im Kalender ein. Nur nach available=true aufrufen. Bei booked:true: Dank + Datum/Uhrzeit bestätigen, dann sofort end_call.",
     responseTimeoutSecs: 90,
     apiSchema: buildApiSchema({
       type: "object",
       required: ["action", "agentId", "attendeeName", "appointmentTypeId"],
       properties: {
         ...baseBody("book_appointment"),
-        appointmentDate: textField("Termintag YYYY-MM-DD"),
+        appointmentDate: textField(
+          "Termintag YYYY-MM-DD — aus Kundenangabe berechnen, auch relative Formulierungen"
+        ),
         appointmentTime: textField("Uhrzeit HH:mm"),
         appointmentTypeId: textField(
           "ID der Terminart aus der Konfiguration, z. B. termin"

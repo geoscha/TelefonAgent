@@ -46,25 +46,36 @@ export const ELEVENLABS_TTS_MODEL = "eleven_flash_v2_5";
 export const ELEVENLABS_LLM_MODEL = "gemini-2.5-flash";
 
 export const ELEVENLABS_PROMPT_TEMPERATURE = 0.3;
-/** ~1–2 short spoken sentences in German. */
-export const ELEVENLABS_PROMPT_MAX_TOKENS = 120;
+/** Ceiling per turn — high enough that normal spoken sentences never truncate mid-word. */
+export const ELEVENLABS_PROMPT_MAX_TOKENS = 400;
 /** Phone/voice agents with appointment tools need room for tool calls + confirmation. */
 export const ELEVENLABS_APPOINTMENT_MAX_TOKENS = 1024;
 /** Chat test needs room for tool calls + booking confirmation. */
 export const ELEVENLABS_CHAT_MAX_TOKENS = 1024;
 export const ELEVENLABS_TURN_TIMEOUT_SECONDS = 8;
 export const ELEVENLABS_CHAT_TURN_TIMEOUT_SECONDS = 45;
-export const ELEVENLABS_MAX_DURATION_SECONDS = 300;
+/** Allow multi-minute conversations (was 300 = 5 min, which cut long calls short). */
+export const ELEVENLABS_MAX_DURATION_SECONDS = 1800;
+/** Anchors the agent to the correct current date/year (LLMs otherwise guess a stale year). */
+export const ELEVENLABS_AGENT_TIMEZONE = "Europe/Zurich";
+
+const CONVERSATION_CONTEXT_BLOCK = `# Kontext
+- Aktuelles Datum und Uhrzeit (Europe/Zurich): {{system__time}}.
+- Leite das laufende Jahr **immer** aus diesem Datum ab — nenne von dir aus nie ein anderes Jahr.
+- Ein vom Anrufer genanntes Datum (z. B. «23. Juni») meint die **nächste passende Zukunft**. Behandle es nur dann als vergangen, wenn es eindeutig vor dem heutigen Datum liegt.
+- «heute», «morgen», «übermorgen», «nächste Woche Montag» usw. auf Basis des heutigen Datums in ein konkretes Kalenderdatum (YYYY-MM-DD) umrechnen.`;
 
 const BREVITY_INSTRUCTION_BLOCK = `# Antwortstil (Telefon)
-- Antworte IMMER kurz: maximal **ein Satz** pro Turn.
-- Terminbuchung ist das Ziel — Slot prüfen, mündlich bestätigen, auflegen. Keine Smalltalk-Schleifen.
-- **book_appointment während des Anrufs nicht aufrufen** — Termin wird nach dem Auflegen automatisch eingetragen.
+- Sprich natürlich und **beende jeden Satz vollständig** — brich niemals mitten im Satz oder Wort ab.
+- Fasse dich pro Turn kurz: in der Regel 1–2 vollständige Sätze. Stelle immer nur **eine** Rückfrage auf einmal.
+- **Keine Füllsätze** wie «einen Moment», «ich prüfe» oder «einen Augenblick». Rufe die Tools direkt auf und sprich erst weiter, wenn das Ergebnis da ist.
+- Terminbuchung: Datum und Uhrzeit klären, einmal als konkretes Kalenderdatum bestätigen, dann Slot prüfen und buchen.
 - **Nicht** nach Vorname, Telefonnummer oder Dauer fragen — Nachname, Datum und Uhrzeit genügen.
+- Relative Datumsangaben («Montag nächste Woche», «übermorgen») verstehen und in ein konkretes Datum umrechnen — bei Unklarheit **einmal** mit dem konkreten Kalenderdatum nachfragen.
 - Verstehe Zustimmungen flexibel: ja, passt, gerne, super, machen wir, klingt gut, jo, passt scho.
-- **VERBOT:** Nie «eingetragen», «verbindlich», «ich trage ein» oder «ich buche» sagen, bevor book_appointment mit booked:true antwortete.
-- available=true → **still** book_appointment aufrufen, dann EIN Satz Bestätigung, dann **sofort** end_call. Keine Ankündigung vor dem Tool-Aufruf.
-- Nach booked:true oder erfolgreicher Stornierung: ein kurzer Danke-Satz, dann **Pflicht** end_call — kein weiteres Gespräch.`;
+- **VERBOT:** Nie «eingetragen» oder «bestätigt» sagen, bevor book_appointment **booked:true** antwortete.
+- available=true → **ohne Ankündigung** book_appointment aufrufen, dann **ein vollständiger Satz** mit Dank + Datum/Uhrzeit, dann **sofort** end_call.
+- Nach booked:true oder erfolgreicher Stornierung: ein vollständiger Dank-Satz mit Datum/Uhrzeit, dann **Pflicht** end_call — kein weiteres Gespräch.`;
 
 export const CHAT_INSTRUCTION_BLOCK = `# Antwortstil (Chat-Test)
 - Schreibe vollständige Antworten — brich niemals mitten im Satz ab.
@@ -186,6 +197,7 @@ export function buildAgentPromptDefaults(
     llm: ELEVENLABS_LLM_MODEL,
     temperature: ELEVENLABS_PROMPT_TEMPERATURE,
     maxTokens: options?.maxTokens ?? ELEVENLABS_PROMPT_MAX_TOKENS,
+    timezone: ELEVENLABS_AGENT_TIMEZONE,
     knowledgeBase: normalizeKnowledgeBase(options?.knowledgeBase),
     builtInTools: buildBuiltInToolsDefaults(options?.builtInTools),
     ...(options?.toolIds ? { toolIds: options.toolIds } : {}),
@@ -194,8 +206,8 @@ export function buildAgentPromptDefaults(
 
 export function ensureBrevityInstruction(systemPrompt: string): string {
   const trimmed = systemPrompt.trim();
-  if (/maximal 1.?2 sätze/i.test(trimmed)) return trimmed;
-  return `${trimmed}\n\n${BREVITY_INSTRUCTION_BLOCK}`;
+  if (/# Antwortstil \(Telefon\)/i.test(trimmed)) return trimmed;
+  return `${trimmed}\n\n${CONVERSATION_CONTEXT_BLOCK}\n\n${BREVITY_INSTRUCTION_BLOCK}`;
 }
 
 /** Chat test: no phone brevity cap, explicit booking completion rules. */
@@ -207,7 +219,7 @@ export function prepareAgentChatSystemPrompt(
   const behaviorPrompt = composeBehaviorSystemPrompt(sections);
   const base = behaviorPrompt.trim() || rawPrompt.trim();
   return applyLanguageInstructions(
-    `${base}\n\n${CHAT_INSTRUCTION_BLOCK}`,
+    `${base}\n\n${CONVERSATION_CONTEXT_BLOCK}\n\n${CHAT_INSTRUCTION_BLOCK}`,
     language
   );
 }
@@ -300,6 +312,7 @@ export function buildConversationConfigCostPatchSnake(options: {
           llm: ELEVENLABS_LLM_MODEL,
           temperature: ELEVENLABS_PROMPT_TEMPERATURE,
           max_tokens: ELEVENLABS_PROMPT_MAX_TOKENS,
+          timezone: ELEVENLABS_AGENT_TIMEZONE,
           knowledge_base: normalizeKnowledgeBase(options.knowledgeBase),
           built_in_tools: {
             ...options.builtInTools,

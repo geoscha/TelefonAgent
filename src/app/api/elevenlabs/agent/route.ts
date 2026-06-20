@@ -11,6 +11,7 @@ import { buildSystemPrompt } from "@/lib/elevenlabs/prompt";
 import { normalizeEscalationPhone } from "@/lib/integrations/medical-guardrails";
 import { normalizeBusinessHours, type BusinessHoursSchedule } from "@/lib/integrations/business-hours";
 import { buildLiveAgentConversationConfig, syncAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
+import { resolveAppointmentWebhookBaseUrl } from "@/lib/integrations/appointment-webhook-probe";
 import {
   filterAgentVoices,
   normalizeAgentLanguage,
@@ -371,9 +372,14 @@ export async function POST(req: NextRequest) {
     }
 
     let agentId = body.createNew ? undefined : targetAgentId;
+    const webhookBaseUrl = resolveAppointmentWebhookBaseUrl(req);
 
     if (agentId) {
-      await syncAgentConversationConfig(client, { ...draftAgent, id: agentId });
+      await syncAgentConversationConfig(
+        client,
+        { ...draftAgent, id: agentId },
+        { siteUrl: webhookBaseUrl }
+      );
     } else {
       const created = (await client.conversationalAi.agents.create({
         name,
@@ -386,7 +392,11 @@ export async function POST(req: NextRequest) {
         agentId: string;
       };
       agentId = created.agentId;
-      await syncAgentConversationConfig(client, { ...draftAgent, id: agentId });
+      await syncAgentConversationConfig(
+        client,
+        { ...draftAgent, id: agentId },
+        { siteUrl: webhookBaseUrl }
+      );
     }
 
     const { updated, agents } = await persistAgentRecord({

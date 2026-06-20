@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { describeElevenLabsError, getElevenLabsClient } from "@/lib/elevenlabs/client";
 import { syncAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
+import { resolveAppointmentWebhookBaseUrl } from "@/lib/integrations/appointment-webhook-probe";
 import {
   linkAgentToPhone,
   unlinkPhoneRecordFromElevenLabs,
@@ -132,7 +133,9 @@ export async function POST(req: NextRequest) {
 
     try {
       const client = getElevenLabsClient();
-      await syncAgentConversationConfig(client, agent);
+      await syncAgentConversationConfig(client, agent, {
+        siteUrl: resolveAppointmentWebhookBaseUrl(req),
+      });
     } catch (err) {
       console.warn("[agent/phone] agent sync skipped:", err);
     }
