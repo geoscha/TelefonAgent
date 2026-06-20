@@ -1,7 +1,6 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { groupVoicesByGender } from "@/lib/elevenlabs/voice-groups";
 import type { AssistantVoiceGender } from "@/lib/elevenlabs/assistant-names";
 
 export interface VoiceChoiceOption {
@@ -48,45 +47,16 @@ export function VoiceChoiceGroup({
   onChange: (voiceId: string) => void;
   className?: string;
 }) {
-  const { female, male } = groupVoicesByGender(voices);
-
   return (
-    <div className={cn("space-y-4", className)}>
-      {female.length > 0 ? (
-        <div>
-          <p className="mb-2 text-[11px] font-normal uppercase tracking-[0.08em] text-[#99A0AE]">
-            Weiblich
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {female.map((voice) => (
-              <ChoicePill
-                key={voice.id}
-                active={value === voice.id}
-                onClick={() => onChange(voice.id)}
-                label={voice.displayName ?? voice.name}
-              />
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {male.length > 0 ? (
-        <div>
-          <p className="mb-2 text-[11px] font-normal uppercase tracking-[0.08em] text-[#99A0AE]">
-            Männlich
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {male.map((voice) => (
-              <ChoicePill
-                key={voice.id}
-                active={value === voice.id}
-                onClick={() => onChange(voice.id)}
-                label={voice.displayName ?? voice.name}
-              />
-            ))}
-          </div>
-        </div>
-      ) : null}
+    <div className={cn("flex flex-wrap gap-2", className)}>
+      {voices.map((voice) => (
+        <ChoicePill
+          key={voice.id}
+          active={value === voice.id}
+          onClick={() => onChange(voice.id)}
+          label={voice.displayName ?? voice.name}
+        />
+      ))}
     </div>
   );
 }

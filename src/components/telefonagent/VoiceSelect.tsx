@@ -3,19 +3,17 @@
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import type { AssistantVoiceGender } from "@/lib/elevenlabs/assistant-names";
-import { groupVoicesByGender } from "@/lib/elevenlabs/voice-groups";
 import { cn } from "@/lib/utils";
 
 export interface VoiceSelectOption {
   id: string;
   name: string;
+  displayName?: string;
   language: string;
   gender?: AssistantVoiceGender;
 }
@@ -39,26 +37,29 @@ const contentClass =
 const itemClass =
   "cursor-pointer rounded py-2 pl-8 pr-3 text-[13px] focus:bg-[#F5F7FA] data-[highlighted]:bg-[#F5F7FA]";
 
-const labelClass = "px-2 py-1.5 text-[11px] font-normal uppercase tracking-[0.08em] text-[#99A0AE]";
-
 function VoiceSelectItems({ voices }: { voices: VoiceSelectOption[] }) {
   return (
     <>
-      {voices.map((voice) => (
-        <SelectItem
-          key={voice.id}
-          value={voice.id}
-          className={itemClass}
-          textValue={`${voice.name} ${voice.language}`}
-        >
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate font-normal text-[#0E121B]">
-              {voice.name}
+      {voices.map((voice) => {
+        const label = voice.displayName ?? voice.name;
+        return (
+          <SelectItem
+            key={voice.id}
+            value={voice.id}
+            className={itemClass}
+            textValue={`${label} ${voice.language}`}
+          >
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="truncate font-normal text-[#0E121B]">
+                {label}
+              </span>
+              <span className="text-[11px] text-[#99A0AE]">
+                {voice.language}
+              </span>
             </span>
-            <span className="text-[11px] text-[#99A0AE]">{voice.language}</span>
-          </span>
-        </SelectItem>
-      ))}
+          </SelectItem>
+        );
+      })}
     </>
   );
 }
@@ -89,9 +90,6 @@ export function VoiceSelect({
     );
   }
 
-  const { female, male } = groupVoicesByGender(voices);
-  const hasGroups = female.length > 0 && male.length > 0;
-
   return (
     <Select
       value={value || undefined}
@@ -102,20 +100,7 @@ export function VoiceSelect({
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent className={contentClass} position="popper">
-        {hasGroups ? (
-          <>
-            <SelectGroup>
-              <SelectLabel className={labelClass}>Weiblich</SelectLabel>
-              <VoiceSelectItems voices={female} />
-            </SelectGroup>
-            <SelectGroup>
-              <SelectLabel className={labelClass}>Männlich</SelectLabel>
-              <VoiceSelectItems voices={male} />
-            </SelectGroup>
-          </>
-        ) : (
-          <VoiceSelectItems voices={voices} />
-        )}
+        <VoiceSelectItems voices={voices} />
       </SelectContent>
     </Select>
   );

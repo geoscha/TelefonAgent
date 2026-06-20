@@ -1,5 +1,10 @@
 import type { AssistantVoiceGender } from "@/lib/elevenlabs/assistant-names";
 
+/** Simple gender label shown in the voice picker ("Frau" / "Mann"). */
+export function voiceGenderLabel(gender?: AssistantVoiceGender): string {
+  return gender === "male" ? "Mann" : "Frau";
+}
+
 export function groupVoicesByGender<T extends { gender?: AssistantVoiceGender }>(
   voices: T[]
 ): { female: T[]; male: T[] } {

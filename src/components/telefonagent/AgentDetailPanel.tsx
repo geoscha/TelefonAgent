@@ -31,6 +31,7 @@ import {
 import {
   greetingForAssistantName,
   shouldAutoRenameAssistant,
+  type AssistantVoiceGender,
 } from "@/lib/elevenlabs/assistant-names";
 import {
   composeSystemPrompt,
@@ -53,6 +54,7 @@ interface VoiceOption {
   name: string;
   displayName?: string;
   language: string;
+  gender?: AssistantVoiceGender;
 }
 
 export type AgentDetailUpdate = Partial<
@@ -193,6 +195,9 @@ export function AgentDetailPanel({
     Boolean(agent.euComplianceEnabled)
   );
   const [website, setWebsite] = useState(agent.website ?? "");
+  const [escalationPhone, setEscalationPhone] = useState(
+    agent.escalationPhoneNumber ?? ""
+  );
   const [assistantBranch, setAssistantBranch] = useState<AssistantBranchId>(() =>
     inferAssistantBranch(agent)
   );
@@ -214,6 +219,7 @@ export function AgentDetailPanel({
     systemPrompt: agent.systemPrompt,
     euComplianceEnabled: Boolean(agent.euComplianceEnabled),
     website: agent.website ?? "",
+    escalationPhoneNumber: agent.escalationPhoneNumber ?? "",
   });
 
   useEffect(() => {
@@ -224,6 +230,7 @@ export function AgentDetailPanel({
     setSystemPrompt(agent.systemPrompt);
     setEuComplianceEnabled(Boolean(agent.euComplianceEnabled));
     setWebsite(agent.website ?? "");
+    setEscalationPhone(agent.escalationPhoneNumber ?? "");
     setAssistantBranch(inferAssistantBranch(agent));
     nameIsAutoRef.current = shouldAutoRenameAssistant(
       agent.name,
@@ -239,6 +246,7 @@ export function AgentDetailPanel({
       systemPrompt: agent.systemPrompt,
       euComplianceEnabled: Boolean(agent.euComplianceEnabled),
       website: agent.website ?? "",
+      escalationPhoneNumber: agent.escalationPhoneNumber ?? "",
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when switching agents
   }, [agent.id]);
@@ -362,6 +370,11 @@ export function AgentDetailPanel({
   function handleWebsiteChange(value: string) {
     setWebsite(value);
     scheduleSave({ website: value });
+  }
+
+  function handleEscalationPhoneChange(value: string) {
+    setEscalationPhone(value);
+    scheduleSave({ escalationPhoneNumber: value });
   }
 
   function handleBranchChange(branch: AssistantBranchId) {
@@ -638,6 +651,21 @@ export function AgentDetailPanel({
                 </select>
               </LabeledField>
             )}
+
+            <LabeledField label="Weiterleitungsnummer">
+              <input
+                type="tel"
+                value={escalationPhone}
+                onChange={(e) => handleEscalationPhoneChange(e.target.value)}
+                placeholder="+41 79 123 45 67"
+                className={fieldClass}
+              />
+              <p className="text-[11px] text-[#99A0AE]">
+                Der Assistent verbindet hierher, wenn der Anrufer eine Person
+                verlangt oder das Anliegen nicht lösbar ist. Leer lassen zum
+                Deaktivieren.
+              </p>
+            </LabeledField>
           </AgentDetailSection>
 
           <AgentDetailSection

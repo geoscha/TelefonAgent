@@ -134,7 +134,9 @@ function buildBookAppointmentTool(siteUrl?: string): WebhookToolConfig {
         durationMinutes: intField("Dauer in Minuten passend zur Terminart"),
         attendeeName: textField("Nachname der Kundin oder des Kunden"),
         attendeePhone: callerIdField(),
-        notes: textField("Optionale Notiz"),
+        notes: textField(
+          "Bemerkung/Sonderwünsche des Kunden — z. B. «Coiffeurin Maria», «Fensterplatz», «nur Stutzen». Immer mitgeben wenn der Kunde etwas Zusätzliches wünscht."
+        ),
       },
     }, siteUrl),
   };

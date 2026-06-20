@@ -5,6 +5,7 @@ import type { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import {
   buildBuiltInToolsDefaults,
   buildConversationConfig,
+  ESCALATION_CLIENT_MESSAGE,
   ELEVENLABS_APPOINTMENT_MAX_TOKENS,
   ELEVENLABS_CHAT_MAX_TOKENS,
   ELEVENLABS_CHAT_TURN_TIMEOUT_SECONDS,
@@ -13,7 +14,23 @@ import { ensureAppointmentToolIds } from "@/lib/elevenlabs/appointment-tool-sync
 import { applyEuComplianceGreeting, applyEuCompliancePrompt } from "@/lib/elevenlabs/compliance";
 import { buildAppointmentBlock } from "@/lib/elevenlabs/prompt";
 import { normalizeAppointmentConfig } from "@/lib/integrations/appointment-config";
+import { normalizeEscalationPhone } from "@/lib/integrations/medical-guardrails";
 import type { StoredAgent } from "@/lib/onboarding-types";
+
+function buildEscalationBlock(phoneNumber: string): string {
+  return `
+
+# Weiterleitung an eine Person
+- Weiterleitungsnummer für transfer_to_number: **${phoneNumber}**
+- Leite weiter (transfer_to_number), wenn der Anrufer eine Person verlangt oder du das Anliegen nicht lösen kannst.
+- **Ablauf (strikt):** Sofort **transfer_to_number** aufrufen — **nicht** zuerst laut ankündigen und warten.
+- **transfer_number:** exakt ${phoneNumber}
+- **client_message:** exakt «${ESCALATION_CLIENT_MESSAGE}» (wird dem Anrufer vorgelesen — du sagst es nicht separat).
+- **agent_message:** ein kurzer Satz für den Mitarbeiter (Anliegen des Anrufers).
+- **VERBOT:** Nie «ich leite weiter» oder «ich verbinde» sagen, ohne transfer_to_number in derselben Antwort aufzurufen. Nie zweimal hintereinander ankündigen.
+- Nach erfolgreichem transfer_to_number: **kein** end_call — die Weiterleitung beendet das Gespräch.
+- Übliche Anliegen (Termin, einfache Fragen) zuerst selbst bearbeiten, nicht vorschnell weiterleiten.`;
+}
 
 export function buildLiveAgentSystemPrompt(agent: StoredAgent): string {
   let prompt = applyEuCompliancePrompt(
@@ -28,12 +45,22 @@ export function buildLiveAgentSystemPrompt(agent: StoredAgent): string {
     );
   }
 
+  if (normalizeEscalationPhone(agent.escalationPhoneNumber)) {
+    prompt += buildEscalationBlock(
+      normalizeEscalationPhone(agent.escalationPhoneNumber)!
+    );
+  }
+
   return prompt;
 }
 
 function buildBuiltInTools(agent: StoredAgent, options?: { chatMode?: boolean }) {
+  const escalationNumber = normalizeEscalationPhone(agent.escalationPhoneNumber);
   return buildBuiltInToolsDefaults(undefined, {
-    endCall: Boolean(agent.appointmentBookingEnabled) && !options?.chatMode,
+    endCall:
+      (Boolean(agent.appointmentBookingEnabled) || Boolean(escalationNumber)) &&
+      !options?.chatMode,
+    transferPhoneNumber: options?.chatMode ? undefined : escalationNumber,
   });
 }
 

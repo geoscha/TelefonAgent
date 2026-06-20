@@ -98,7 +98,11 @@ export function textAssistantTools(agent: StoredAgent) {
                 : "Optional",
             },
             attendeePhone: { type: "string" },
-            notes: { type: "string" },
+            notes: {
+              type: "string",
+              description:
+                "Sonderwünsche oder Bemerkungen des Kunden (z. B. bestimmte Coiffeurin, Behandlungsdetail, Allergie). Im Kalender als Notiz gespeichert.",
+            },
           },
           required: flexible
             ? [

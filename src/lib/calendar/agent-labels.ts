@@ -7,14 +7,14 @@ export const AGENT_CANCELLED_DESCRIPTION_PREFIX =
 
 const CANCELLED_TITLE_PREFIX = `[Abgesagt · ${LINKER_CALENDAR_LABEL}]`;
 
-/** Clean calendar title: «Termin — Max Müller» (label lives in CATEGORIES). */
+/** Clean calendar title: «Max Müller - Haareschneiden» (label lives in CATEGORIES). */
 export function formatAppointmentTitle(
   appointmentTypeLabel: string,
   attendeeName: string
 ): string {
   const type = appointmentTypeLabel.trim() || "Termin";
   const name = attendeeName.trim();
-  return name ? `${type} — ${name}` : type;
+  return name ? `${name} - ${type}` : type;
 }
 
 /** @deprecated Prefer formatAppointmentTitle — kept for cancel flow title rewrites. */

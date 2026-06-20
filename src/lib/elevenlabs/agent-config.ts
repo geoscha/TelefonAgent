@@ -121,6 +121,10 @@ export function buildEndCallTool(): SystemToolConfigInput {
   };
 }
 
+/** Fixed phrase spoken to the caller during transfer (via transfer_to_number client_message). */
+export const ESCALATION_CLIENT_MESSAGE =
+  "Einen Moment, ich leite Sie weiter.";
+
 export function buildTransferToNumberTool(
   phoneNumber: string
 ): SystemToolConfigInput {
@@ -128,7 +132,7 @@ export function buildTransferToNumberTool(
     type: "system",
     name: "transfer_to_number",
     description:
-      "Verbindet den Anruf mit einer echten Person im Praxisteam bei Beschwerden oder medizinischen Fragen.",
+      "Leitet den laufenden Anruf sofort an eine Person weiter. Pflicht-Parameter: transfer_number (exakt die konfigurierte Nummer), client_message (exakt der Weiterleitungssatz), agent_message (kurze Zusammenfassung für den Mitarbeiter). Nicht nur ankündigen — das Tool muss aufgerufen werden.",
     params: {
       systemToolType: "transfer_to_number",
       transfers: [
@@ -138,7 +142,8 @@ export function buildTransferToNumberTool(
             phoneNumber,
           },
           condition:
-            "Anrufer hat Beschwerden, Symptome, Schmerzen, einen Notfall, eine medizinische Frage oder möchte mit einer echten Person sprechen.",
+            "Anrufer möchte eine Person sprechen, oder das Anliegen kann nicht gelöst werden.",
+          transferType: "conference",
         },
       ],
     },
@@ -147,14 +152,22 @@ export function buildTransferToNumberTool(
 
 export function buildBuiltInToolsDefaults(
   existing?: BuiltInToolsInput | null,
-  options?: { endCall?: boolean }
+  options?: { endCall?: boolean; transferPhoneNumber?: string }
 ): BuiltInToolsInput {
+  const transferNumber = options?.transferPhoneNumber?.trim();
   return {
     ...existing,
     voicemailDetection:
       existing?.voicemailDetection ?? buildVoicemailDetectionTool(),
     ...(options?.endCall
       ? { endCall: existing?.endCall ?? buildEndCallTool() }
+      : {}),
+    ...(transferNumber
+      ? {
+          transferToNumber:
+            existing?.transferToNumber ??
+            buildTransferToNumberTool(transferNumber),
+        }
       : {}),
   };
 }
@@ -344,7 +357,6 @@ export interface RawElevenLabsVoice {
 
 import {
   normalizeVoiceGender,
-  suggestAssistantName,
   type AssistantVoiceGender,
 } from "@/lib/elevenlabs/assistant-names";
 
@@ -400,7 +412,31 @@ export function voiceDisplayLanguage(v: RawElevenLabsVoice): string {
   return "Deutsch";
 }
 
-/** Voices suitable for German phone agents (excludes e.g. English-only Daniel). */
+/** Fixed display names for the two selectable agent voices. */
+export const AGENT_VOICE_FEMALE_LABEL = "Marta";
+export const AGENT_VOICE_MALE_LABEL = "Otto";
+
+function voicePreferenceScore(option: AgentVoiceOption): number {
+  return (
+    (option.swissGerman ? 2 : 0) + (option.language === "Deutsch" ? 1 : 0)
+  );
+}
+
+function pickBestVoiceForGender(
+  voices: AgentVoiceOption[],
+  gender: AssistantVoiceGender
+): AgentVoiceOption | undefined {
+  const pool = voices.filter((v) => v.gender === gender);
+  if (pool.length === 0) return undefined;
+  return [...pool].sort((a, b) => {
+    const diff = voicePreferenceScore(b) - voicePreferenceScore(a);
+    return diff !== 0
+      ? diff
+      : a.name.localeCompare(b.name, "de");
+  })[0];
+}
+
+/** Voices suitable for German phone agents — exactly one female (Marta) and one male (Otto). */
 export function filterAgentVoices(
   voices: RawElevenLabsVoice[]
 ): AgentVoiceOption[] {
@@ -408,28 +444,23 @@ export function filterAgentVoices(
     (v) => v.voiceId && v.name && voiceSupportsGerman(v)
   );
 
-  let femaleIndex = 0;
-  let maleIndex = 0;
-
   const mapped = eligible.map((v) => {
     const gender = normalizeVoiceGender(v.labels?.gender);
-    const index = gender === "male" ? maleIndex++ : femaleIndex++;
     return {
       id: v.voiceId as string,
       name: v.name as string,
-      displayName: suggestAssistantName(gender, index),
+      displayName:
+        gender === "male" ? AGENT_VOICE_MALE_LABEL : AGENT_VOICE_FEMALE_LABEL,
       gender,
       language: voiceDisplayLanguage(v),
       swissGerman: voiceIsSwissGerman(v),
     };
   });
 
-  return mapped.sort((a, b) => {
-    const score = (x: AgentVoiceOption) =>
-      (x.swissGerman ? 2 : 0) + (x.language === "Deutsch" ? 1 : 0);
-    const diff = score(b) - score(a);
-    return diff !== 0 ? diff : a.displayName.localeCompare(b.displayName, "de");
-  });
+  const female = pickBestVoiceForGender(mapped, "female");
+  const male = pickBestVoiceForGender(mapped, "male");
+
+  return [female, male].filter((v): v is AgentVoiceOption => Boolean(v));
 }
 
 export function pickDefaultAgentVoice(

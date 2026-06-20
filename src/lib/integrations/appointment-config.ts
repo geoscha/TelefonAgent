@@ -16,6 +16,12 @@ const LIVE_PHONE_BOOKING_BLOCK = `### Terminbuchung (während des Anrufs)
 - Bei available=false: die zurückgegebenen **Alternativen** anbieten.
 - Bei einem Fehler/Problem bei der Prüfung (calendarError): **einmal** dieselbe Prüfung wiederholen. Klappt es dann immer noch nicht, freundlich einen **Rückruf** anbieten — **niemals kommentarlos still** bleiben.`;
 
+const CUSTOMER_WISHES_NOTES_BLOCK = `### Sonderwünsche & Bemerkungen
+- Äussert der Kunde **zusätzliche Wünsche** (z. B. bestimmte Coiffeurin/Coiffeur, Behandlungsart, Allergie, «bitte Fensterplatz», Fahrzeugdetails): **nicht ignorieren**.
+- Diese Wünsche bei **book_appointment** im Feld **notes** mitgeben — wörtlich oder knapp zusammengefasst (z. B. «Wunsch: Coiffeurin Maria»).
+- Die Bemerkung erscheint im Kalender unter «Notiz: …» — du musst sie dem Kunden beim Buchen **nicht vorlesen**, aber bei der Bestätigung darf ein kurzer Hinweis stehen, wenn relevant («… Ihr Termin am … ist eingetragen, der Wunsch nach Maria ist vermerkt.»).
+- Keine extra Rückfrage nur wegen eines Wunsches — wenn der Kunde ihn nennt, einfach in **notes** übernehmen.`;
+
 export type AppointmentIndustryPresetId =
   | "allgemein"
   | "restaurant"
@@ -401,7 +407,8 @@ function buildIndustryFastPathBlock(
 - **Nachname + Datum + Uhrzeit** genügen. Vorname, Telefonnummer und Dauer **niemals** erfragen.
 - «Haareschneiden» → appointmentTypeId=haareschneiden (30 Min, automatisch). Andere Behandlung → behandlung (60 Min).
 - durationMinutes **nicht** vom Kunden erfragen — aus der Terminart übernehmen.
-- Hat der Kunde Nachname, Datum und Uhrzeit genannt und check_availability liefert available=true: **book_appointment** aufrufen, mit Datum/Uhrzeit bestätigen und bedanken, dann **sofort** end_call.
+- Wünsche wie «bei Coiffeurin Anna», «nur Stutzen», «Färben» → in **notes** bei book_appointment.
+- Hat der Kunde Nachname, Datum und Uhrzeit genannt und check_availability liefert available=true: **book_appointment** aufrufen (mit **notes** falls Wünsche genannt), mit Datum/Uhrzeit bestätigen und bedanken, dann **sofort** end_call.
 - Stelle nur die wirklich nötigen Rückfragen (fehlender Nachname, fehlendes Datum/Uhrzeit, oder Bestätigung eines relativen Datums) — eine nach der anderen, aber bleibe **nicht kommentarlos still**.
 - Keine Wiederholung der Dauer, keine «Passt 60 Minuten?»-Frage.`;
   }
@@ -410,6 +417,7 @@ function buildIndustryFastPathBlock(
     return `### Schnellablauf
 - Nachname + Datum + Uhrzeit genügen. Telefonnummer wird bei Anrufen automatisch übernommen.
 - Dauer aus der Terminart ableiten — nicht vom Kunden erfragen, wenn Terminart klar ist.
+- Zusätzliche Wünsche (z. B. Terrasse, Fahrzeugmodell, besondere Anliegen) in **notes** bei book_appointment vermerken.
 - Bei available=true: **book_appointment** aufrufen, bestätigen, bedanken, **sofort** end_call.`;
   }
 
@@ -452,6 +460,7 @@ export function buildAppointmentPrompt(
         businessHoursSection.trimEnd(),
         fastPathSection.trimEnd(),
         FLEXIBLE_LIVE_BOOKING_BLOCK,
+        CUSTOMER_WISHES_NOTES_BLOCK,
         "### Ablauf",
         "1. Anliegen verstehen und **Dauer schätzen**.",
         "2. Name, Datum und Uhrzeit erfassen.",
@@ -472,6 +481,7 @@ export function buildAppointmentPrompt(
         RELATIVE_DATE_INSTRUCTION_BLOCK,
         CUSTOMER_CONFIRMATION_PROMPT,
         LIVE_PHONE_BOOKING_BLOCK,
+        CUSTOMER_WISHES_NOTES_BLOCK,
         "### Ablauf",
         "1. **Nachname** und **Datum/Uhrzeit** erfassen — auch relative Angaben wie «Montag nächste Woche».",
         "2. Bei relativem Datum: einmal mit **konkretem Kalenderdatum** bestätigend nachfragen.",
@@ -485,6 +495,7 @@ export function buildAppointmentPrompt(
         "- Keine unnötigen Rückfragen. Ziel: Termin buchen, bestätigen, auflegen.",
         "- attendeeName = **Nachname** des Kunden (Vorname nicht nötig).",
         "- Telefonnummer **nicht** erfragen — bei Anrufen wird sie automatisch aus der Anrufer-ID übernommen.",
+        "- Sonderwünsche des Kunden in **notes** bei book_appointment mitgeben.",
       ]
         .filter(Boolean)
         .join("\n");
