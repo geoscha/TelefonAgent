@@ -363,6 +363,11 @@ export async function saveCalls(calls: Call[]): Promise<void> {
     .upsert(calls.map((c) => callToRow(userId, c)), { onConflict: "id" });
 }
 
+/** Upserts one call for the signed-in user. */
+export async function updateStoredCall(call: Call): Promise<void> {
+  await saveCalls([call]);
+}
+
 /** Inserts a call for a specific user (webhook context, admin client). */
 export async function addCallForUser(userId: string, call: Call): Promise<void> {
   const admin = createAdminClient();

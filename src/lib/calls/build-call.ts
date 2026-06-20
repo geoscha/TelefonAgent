@@ -166,6 +166,7 @@ export async function buildCallFromConversation(
       notes: enrichment.summary,
     },
     suggestedActions: enrichment.suggestedActions,
+    agentId: conv.agentId,
   };
 }
 

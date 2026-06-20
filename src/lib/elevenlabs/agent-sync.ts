@@ -6,6 +6,7 @@ import {
   buildBuiltInToolsDefaults,
   buildConversationConfig,
   buildTransferToNumberTool,
+  ELEVENLABS_APPOINTMENT_MAX_TOKENS,
   ELEVENLABS_CHAT_MAX_TOKENS,
   ELEVENLABS_CHAT_TURN_TIMEOUT_SECONDS,
 } from "@/lib/elevenlabs/agent-config";
@@ -70,6 +71,9 @@ export function buildLiveAgentConversationConfig(
     voiceId: agent.voiceId,
     builtInTools: buildBuiltInTools(agent),
     toolIds,
+    maxTokens: agent.appointmentBookingEnabled
+      ? ELEVENLABS_APPOINTMENT_MAX_TOKENS
+      : undefined,
   });
 }
 

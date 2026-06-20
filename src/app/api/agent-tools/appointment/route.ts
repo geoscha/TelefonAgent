@@ -2,20 +2,17 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   cancelCalendarEvent,
-  createCalendarEvent,
-  DEFAULT_TZ,
   listCalendarEventsOnDay,
 } from "@/lib/calendar";
 import {
-  buildAgentBookedDescription,
-  formatAgentBookedTitle,
   isAgentCreatedCalendarEvent,
 } from "@/lib/calendar/agent-labels";
 import { getAgentCalendarIntegration } from "@/lib/integrations/agent-calendar";
+import { bookAppointmentForAgent } from "@/lib/integrations/book-appointment";
+import { parseAppointmentToolBody } from "@/lib/integrations/appointment-tool-body";
 import {
   getEnabledAppointmentTypes,
   normalizeAppointmentConfig,
-  resolveAppointmentType,
 } from "@/lib/integrations/appointment-config";
 import {
   getCalendarForUser,
@@ -33,25 +30,6 @@ function authorized(req: NextRequest): boolean {
   const bearer = header.replace(/^Bearer\s+/i, "");
   const token = bearer || new URL(req.url).searchParams.get("token") || "";
   return token === secret;
-}
-
-interface ToolBody {
-  action?:
-    | "check_availability"
-    | "book_appointment"
-    | "find_appointments"
-    | "cancel_appointment";
-  agentId?: string;
-  title?: string;
-  startIso?: string;
-  durationMinutes?: number;
-  attendeeName?: string;
-  attendeePhone?: string;
-  notes?: string;
-  /** YYYY-MM-DD for cancellation lookup */
-  appointmentDate?: string;
-  eventId?: string;
-  eventUrl?: string;
 }
 
 function normalizeName(value?: string): string {
@@ -90,9 +68,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: ToolBody;
+  let rawBody: unknown;
   try {
-    body = (await req.json()) as ToolBody;
+    rawBody = await req.json();
   } catch {
     return NextResponse.json(
       { ok: false, error: "Ungültige Anfrage." },
@@ -100,8 +78,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const body = parseAppointmentToolBody(rawBody);
   const agentId = body.agentId?.trim();
   if (!agentId) {
+    console.warn("[appointment-tool] missing agentId", rawBody);
     return NextResponse.json(
       { ok: false, error: "agentId fehlt." },
       { status: 400 }
@@ -110,6 +90,7 @@ export async function POST(req: NextRequest) {
 
   const userId = await getUserIdByAgentId(agentId);
   if (!userId) {
+    console.warn("[appointment-tool] no user for agent", agentId);
     return NextResponse.json(
       { ok: false, error: "Kein Konto für diese agentId gefunden." },
       { status: 404 }
@@ -346,34 +327,6 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === "book_appointment") {
-    if (!ready || !provider || !calendarCtx) {
-      return NextResponse.json({
-        ok: false,
-        booked: false,
-        message: "Terminvereinbarung ist nicht aktiviert oder kein Kalender verbunden.",
-      });
-    }
-    if (!appointmentConfig.allowBooking) {
-      return NextResponse.json({
-        ok: false,
-        booked: false,
-        message: "Terminvereinbarung ist deaktiviert.",
-      });
-    }
-    if (appointmentConfig.requireCallerName && !body.attendeeName?.trim()) {
-      return NextResponse.json({
-        ok: false,
-        booked: false,
-        message: "Der Name der anrufenden Person wird benötigt.",
-      });
-    }
-    if (appointmentConfig.requireCallerPhone && !body.attendeePhone?.trim()) {
-      return NextResponse.json({
-        ok: false,
-        booked: false,
-        message: "Die Telefonnummer der anrufenden Person wird benötigt.",
-      });
-    }
     if (!body.title || !body.startIso) {
       return NextResponse.json({
         ok: false,
@@ -382,82 +335,27 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const appointmentType = resolveAppointmentType(appointmentConfig, body.title);
-    if (!appointmentType) {
-      return NextResponse.json({
-        ok: false,
-        booked: false,
-        message: "Keine erlaubte Terminart konfiguriert.",
+    const result = await bookAppointmentForAgent({
+      agentId,
+      title: body.title,
+      startIso: body.startIso,
+      attendeeName: body.attendeeName ?? "",
+      attendeePhone: body.attendeePhone,
+      notes: body.notes,
+      durationMinutes: body.durationMinutes,
+    });
+
+    if (!result.booked) {
+      console.warn("[appointment-tool] booking failed", {
+        agentId,
+        message: result.message,
       });
     }
 
-    const start = new Date(body.startIso);
-    if (Number.isNaN(start.getTime())) {
-      return NextResponse.json({
-        ok: false,
-        booked: false,
-        message: "Ungültiger Startzeitpunkt.",
-      });
-    }
-
-    const duration = Math.min(
-      Math.max(body.durationMinutes ?? appointmentType.durationMinutes, 5),
-      240
-    );
-    const end = new Date(start.getTime() + duration * 60_000);
-    const attendeeName = body.attendeeName?.trim();
-    const baseTitle = attendeeName
-      ? `${appointmentType.label} — ${attendeeName}`
-      : appointmentType.label;
-    const title = formatAgentBookedTitle(baseTitle);
-
-    const descriptionParts = [
-      attendeeName ? `Kontakt: ${attendeeName}` : null,
-      body.attendeePhone ? `Telefon: ${body.attendeePhone}` : null,
-      body.notes ? `Notiz: ${body.notes}` : null,
-      `Terminart: ${appointmentType.label}`,
-    ].filter(Boolean);
-
-    try {
-      const event = await createCalendarEvent(
-        provider,
-        {
-          title,
-          description: buildAgentBookedDescription(
-            descriptionParts as string[]
-          ),
-          startIso: start.toISOString(),
-          endIso: end.toISOString(),
-          timeZone: DEFAULT_TZ,
-        },
-        calendarCtx
-      );
-      return NextResponse.json({
-        ok: true,
-        booked: true,
-        eventId: event.id,
-        appointmentType: appointmentType.label,
-        message: `Termin «${appointmentType.label}» eingetragen für ${start.toLocaleString("de-CH", {
-          dateStyle: "full",
-          timeStyle: "short",
-          timeZone: DEFAULT_TZ,
-        })}.`,
-      });
-    } catch (error) {
-      return NextResponse.json(
-        {
-          ok: false,
-          booked: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : "Termin konnte nicht eingetragen werden.",
-        },
-        { status: 502 }
-      );
-    }
+    return NextResponse.json(result, { status: result.ok ? 200 : 502 });
   }
 
+  console.warn("[appointment-tool] unknown action", body.action, rawBody);
   return NextResponse.json(
     { ok: false, error: "Unbekannte Aktion." },
     { status: 400 }

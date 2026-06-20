@@ -66,6 +66,16 @@ export async function POST(req: NextRequest) {
       await syncAgentConversationConfig(client, merged, { chatMode: true });
     } catch (syncError) {
       console.error("[chat/session] agent sync failed:", syncError);
+      if (merged.appointmentBookingEnabled) {
+        const { message } = describeElevenLabsError(syncError);
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Termin-Tools konnten nicht synchronisiert werden: ${message}`,
+          },
+          { status: 502 }
+        );
+      }
     }
 
     const signed = (await client.conversationalAi.conversations.getSignedUrl({

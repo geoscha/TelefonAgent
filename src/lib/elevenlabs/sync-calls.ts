@@ -66,6 +66,7 @@ export async function syncCallsForUser(userId: string): Promise<number> {
           try {
             const full = await client.conversationalAi.conversations.get(id);
             const call = await buildCallFromConversation(full);
+            call.agentId = call.agentId ?? agentId;
             await addCallForUser(userId, call);
             const charge = await chargeCallTokens(userId, call.id, call.durationSeconds);
             if (!charge.ok && !charge.duplicate) {

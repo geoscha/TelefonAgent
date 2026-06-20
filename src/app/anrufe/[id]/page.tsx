@@ -9,9 +9,9 @@ import {
   Coins,
 } from "lucide-react";
 import { CallDetailBillingSync } from "@/components/anrufe/CallDetailBillingSync";
+import { ExecuteCallActionButton } from "@/components/anrufe/ExecuteCallActionButton";
 import { CategoryBadge } from "@/components/dashboard/CallCard";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -233,7 +233,7 @@ export default async function CallDetailPage({ params }: PageProps) {
                   );
                 })}
                 <Separator className="my-3" />
-                <Button className="w-full" size="sm">Aktion ausführen</Button>
+                <ExecuteCallActionButton call={call} />
               </CardContent>
             </Card>
           )}

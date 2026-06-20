@@ -47,6 +47,8 @@ export const ELEVENLABS_LLM_MODEL = "gemini-2.5-flash";
 export const ELEVENLABS_PROMPT_TEMPERATURE = 0.3;
 /** ~1–2 short spoken sentences in German. */
 export const ELEVENLABS_PROMPT_MAX_TOKENS = 120;
+/** Phone/voice agents with appointment tools need room for tool calls + confirmation. */
+export const ELEVENLABS_APPOINTMENT_MAX_TOKENS = 500;
 /** Chat test needs room for tool calls + booking confirmation. */
 export const ELEVENLABS_CHAT_MAX_TOKENS = 500;
 export const ELEVENLABS_TURN_TIMEOUT_SECONDS = 8;
