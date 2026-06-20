@@ -5,9 +5,7 @@ import { randomUUID } from "crypto";
 import {
   AGENT_CALENDAR_SOURCE_LABEL,
   AGENT_CREATED_DESCRIPTION,
-  buildAgentBookedDescription,
   buildAgentCancelledDescription,
-  formatAgentBookedTitle,
   formatAgentCancelledTitle,
   isAgentCreatedCalendarEvent,
   isCancelledCalendarEvent,
@@ -180,12 +178,134 @@ export async function appleConnect(
   };
 }
 
-function icsDate(iso: string): string {
-  return new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+function icsUtcDateTime(iso: string): string {
+  return new Date(iso)
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
+}
+
+function icsLocalDateTime(iso: string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(iso));
+  const get = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+  return `${get("year")}${get("month")}${get("day")}T${get("hour")}${get("minute")}${get("second")}`;
 }
 
 function escapeIcs(text: string): string {
-  return text.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\n/g, "\\n");
+}
+
+function foldIcsLine(line: string): string {
+  if (line.length <= 75) return line;
+  const chunks = [line.slice(0, 75)];
+  let rest = line.slice(75);
+  while (rest.length > 0) {
+    chunks.push(` ${rest.slice(0, 74)}`);
+    rest = rest.slice(74);
+  }
+  return chunks.join("\r\n");
+}
+
+function icsTextLine(name: string, value: string): string {
+  const escaped = escapeIcs(value);
+  const property = /[^\x00-\x7F]/.test(value) ? `${name};CHARSET=UTF-8` : name;
+  return foldIcsLine(`${property}:${escaped}`);
+}
+
+function summarizeCalDavError(status: number, body: string): string {
+  const trimmed = body.replace(/\s+/g, " ").trim().slice(0, 180);
+  return trimmed ? `Apple Termin anlegen fehlgeschlagen (${status}): ${trimmed}` : `Apple Termin anlegen fehlgeschlagen (${status}).`;
+}
+
+function buildAppleEventIcs(input: CalendarEventInput, uid: string): string {
+  const timeZone = input.timeZone ?? "Europe/Zurich";
+  const now = icsUtcDateTime(new Date().toISOString());
+  const title = input.title.trim() || "Termin";
+  const description = input.description?.trim() || AGENT_CREATED_DESCRIPTION;
+
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Cura//Telefonagent//DE",
+    "CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${now}`,
+    `LAST-MODIFIED:${now}`,
+    `CREATED:${now}`,
+    `DTSTART;TZID=${timeZone}:${icsLocalDateTime(input.startIso, timeZone)}`,
+    `DTEND;TZID=${timeZone}:${icsLocalDateTime(input.endIso, timeZone)}`,
+    icsTextLine("SUMMARY", title),
+    icsTextLine("DESCRIPTION", description),
+    icsTextLine("CATEGORIES", AGENT_CALENDAR_SOURCE_LABEL),
+    "STATUS:CONFIRMED",
+    "TRANSP:OPAQUE",
+    "SEQUENCE:0",
+    ...(input.location ? [icsTextLine("LOCATION", input.location)] : []),
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ];
+
+  return `${lines.join("\r\n")}\r\n`;
+}
+
+async function createAppleEventResource(
+  eventUrl: string,
+  calendarUrl: string,
+  auth: string,
+  ics: string
+): Promise<void> {
+  const putRes = await fetch(eventUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: auth,
+      "Content-Type": "text/calendar; charset=utf-8",
+      "If-None-Match": "*",
+    },
+    body: ics,
+    redirect: "follow",
+  });
+
+  if (putRes.ok || putRes.status === 201 || putRes.status === 204) {
+    return;
+  }
+
+  if (putRes.status === 400 || putRes.status === 405) {
+    const collectionUrl = calendarUrl.endsWith("/")
+      ? calendarUrl
+      : `${calendarUrl}/`;
+    const postRes = await fetch(collectionUrl, {
+      method: "POST",
+      headers: {
+        Authorization: auth,
+        "Content-Type": "text/calendar; charset=utf-8",
+      },
+      body: ics,
+      redirect: "follow",
+    });
+    if (postRes.ok || postRes.status === 201 || postRes.status === 204) {
+      return;
+    }
+    throw new Error(
+      summarizeCalDavError(postRes.status, await postRes.text())
+    );
+  }
+
+  throw new Error(summarizeCalDavError(putRes.status, await putRes.text()));
 }
 
 export async function appleCreateEvent(
@@ -197,47 +317,20 @@ export async function appleCreateEvent(
     throw new Error("Apple Kalender ist nicht verbunden.");
   }
   const auth = basicAuth(conn.accountLabel, conn.appPassword);
-  const uid = randomUUID();
+  const uid = `${randomUUID()}@cura-agent`;
   const base = conn.caldavCalendarUrl.endsWith("/")
     ? conn.caldavCalendarUrl
-    : conn.caldavCalendarUrl + "/";
-  const eventUrl = `${base}${uid}.ics`;
+    : `${conn.caldavCalendarUrl}/`;
+  const eventUrl = `${base}${encodeURIComponent(uid)}.ics`;
+  const ics = buildAppleEventIcs(input, uid);
 
-  const ics = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Cura//Telefonagent//DE",
-    "CALSCALE:GREGORIAN",
-    "BEGIN:VEVENT",
-    `UID:${uid}`,
-    `DTSTAMP:${icsDate(new Date().toISOString())}`,
-    `DTSTART:${icsDate(input.startIso)}`,
-    `DTEND:${icsDate(input.endIso)}`,
-    `SUMMARY:${escapeIcs(formatAgentBookedTitle(input.title))}`,
-    input.description
-      ? `DESCRIPTION:${escapeIcs(buildAgentBookedDescription([input.description]))}`
-      : `DESCRIPTION:${escapeIcs(AGENT_CREATED_DESCRIPTION)}`,
-    `CATEGORIES:${escapeIcs(AGENT_CALENDAR_SOURCE_LABEL)}`,
-    input.location ? `LOCATION:${escapeIcs(input.location)}` : "",
-    "END:VEVENT",
-    "END:VCALENDAR",
-  ]
-    .filter(Boolean)
-    .join("\r\n");
+  await createAppleEventResource(
+    eventUrl,
+    conn.caldavCalendarUrl,
+    auth,
+    ics
+  );
 
-  const res = await fetch(eventUrl, {
-    method: "PUT",
-    headers: {
-      Authorization: auth,
-      "Content-Type": "text/calendar; charset=utf-8",
-      "If-None-Match": "*",
-    },
-    body: ics,
-    redirect: "follow",
-  });
-  if (!res.ok && res.status !== 201 && res.status !== 204) {
-    throw new Error(`Apple Termin anlegen fehlgeschlagen (${res.status}).`);
-  }
   return { id: uid };
 }
 
@@ -471,7 +564,7 @@ function markAppleEventCancelled(ics: string): string {
   );
   updated = upsertIcsField(updated, "STATUS", "CANCELLED");
   updated = upsertIcsField(updated, "TRANSP", "TRANSPARENT");
-  updated = upsertIcsField(updated, "DTSTAMP", icsDate(cancelledAt));
+  updated = upsertIcsField(updated, "DTSTAMP", icsUtcDateTime(cancelledAt));
   updated = upsertIcsField(updated, "CATEGORIES", AGENT_CALENDAR_SOURCE_LABEL);
 
   return ics.replace(veventMatch[0], `BEGIN:VEVENT${updated}\r\nEND:VEVENT`);
