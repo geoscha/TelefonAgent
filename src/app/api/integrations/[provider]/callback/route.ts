@@ -18,7 +18,7 @@ export async function GET(
 
   const fail = (reason: string) =>
     NextResponse.redirect(
-      `${APP_URL}/integrations?error=${reason}&provider=${provider}`
+      `${APP_URL}/einstellungen?error=${reason}&provider=${provider}#kalender`
     );
 
   if (oauthError) return fail("denied");
@@ -42,7 +42,7 @@ export async function GET(
   }
 
   const res = NextResponse.redirect(
-    `${APP_URL}/integrations?connected=${provider}`
+    `${APP_URL}/einstellungen?connected=${provider}#kalender`
   );
   res.cookies.delete(`oauth_state_${provider}`);
   return res;

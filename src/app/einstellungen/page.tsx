@@ -23,6 +23,7 @@ import type { OnboardingPhase } from "@/lib/onboarding-types";
 import type { TokenBalanceView } from "@/lib/billing/quota-display";
 import { tokenBalanceHighlight } from "@/lib/billing/quota-display";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
+import { CalendarIntegrations } from "@/components/integrations/CalendarIntegrations";
 import { useSetupDemoOptional } from "@/components/onboarding/SetupDemoProvider";
 import { SupportChatPanel } from "@/components/support/SupportChatPanel";
 import { userPanelClass } from "@/components/user/user-styles";
@@ -282,6 +283,20 @@ export default function ProfilPage() {
           {savingPassword ? "Speichern…" : "Passwort ändern"}
         </Button>
       </div>
+
+      <section
+        id="kalender"
+        className="scroll-mt-8 space-y-4 border-t border-stroke pt-8"
+      >
+        <p className="text-body font-medium text-navy">Kalender</p>
+        <p className="text-body text-text-muted">
+          Verbinden Sie Ihren persönlichen Kalender mit diesem Konto. Die
+          Verknüpfung gilt nur für Sie — andere Nutzer richten ihren Kalender
+          separat im eigenen Profil ein. Pro Agent legen Sie unter Telefonagent
+          fest, welche Terminarten und Buchungsregeln gelten.
+        </p>
+        <CalendarIntegrations />
+      </section>
 
       <section className="scroll-mt-8 space-y-4 border-t border-stroke pt-8">
         <p className="text-body text-text-muted">

@@ -255,14 +255,14 @@ export function AgentIntegrationsSection({
               Noch keine Integration verbunden
             </p>
             <p className="mt-1 text-[12px] text-[#99A0AE]">
-              Verbinden Sie z. B. Apple Kalender in Ihrem Konto, um Termine pro
+              Verbinden Sie z. B. Apple Kalender in Ihrem Profil, um Termine pro
               Agent freizuschalten.
             </p>
             <Link
-              href="/integrations"
+              href="/einstellungen#kalender"
               className={cn(landingBtnPrimary, "mt-3 inline-flex px-3 py-1.5 text-[12px]")}
             >
-              Zu Integrationen
+              Zum Profil
             </Link>
           </div>
         </div>
@@ -550,10 +550,10 @@ export function AgentIntegrationsSection({
           </div>
 
           <Link
-            href="/integrations"
+            href="/einstellungen#kalender"
             className="inline-flex text-[12px] text-[#335cff] underline"
           >
-            Integrationen verwalten
+            Kalender im Profil verwalten
           </Link>
         </div>
       ) : null}

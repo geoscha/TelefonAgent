@@ -3,7 +3,6 @@ import {
   CreditCard,
   History,
   Phone,
-  Plug,
   type LucideIcon,
 } from "lucide-react";
 
@@ -17,7 +16,6 @@ export const USER_NAV_ITEMS: UserNavItem[] = [
   { href: "/telefonagent", label: "KI-Agenten", icon: Bot },
   { href: "/phones", label: "Telefonnummern", icon: Phone },
   { href: "/anrufe", label: "Verlauf", icon: History },
-  { href: "/integrations", label: "Integrationen", icon: Plug },
   { href: "/billing", label: "Abrechnung", icon: CreditCard },
 ];
 

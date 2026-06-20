@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
           {
             ok: false,
             error:
-              "Die gewählte Integration ist nicht verbunden. Bitte zuerst unter Integrationen verbinden.",
+              "Die gewählte Integration ist nicht verbunden. Bitte zuerst im Profil unter Kalender verbinden.",
           },
           { status: 400 }
         );
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
           {
             ok: false,
             error:
-              "Die gewählte Integration ist nicht verbunden. Bitte zuerst unter Integrationen verbinden.",
+              "Die gewählte Integration ist nicht verbunden. Bitte zuerst im Profil unter Kalender verbinden.",
           },
           { status: 400 }
         );
