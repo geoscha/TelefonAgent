@@ -9,7 +9,9 @@
     "start": "next start",
     "lint": "next lint",
     "migrate:elevenlabs-flash": "npx tsx scripts/migrate-elevenlabs-flash.ts",
-    "migrate:elevenlabs-agent-config": "npx tsx scripts/migrate-elevenlabs-flash.ts"
+    "migrate:elevenlabs-agent-config": "npx tsx scripts/migrate-elevenlabs-flash.ts",
+    "debug:apple-calendar": "node --env-file=.env.local scripts/debug-apple-calendar.mjs",
+    "debug:apple-calendar:book": "node --env-file=.env.local scripts/debug-apple-calendar.mjs --book"
   },
   "dependencies": {
     "@elevenlabs/client": "^1.12.0",

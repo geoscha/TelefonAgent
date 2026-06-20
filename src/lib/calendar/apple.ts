@@ -134,11 +134,73 @@ function calendarHrefIsExcluded(href: string): boolean {
   );
 }
 
+function calendarHomePath(homeUrl: string): string {
+  return new URL(homeUrl).pathname.replace(/\/$/, "");
+}
+
+/** True when the URL is the calendar-home collection itself (PUT here returns 400). */
+function isAppleCalendarHomeUrl(
+  calendarUrl: string,
+  homeUrl?: string
+): boolean {
+  try {
+    const path = new URL(calendarUrl).pathname.replace(/\/$/, "");
+    if (/\/calendars$/i.test(path)) return true;
+    if (homeUrl) {
+      return path === calendarHomePath(homeUrl);
+    }
+    return false;
+  } catch {
+    return /\/calendars\/?$/i.test(calendarUrl);
+  }
+}
+
+function calendarCollectionSegment(
+  href: string,
+  homeUrl: string
+): string | null {
+  const homePath = calendarHomePath(homeUrl);
+  const path = (/^https?:\/\//i.test(href)
+    ? new URL(href).pathname
+    : href
+  ).replace(/\/$/, "");
+
+  if (path === homePath) return null;
+
+  const match = path.match(/\/calendars\/([^/]+)$/i);
+  if (!match) return null;
+
+  const segment = match[1].toLowerCase();
+  if (segment === "inbox" || segment === "outbox" || segment === "notification") {
+    return null;
+  }
+  return match[1];
+}
+
 function calendarBlockIsWritable(block: string): boolean {
   return (
     /<(?:[A-Za-z0-9]+:)?write-content\b/i.test(block) ||
     /<(?:[A-Za-z0-9]+:)?write\b/i.test(block)
   );
+}
+
+function calendarDisplayName(block: string): string | undefined {
+  return block
+    .match(
+      /<(?:[A-Za-z0-9]+:)?displayname[^>]*>([^<]*)<\/(?:[A-Za-z0-9]+:)?displayname>/i
+    )?.[1]
+    ?.trim();
+}
+
+function calendarSortScore(href: string, displayName?: string): number {
+  const haystack = `${href} ${displayName ?? ""}`.toLowerCase();
+  if (/\/calendars\/home\/?$/i.test(href) || haystack.includes("privat")) {
+    return 0;
+  }
+  if (haystack.includes("arbeit") || /\/calendars\/work\/?$/i.test(href)) {
+    return 4;
+  }
+  return 2;
 }
 
 async function discoverCalendarUrl(auth: string): Promise<string> {
@@ -158,7 +220,7 @@ async function discoverCalendarUrl(auth: string): Promise<string> {
 
   const listXml = await propfind(homeUrl, auth, "1", CALENDAR_LIST_PROPFIND);
 
-  const candidates: string[] = [];
+  const candidates: Array<{ url: string; score: number }> = [];
   const responses = listXml.split(/<\/?(?:[A-Za-z0-9]+:)?response>/i);
   for (const block of responses) {
     if (!/calendar/i.test(block)) continue;
@@ -167,26 +229,22 @@ async function discoverCalendarUrl(auth: string): Promise<string> {
       /<(?:[A-Za-z0-9]+:)?href(?:\s[^>]*)?>([^<]+)<\/(?:[A-Za-z0-9]+:)?href>/i
     )?.[1];
     if (!href || calendarHrefIsExcluded(href)) continue;
+    if (!calendarCollectionSegment(href, homeUrl)) continue;
     if (!calendarBlockIsWritable(block)) continue;
-    candidates.push(absolutize(href.trim(), homeUrl));
+
+    const displayName = calendarDisplayName(block);
+    candidates.push({
+      url: absolutize(href.trim(), homeUrl),
+      score: calendarSortScore(href, displayName),
+    });
   }
 
-  if (candidates.length > 0) {
-    return candidates[0];
+  if (candidates.length === 0) {
+    throw new Error("Kein beschreibbarer iCloud-Kalender gefunden.");
   }
 
-  for (const block of responses) {
-    if (!/calendar/i.test(block)) continue;
-    if (!/VEVENT/i.test(block)) continue;
-    const href = block.match(
-      /<(?:[A-Za-z0-9]+:)?href(?:\s[^>]*)?>([^<]+)<\/(?:[A-Za-z0-9]+:)?href>/i
-    )?.[1];
-    if (href && !calendarHrefIsExcluded(href)) {
-      return absolutize(href.trim(), homeUrl);
-    }
-  }
-
-  throw new Error("Kein beschreibbarer iCloud-Kalender gefunden.");
+  candidates.sort((a, b) => a.score - b.score);
+  return candidates[0].url;
 }
 
 export async function appleConnect(
@@ -197,6 +255,11 @@ export async function appleConnect(
   const normalizedPassword = normalizeAppPassword(appPassword);
   const auth = basicAuth(appleId, normalizedPassword);
   const url = calendarUrl?.trim() || (await discoverCalendarUrl(auth));
+  if (isAppleCalendarHomeUrl(url)) {
+    throw new Error(
+      "Kein beschreibbarer iCloud-Kalender gefunden. Bitte erneut verbinden."
+    );
+  }
 
   // Verify we can reach the chosen calendar collection before saving credentials.
   await propfind(url, auth, "0", CALENDAR_VERIFY_PROPFIND);
@@ -394,24 +457,31 @@ export async function appleCreateEvent(
   const auth = basicAuth(conn.accountLabel, conn.appPassword);
   const uid = randomUUID();
 
-  const attemptCreate = async (calendarUrl: string) => {
-    const base = calendarUrl.endsWith("/") ? calendarUrl : `${calendarUrl}/`;
+  let calendarUrl = conn.caldavCalendarUrl;
+  if (isAppleCalendarHomeUrl(calendarUrl)) {
+    calendarUrl = await discoverCalendarUrl(auth);
+    await ctx.save({ caldavCalendarUrl: calendarUrl });
+  }
+
+  const attemptCreate = async (targetUrl: string) => {
+    const base = targetUrl.endsWith("/") ? targetUrl : `${targetUrl}/`;
     const eventUrl = `${base}${uid}.ics`;
     await createAppleEventResource(eventUrl, auth, input, uid);
   };
 
   try {
-    await attemptCreate(conn.caldavCalendarUrl);
+    await attemptCreate(calendarUrl);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const shouldRediscover =
+      isAppleCalendarHomeUrl(calendarUrl) ||
       /\(400\)|\(403\)|\(405\)|\(501\)/.test(message) ||
       /valid-calendar-object-resource/i.test(message);
 
     if (!shouldRediscover) throw error;
 
     const refreshedUrl = await discoverCalendarUrl(auth);
-    if (refreshedUrl === conn.caldavCalendarUrl) throw error;
+    if (refreshedUrl === calendarUrl) throw error;
 
     await ctx.save({ caldavCalendarUrl: refreshedUrl });
     await attemptCreate(refreshedUrl);
