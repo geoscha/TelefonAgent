@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { syncGmailInbox } from "@/lib/integrations/mail/gmail-sync";
 import {
   listThreadMessages,
   listThreadsForChannel,
@@ -34,6 +35,14 @@ export async function GET(req: NextRequest) {
         { ok: false, error: "Kanal nicht angegeben." },
         { status: 400 }
       );
+    }
+
+    if (channelType === "gmail") {
+      try {
+        await syncGmailInbox();
+      } catch (error) {
+        console.error("[messages] gmail sync:", error);
+      }
     }
 
     const payload = await listThreadsForChannel({ channelType, channelRef });

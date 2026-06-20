@@ -229,6 +229,8 @@ export async function saveChannelMessageForUser(
     senderAddress?: string;
     subject?: string;
     preview?: string;
+    providerMessageId?: string;
+    receivedAt?: string;
   }
 ): Promise<InboundMessage> {
   const supabase = createClient();
@@ -248,6 +250,8 @@ export async function saveChannelMessageForUser(
       subject: input.subject ?? null,
       body: input.body,
       preview,
+      provider_message_id: input.providerMessageId ?? null,
+      received_at: input.receivedAt ?? new Date().toISOString(),
       read: input.direction === "outbound",
     })
     .select("*")

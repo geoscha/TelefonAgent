@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { gmailExchangeCode } from "@/lib/integrations/mail/gmail";
+import { syncGmailInbox } from "@/lib/integrations/mail/gmail-sync";
 import { outlookExchangeCode } from "@/lib/integrations/mail/outlook";
 import {
   ensureSingleMailConnection,
@@ -50,6 +51,14 @@ export async function GET(
         : await outlookExchangeCode(code, redirectUri);
     await ensureSingleMailConnection(provider);
     await upsertMailConnection(provider, patch);
+
+    if (provider === "gmail") {
+      try {
+        await syncGmailInbox();
+      } catch (syncError) {
+        console.error("[mail/callback] gmail sync:", syncError);
+      }
+    }
   } catch {
     return fail("exchange_failed");
   }
