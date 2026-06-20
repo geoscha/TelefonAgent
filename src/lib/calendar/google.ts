@@ -162,8 +162,7 @@ type GoogleEventItem = {
 };
 
 function googleInstantIso(
-  value: { dateTime?: string; date?: string } | undefined,
-  fallbackTz = DEFAULT_TZ
+  value: { dateTime?: string; date?: string } | undefined
 ): string | undefined {
   if (!value) return undefined;
   if (value.dateTime) return value.dateTime;

@@ -16,7 +16,6 @@ import {
 import {
   getCalendars,
   upsertCalendar,
-  type CalendarProvider,
 } from "@/lib/store";
 
 export const dynamic = "force-dynamic";

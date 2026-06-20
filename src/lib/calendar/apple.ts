@@ -321,21 +321,6 @@ async function resolveAppleWriteTargets(
   return targets.length > 0 ? targets : allWritable;
 }
 
-async function writableCalendarUrlsForWrite(
-  conn: CalendarConnection,
-  auth: string
-): Promise<string[]> {
-  if (
-    conn.caldavCalendarUrl &&
-    !isAppleCalendarHomeUrl(conn.caldavCalendarUrl)
-  ) {
-    const urls = await discoverWritableCalendarUrls(auth);
-    const preferred = conn.caldavCalendarUrl;
-    return [preferred, ...urls.filter((url) => url !== preferred)];
-  }
-  return discoverWritableCalendarUrls(auth);
-}
-
 function calendarHomeUrlFromCollection(calendarUrl: string): string {
   const trimmed = calendarUrl.trim();
   if (isAppleCalendarHomeUrl(trimmed)) {
