@@ -9,7 +9,6 @@ import {
   ensureSingleMailConnection,
   upsertMailConnection,
 } from "@/lib/integrations/mail/store";
-import type { MailProviderId } from "@/lib/integrations/mail/provider-meta";
 import {
   mailOAuthRedirectUri,
   OAUTH_ORIGIN_COOKIE,
@@ -19,21 +18,28 @@ import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-const OAUTH_PROVIDERS = new Set<MailProviderId>(["gmail", "outlook"]);
+type MailOAuthProvider = "gmail" | "outlook";
+
+const OAUTH_PROVIDERS = new Set<MailOAuthProvider>(["gmail", "outlook"]);
+
+function isMailOAuthProvider(value: string): value is MailOAuthProvider {
+  return OAUTH_PROVIDERS.has(value as MailOAuthProvider);
+}
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ provider: string }> }
 ) {
   const { provider: raw } = await params;
-  const provider = raw as MailProviderId;
 
-  if (!OAUTH_PROVIDERS.has(provider)) {
+  if (!isMailOAuthProvider(raw)) {
     return NextResponse.json(
       { ok: false, error: "Dieser Anbieter nutzt kein OAuth." },
       { status: 400 }
     );
   }
+
+  const provider = raw;
 
   if (!isMailConfigured(provider)) {
     return NextResponse.json(

@@ -13,12 +13,20 @@ import {
   OAUTH_ORIGIN_COOKIE,
   resolveAppUrl,
 } from "@/lib/integrations/oauth-origin";
-import { upsertCalendar, type CalendarProvider } from "@/lib/store";
+import { upsertCalendar } from "@/lib/store";
 import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-const OAUTH_PROVIDERS = new Set<CalendarProvider>(["google", "microsoft"]);
+type CalendarOAuthProvider = "google" | "microsoft";
+
+const OAUTH_PROVIDERS = new Set<CalendarOAuthProvider>(["google", "microsoft"]);
+
+function isCalendarOAuthProvider(
+  value: string
+): value is CalendarOAuthProvider {
+  return OAUTH_PROVIDERS.has(value as CalendarOAuthProvider);
+}
 
 /** Starts OAuth for Google / Microsoft. */
 export async function GET(
@@ -26,14 +34,15 @@ export async function GET(
   { params }: { params: Promise<{ provider: string }> }
 ) {
   const { provider: raw } = await params;
-  const provider = raw as CalendarProvider;
 
-  if (!OAUTH_PROVIDERS.has(provider)) {
+  if (!isCalendarOAuthProvider(raw)) {
     return NextResponse.json(
       { ok: false, error: "Dieser Anbieter nutzt kein OAuth." },
       { status: 400 }
     );
   }
+
+  const provider = raw;
 
   if (!isConfigured(provider)) {
     return NextResponse.json(
