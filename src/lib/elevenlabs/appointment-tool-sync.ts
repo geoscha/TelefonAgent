@@ -35,6 +35,17 @@ function appointmentToolHeaders(): Record<string, string> | undefined {
   return { Authorization: `Bearer ${secret}` };
 }
 
+function buildApiSchema(requestBodySchema: WebhookToolConfig["apiSchema"]["requestBodySchema"]) {
+  const headers = appointmentToolHeaders();
+  return {
+    url: appointmentToolUrl(),
+    method: "POST" as const,
+    contentType: "application/json" as const,
+    ...(headers ? { requestHeaders: headers } : {}),
+    requestBodySchema,
+  };
+}
+
 function constField(value: string) {
   return { type: "string", constantValue: value };
 }
@@ -65,17 +76,11 @@ function buildCheckAvailabilityTool(): WebhookToolConfig {
     description:
       "Prüft, ob Terminvereinbarung und Stornierung verfügbar sind. Zu Beginn einer Terminanfrage aufrufen.",
     responseTimeoutSecs: 30,
-    apiSchema: {
-      url: appointmentToolUrl(),
-      method: "POST",
-      contentType: "application/json",
-      requestHeaders: appointmentToolHeaders(),
-      requestBodySchema: {
-        type: "object",
-        required: ["action", "agentId"],
-        properties: baseBody("check_availability"),
-      },
-    },
+    apiSchema: buildApiSchema({
+      type: "object",
+      required: ["action", "agentId"],
+      properties: baseBody("check_availability"),
+    }),
   };
 }
 
@@ -86,27 +91,21 @@ function buildBookAppointmentTool(): WebhookToolConfig {
     description:
       "Trägt einen Termin im verbundenen Kalender ein. Nur aufrufen, wenn Name, Datum, Uhrzeit und Terminart klar sind.",
     responseTimeoutSecs: 60,
-    apiSchema: {
-      url: appointmentToolUrl(),
-      method: "POST",
-      contentType: "application/json",
-      requestHeaders: appointmentToolHeaders(),
-      requestBodySchema: {
-        type: "object",
-        required: ["action", "agentId", "title", "startIso", "attendeeName"],
-        properties: {
-          ...baseBody("book_appointment"),
-          title: textField("Kurzer Titel mit Terminart"),
-          startIso: textField(
-            "Startzeit ISO 8601 mit Zeitzone Europe/Zurich, z. B. 2026-06-23T10:00:00+02:00"
-          ),
-          durationMinutes: intField("Dauer in Minuten passend zur Terminart"),
-          attendeeName: textField("Vollständiger Name der anrufenden Person"),
-          attendeePhone: textField("Telefonnummer, falls bekannt"),
-          notes: textField("Optionale Notiz"),
-        },
+    apiSchema: buildApiSchema({
+      type: "object",
+      required: ["action", "agentId", "title", "startIso", "attendeeName"],
+      properties: {
+        ...baseBody("book_appointment"),
+        title: textField("Kurzer Titel mit Terminart"),
+        startIso: textField(
+          "Startzeit ISO 8601 mit Zeitzone Europe/Zurich, z. B. 2026-06-23T10:00:00+02:00"
+        ),
+        durationMinutes: intField("Dauer in Minuten passend zur Terminart"),
+        attendeeName: textField("Vollständiger Name der anrufenden Person"),
+        attendeePhone: textField("Telefonnummer, falls bekannt"),
+        notes: textField("Optionale Notiz"),
       },
-    },
+    }),
   };
 }
 
@@ -117,21 +116,15 @@ function buildFindAppointmentsTool(): WebhookToolConfig {
     description:
       "Sucht bestehende Agent-Termine an einem Tag für eine Person (für Stornierung).",
     responseTimeoutSecs: 45,
-    apiSchema: {
-      url: appointmentToolUrl(),
-      method: "POST",
-      contentType: "application/json",
-      requestHeaders: appointmentToolHeaders(),
-      requestBodySchema: {
-        type: "object",
-        required: ["action", "agentId", "appointmentDate", "attendeeName"],
-        properties: {
-          ...baseBody("find_appointments"),
-          appointmentDate: textField("Termintag als YYYY-MM-DD"),
-          attendeeName: textField("Name der anrufenden Person"),
-        },
+    apiSchema: buildApiSchema({
+      type: "object",
+      required: ["action", "agentId", "appointmentDate", "attendeeName"],
+      properties: {
+        ...baseBody("find_appointments"),
+        appointmentDate: textField("Termintag als YYYY-MM-DD"),
+        attendeeName: textField("Name der anrufenden Person"),
       },
-    },
+    }),
   };
 }
 
@@ -142,23 +135,17 @@ function buildCancelAppointmentTool(): WebhookToolConfig {
     description:
       "Storniert einen zuvor mit find_appointments gefundenen Agent-Termin im Kalender.",
     responseTimeoutSecs: 45,
-    apiSchema: {
-      url: appointmentToolUrl(),
-      method: "POST",
-      contentType: "application/json",
-      requestHeaders: appointmentToolHeaders(),
-      requestBodySchema: {
-        type: "object",
-        required: ["action", "agentId", "eventId", "attendeeName"],
-        properties: {
-          ...baseBody("cancel_appointment"),
-          eventId: textField("eventId aus find_appointments"),
-          eventUrl: textField("eventUrl aus find_appointments, falls vorhanden"),
-          attendeeName: textField("Name der anrufenden Person"),
-          appointmentDate: textField("Termintag als YYYY-MM-DD"),
-        },
+    apiSchema: buildApiSchema({
+      type: "object",
+      required: ["action", "agentId", "eventId", "attendeeName"],
+      properties: {
+        ...baseBody("cancel_appointment"),
+        eventId: textField("eventId aus find_appointments"),
+        eventUrl: textField("eventUrl aus find_appointments, falls vorhanden"),
+        attendeeName: textField("Name der anrufenden Person"),
+        appointmentDate: textField("Termintag als YYYY-MM-DD"),
       },
-    },
+    }),
   };
 }
 
