@@ -13,6 +13,7 @@ import {
   isAgentCreatedCalendarEvent,
   isCancelledCalendarEvent,
 } from "./agent-labels";
+import { dayBoundsInTimeZone } from "./day-bounds";
 
 const AUTH_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
@@ -228,11 +229,8 @@ export async function microsoftListEventsOnDay(
   dayIso: string,
   ctx: CalendarContext
 ): Promise<ListedCalendarEvent[]> {
-  const start = `${dayIso}T00:00:00`;
-  const endDate = new Date(`${dayIso}T00:00:00Z`);
-  endDate.setUTCDate(endDate.getUTCDate() + 1);
-  const end = endDate.toISOString().slice(0, 19);
-  return microsoftListEventsInRange(start, end, ctx);
+  const { timeMin, timeMax } = dayBoundsInTimeZone(dayIso, DEFAULT_TZ);
+  return microsoftListEventsInRange(timeMin, timeMax, ctx);
 }
 
 export async function microsoftDeleteEvent(

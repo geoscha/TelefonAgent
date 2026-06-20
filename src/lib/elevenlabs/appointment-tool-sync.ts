@@ -83,7 +83,7 @@ function buildCheckAvailabilityTool(siteUrl?: string): WebhookToolConfig {
     type: "webhook",
     name: "check_availability",
     description:
-      "Prüft live im Apple-Kalender ob ein Slot frei ist. Bei available=true: sofort book_appointment aufrufen — dem Kunden vorher nicht sagen dass eingetragen wird.",
+      "Prüft live im verbundenen Kalender (Google, Outlook oder Apple), ob ein Slot frei ist. Bei available=true: sofort book_appointment aufrufen — dem Kunden vorher nicht sagen dass eingetragen wird.",
     responseTimeoutSecs: 60,
     apiSchema: buildApiSchema({
       type: "object",

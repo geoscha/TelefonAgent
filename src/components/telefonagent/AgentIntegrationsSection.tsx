@@ -30,7 +30,9 @@ import {
 import type { CalendarProvider } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-const PROVIDER_LABELS: Record<"apple", string> = {
+const PROVIDER_LABELS: Record<CalendarProvider, string> = {
+  google: "Google Kalender",
+  microsoft: "Microsoft Outlook",
   apple: "Apple Kalender",
 };
 
@@ -118,9 +120,7 @@ export function AgentIntegrationsSection({
           accountLabel?: string;
         }>
       )
-        .filter(
-          (calendar) => calendar.connected && calendar.provider === "apple"
-        )
+        .filter((calendar) => calendar.connected)
         .map((calendar) => ({
           provider: calendar.provider,
           accountLabel: calendar.accountLabel,
@@ -305,8 +305,9 @@ export function AgentIntegrationsSection({
               Noch keine Integration verbunden
             </p>
             <p className="mt-1 text-[12px] text-[#99A0AE]">
-              Verbinden Sie z. B. Apple Kalender unter Integrationen, um Termine
-              pro Assistent freizuschalten.
+              Verbinden Sie Google Kalender, Microsoft Outlook oder Apple
+              Kalender unter Integrationen, um Termine pro Assistent
+              freizuschalten.
             </p>
             <Link
               href="/integrationen"
@@ -341,7 +342,7 @@ export function AgentIntegrationsSection({
         <div className="min-w-0">
           <p className="text-[13px] font-medium text-[#0E121B]">
             {activeProvider
-              ? PROVIDER_LABELS.apple
+              ? PROVIDER_LABELS[activeProvider]
               : "Kalender-Integration"}
           </p>
           <p className="truncate text-[11px] text-[#99A0AE]">
@@ -380,7 +381,7 @@ export function AgentIntegrationsSection({
               >
                 {connectedCalendars.map((entry) => (
                   <option key={entry.provider} value={entry.provider}>
-                    {PROVIDER_LABELS.apple}
+                    {PROVIDER_LABELS[entry.provider]}
                     {entry.accountLabel ? ` (${entry.accountLabel})` : ""}
                   </option>
                 ))}

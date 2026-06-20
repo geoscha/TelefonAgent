@@ -310,8 +310,9 @@ export async function probeAgentCalendar(
   }
 
   const settings = await getSettingsForUser(userId);
+  const agent = settings.agents?.find((entry) => entry.id === trimmed);
   const integration = getAgentCalendarIntegration(settings, trimmed);
-  const provider = integration.calendarProvider;
+  const provider = await resolveConnectedCalendarProvider(userId, agent, settings);
   const connection = provider
     ? await getCalendarForUser(userId, provider)
     : undefined;

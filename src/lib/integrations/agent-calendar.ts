@@ -37,15 +37,17 @@ export async function resolveConnectedCalendarProvider(
   agent: StoredAgent | undefined,
   settings: Pick<ElevenLabsSettings, "appointmentProvider">
 ): Promise<CalendarProvider | null> {
-  for (const provider of CALENDAR_PROVIDERS) {
-    const conn = await getCalendarForUser(userId, provider);
-    if (conn?.connected) return provider;
-  }
+  const preferred =
+    agent?.calendarProvider ?? settings.appointmentProvider ?? null;
 
-  const preferred = agent?.calendarProvider ?? settings.appointmentProvider ?? null;
   if (preferred) {
     const preferredConn = await getCalendarForUser(userId, preferred);
     if (preferredConn?.connected) return preferred;
+  }
+
+  for (const provider of CALENDAR_PROVIDERS) {
+    const conn = await getCalendarForUser(userId, provider);
+    if (conn?.connected) return provider;
   }
 
   return null;

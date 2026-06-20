@@ -85,12 +85,23 @@ async function verifyBookedEventVisible(
   },
   event: { id: string; title: string; startIso: string }
 ): Promise<boolean> {
+  // Google/Microsoft return synchronously from the REST API — no CalDAV delay.
+  if (provider !== "apple") {
+    return true;
+  }
+
+  const targetStart = new Date(event.startIso).getTime();
   const events = await listCalendarEventsOnDay(provider, dayIso, ctx);
-  return events.some(
-    (entry) =>
-      entry.id === event.id ||
-      (entry.title === event.title && entry.startIso === event.startIso)
-  );
+  return events.some((entry) => {
+    if (entry.id === event.id) return true;
+    if (entry.title !== event.title) return false;
+    const entryStart = new Date(entry.startIso).getTime();
+    return (
+      !Number.isNaN(entryStart) &&
+      !Number.isNaN(targetStart) &&
+      Math.abs(entryStart - targetStart) <= 2 * 60_000
+    );
+  });
 }
 
 export async function bookAppointmentForAgent(

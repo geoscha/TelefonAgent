@@ -13,6 +13,7 @@ import {
   isAgentCreatedCalendarEvent,
   isCancelledCalendarEvent,
 } from "./agent-labels";
+import { dayBoundsInTimeZone } from "./day-bounds";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -224,11 +225,8 @@ export async function googleListEventsOnDay(
   dayIso: string,
   ctx: CalendarContext
 ): Promise<ListedCalendarEvent[]> {
-  const start = `${dayIso}T00:00:00+01:00`;
-  const endDate = new Date(`${dayIso}T12:00:00Z`);
-  endDate.setUTCDate(endDate.getUTCDate() + 1);
-  const end = endDate.toISOString();
-  return googleListEventsInRange(start, end, ctx);
+  const { timeMin, timeMax } = dayBoundsInTimeZone(dayIso, DEFAULT_TZ);
+  return googleListEventsInRange(timeMin, timeMax, ctx);
 }
 
 export async function googleDeleteEvent(
