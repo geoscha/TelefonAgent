@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { buildLiveAgentChatConversationConfig } from "@/lib/elevenlabs/agent-sync";
 import { mergeAgentChatDraft } from "@/lib/elevenlabs/chat-overrides";
 import type { AgentChatDraft } from "@/lib/elevenlabs/agent-chat-types";
+import { syncAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
 import {
   describeElevenLabsError,
   getElevenLabsClient,
@@ -60,15 +60,13 @@ export async function POST(req: NextRequest) {
     }
 
     const merged = mergeAgentChatDraft(existing, body.draft);
-    const conversationConfig = buildLiveAgentChatConversationConfig(merged);
-
     const client = getElevenLabsClient();
 
-    // Sync draft onto the live ElevenLabs agent so the chat uses the exact phone config.
-    await client.conversationalAi.agents.update(agentId, {
-      name: merged.name,
-      conversationConfig,
-    } as Parameters<typeof client.conversationalAi.agents.update>[1]);
+    try {
+      await syncAgentConversationConfig(client, merged, { chatMode: true });
+    } catch (syncError) {
+      console.error("[chat/session] agent sync failed:", syncError);
+    }
 
     const signed = (await client.conversationalAi.conversations.getSignedUrl({
       agentId,

@@ -27,14 +27,6 @@ type BuiltInToolsInput = {
   [key: string]: unknown;
 };
 
-type WebhookToolInput = {
-  type: "webhook";
-  name: string;
-  description: string;
-  responseTimeoutSecs?: number;
-  apiSchema: Record<string, unknown>;
-};
-
 /** UI language options — only German variants (ElevenLabs agent code: de). */
 export const AGENT_LANGUAGE_OPTIONS = [
   { value: "Deutsch", label: "Deutsch" },
@@ -155,7 +147,7 @@ export function buildAgentPromptDefaults(
     knowledgeBase?: KnowledgeBaseLocator[] | unknown;
     builtInTools?: BuiltInToolsInput | null;
     maxTokens?: number;
-    webhookTools?: WebhookToolInput[];
+    toolIds?: string[];
   }
 ) {
   return {
@@ -165,9 +157,7 @@ export function buildAgentPromptDefaults(
     maxTokens: options?.maxTokens ?? ELEVENLABS_PROMPT_MAX_TOKENS,
     knowledgeBase: normalizeKnowledgeBase(options?.knowledgeBase),
     builtInTools: buildBuiltInToolsDefaults(options?.builtInTools),
-    ...(options?.webhookTools?.length
-      ? { tools: options.webhookTools }
-      : {}),
+    ...(options?.toolIds ? { toolIds: options.toolIds } : {}),
   };
 }
 
@@ -236,7 +226,7 @@ export function buildConversationConfig(params: {
   maxTokens?: number;
   turnTimeoutSeconds?: number;
   chatMode?: boolean;
-  webhookTools?: WebhookToolInput[];
+  toolIds?: string[];
 }) {
   const language = normalizeAgentLanguage(params.language);
   const preparedPrompt = params.chatMode
@@ -251,7 +241,7 @@ export function buildConversationConfig(params: {
         knowledgeBase: params.knowledgeBase,
         builtInTools: params.builtInTools,
         maxTokens: params.maxTokens,
-        webhookTools: params.webhookTools,
+        toolIds: params.toolIds,
       }),
     },
     tts: buildTtsConfig(params.voiceId),

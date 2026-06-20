@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { buildLiveAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
+import { syncAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
 import {
   describeElevenLabsError,
   getElevenLabsClient,
@@ -46,12 +46,7 @@ async function syncLiveAgentPrompt(
   if (!activeAgentId || activeAgentId !== agent.id) return;
 
   const client = getElevenLabsClient();
-  const conversationConfig = buildLiveAgentConversationConfig(agent);
-
-  await client.conversationalAi.agents.update(agent.id, {
-    name: agent.name,
-    conversationConfig,
-  } as Parameters<typeof client.conversationalAi.agents.update>[1]);
+  await syncAgentConversationConfig(client, agent);
 }
 
 export async function POST(req: NextRequest) {

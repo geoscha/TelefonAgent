@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
+
 import {
   buildBuiltInToolsDefaults,
   buildConversationConfig,
@@ -7,7 +9,7 @@ import {
   ELEVENLABS_CHAT_MAX_TOKENS,
   ELEVENLABS_CHAT_TURN_TIMEOUT_SECONDS,
 } from "@/lib/elevenlabs/agent-config";
-import { buildAppointmentWebhookTools } from "@/lib/elevenlabs/appointment-tools";
+import { ensureAppointmentToolIds } from "@/lib/elevenlabs/appointment-tool-sync";
 import { applyEuComplianceGreeting, applyEuCompliancePrompt } from "@/lib/elevenlabs/compliance";
 import { buildAppointmentBlock } from "@/lib/elevenlabs/prompt";
 import { parseSystemPrompt } from "@/lib/elevenlabs/prompt-sections";
@@ -41,26 +43,23 @@ export function buildLiveAgentSystemPrompt(agent: StoredAgent): string {
   return prompt;
 }
 
-function resolveAppointmentWebhookTools(agent: StoredAgent) {
-  if (!agent.appointmentBookingEnabled) return undefined;
-  return buildAppointmentWebhookTools(
-    agent.id,
-    normalizeAppointmentConfig(agent.appointmentConfig)
-  );
-}
-
-export function buildLiveAgentConversationConfig(agent: StoredAgent) {
+function buildBuiltInTools(agent: StoredAgent) {
   const branche = parseSystemPrompt(agent.systemPrompt).branche;
   const medical = agentUsesMedicalGuardrails(agent, branche);
   const escalationPhone = normalizeEscalationPhone(agent.escalationPhoneNumber);
-  const builtInTools = buildBuiltInToolsDefaults(
+  return buildBuiltInToolsDefaults(
     medical && escalationPhone
       ? {
           transferToNumber: buildTransferToNumberTool(escalationPhone),
         }
       : undefined
   );
+}
 
+export function buildLiveAgentConversationConfig(
+  agent: StoredAgent,
+  toolIds: string[] = []
+) {
   return buildConversationConfig({
     greeting: applyEuComplianceGreeting(
       agent.greeting,
@@ -69,24 +68,16 @@ export function buildLiveAgentConversationConfig(agent: StoredAgent) {
     language: agent.language ?? "Deutsch",
     systemPrompt: buildLiveAgentSystemPrompt(agent),
     voiceId: agent.voiceId,
-    builtInTools,
-    webhookTools: resolveAppointmentWebhookTools(agent),
+    builtInTools: buildBuiltInTools(agent),
+    toolIds,
   });
 }
 
 /** Chat test: higher token budget, longer turns, explicit booking completion. */
-export function buildLiveAgentChatConversationConfig(agent: StoredAgent) {
-  const branche = parseSystemPrompt(agent.systemPrompt).branche;
-  const medical = agentUsesMedicalGuardrails(agent, branche);
-  const escalationPhone = normalizeEscalationPhone(agent.escalationPhoneNumber);
-  const builtInTools = buildBuiltInToolsDefaults(
-    medical && escalationPhone
-      ? {
-          transferToNumber: buildTransferToNumberTool(escalationPhone),
-        }
-      : undefined
-  );
-
+export function buildLiveAgentChatConversationConfig(
+  agent: StoredAgent,
+  toolIds: string[] = []
+) {
   return buildConversationConfig({
     greeting: applyEuComplianceGreeting(
       agent.greeting,
@@ -95,10 +86,30 @@ export function buildLiveAgentChatConversationConfig(agent: StoredAgent) {
     language: agent.language ?? "Deutsch",
     systemPrompt: buildLiveAgentSystemPrompt(agent),
     voiceId: agent.voiceId,
-    builtInTools,
-    webhookTools: resolveAppointmentWebhookTools(agent),
+    builtInTools: buildBuiltInTools(agent),
+    toolIds,
     chatMode: true,
     maxTokens: ELEVENLABS_CHAT_MAX_TOKENS,
     turnTimeoutSeconds: ELEVENLABS_CHAT_TURN_TIMEOUT_SECONDS,
   });
+}
+
+export async function syncAgentConversationConfig(
+  client: ElevenLabsClient,
+  agent: StoredAgent,
+  options?: { chatMode?: boolean }
+): Promise<void> {
+  const appointmentConfig = normalizeAppointmentConfig(agent.appointmentConfig);
+  const toolIds = agent.appointmentBookingEnabled
+    ? await ensureAppointmentToolIds(client, appointmentConfig)
+    : [];
+
+  const conversationConfig = options?.chatMode
+    ? buildLiveAgentChatConversationConfig(agent, toolIds)
+    : buildLiveAgentConversationConfig(agent, toolIds);
+
+  await client.conversationalAi.agents.update(agent.id, {
+    name: agent.name,
+    conversationConfig,
+  } as Parameters<typeof client.conversationalAi.agents.update>[1]);
 }

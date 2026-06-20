@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { buildLiveAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
+import { syncAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
 import {
   describeElevenLabsError,
   getElevenLabsClient,
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   if (!agentId) {
     return NextResponse.json(
       { ok: false, error: "Agent nicht gefunden." },
-      { status: 400 }
+      { status: 404 }
     );
   }
 
@@ -47,12 +47,7 @@ export async function POST(req: NextRequest) {
     }
 
     const client = getElevenLabsClient();
-    const conversationConfig = buildLiveAgentConversationConfig(existing);
-
-    await client.conversationalAi.agents.update(agentId, {
-      name: existing.name,
-      conversationConfig,
-    } as Parameters<typeof client.conversationalAi.agents.update>[1]);
+    await syncAgentConversationConfig(client, existing);
 
     return NextResponse.json({ ok: true });
   } catch (error) {

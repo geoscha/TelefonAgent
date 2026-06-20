@@ -26,6 +26,27 @@ export function getElevenLabsClient(): ElevenLabsClient {
   return new ElevenLabsClient({ apiKey });
 }
 
+function formatElevenLabsDetail(detail: unknown): string | null {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((entry) => formatElevenLabsDetail(entry))
+      .filter((entry): entry is string => Boolean(entry));
+    return parts.length > 0 ? parts.join("; ") : null;
+  }
+  if (detail && typeof detail === "object") {
+    const record = detail as Record<string, unknown>;
+    if (typeof record.msg === "string") return record.msg;
+    if (typeof record.message === "string") return record.message;
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 /**
  * Maps any thrown error to a friendly German message + HTTP status for the UI.
  */
@@ -54,15 +75,14 @@ export function describeElevenLabsError(error: unknown): {
     }
     const detail =
       typeof error.body === "object" && error.body
-        ? // ElevenLabs returns { detail: ... } on validation errors
-          ((error.body as { detail?: unknown }).detail ?? null)
+        ? ((error.body as { detail?: unknown }).detail ?? null)
         : null;
+    const formatted = formatElevenLabsDetail(detail);
     return {
       status: code >= 400 && code < 600 ? code : 502,
       message:
-        typeof detail === "string"
-          ? detail
-          : "ElevenLabs hat die Anfrage abgelehnt. Bitte überprüfen Sie Ihre Eingaben.",
+        formatted ??
+        "ElevenLabs hat die Anfrage abgelehnt. Bitte überprüfen Sie Ihre Eingaben.",
     };
   }
   return {

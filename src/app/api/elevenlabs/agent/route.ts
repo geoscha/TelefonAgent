@@ -9,7 +9,7 @@ import {
 } from "@/lib/integrations/agent-calendar";
 import { buildSystemPrompt } from "@/lib/elevenlabs/prompt";
 import { normalizeEscalationPhone } from "@/lib/integrations/medical-guardrails";
-import { buildLiveAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
+import { buildLiveAgentConversationConfig, syncAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
 import {
   filterAgentVoices,
   normalizeAgentLanguage,
@@ -319,24 +319,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const conversationConfig = buildLiveAgentConversationConfig(draftAgent);
-
     let agentId = body.createNew ? undefined : targetAgentId;
 
     if (agentId) {
-      await client.conversationalAi.agents.update(agentId, {
-        name,
-        conversationConfig,
-      } as Parameters<typeof client.conversationalAi.agents.update>[1]);
+      await syncAgentConversationConfig(client, { ...draftAgent, id: agentId });
     } else {
       const created = (await client.conversationalAi.agents.create({
         name,
-        conversationConfig,
+        conversationConfig: buildLiveAgentConversationConfig({
+          ...draftAgent,
+          id: "pending",
+        }),
         tags: ["cura"],
       } as Parameters<typeof client.conversationalAi.agents.create>[0])) as {
         agentId: string;
       };
       agentId = created.agentId;
+      await syncAgentConversationConfig(client, { ...draftAgent, id: agentId });
     }
 
     const { updated, agents } = await persistAgentRecord({
