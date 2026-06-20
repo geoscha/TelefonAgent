@@ -23,7 +23,16 @@ type SystemToolConfigInput = {
 
 type BuiltInToolsInput = {
   voicemailDetection?: SystemToolConfigInput;
+  transferToNumber?: SystemToolConfigInput;
   [key: string]: unknown;
+};
+
+type WebhookToolInput = {
+  type: "webhook";
+  name: string;
+  description: string;
+  responseTimeoutSecs?: number;
+  apiSchema: Record<string, unknown>;
 };
 
 /** UI language options — only German variants (ElevenLabs agent code: de). */
@@ -46,13 +55,22 @@ export const ELEVENLABS_LLM_MODEL = "gemini-2.5-flash";
 export const ELEVENLABS_PROMPT_TEMPERATURE = 0.3;
 /** ~1–2 short spoken sentences in German. */
 export const ELEVENLABS_PROMPT_MAX_TOKENS = 120;
+/** Chat test needs room for tool calls + booking confirmation. */
+export const ELEVENLABS_CHAT_MAX_TOKENS = 500;
 export const ELEVENLABS_TURN_TIMEOUT_SECONDS = 8;
+export const ELEVENLABS_CHAT_TURN_TIMEOUT_SECONDS = 20;
 export const ELEVENLABS_MAX_DURATION_SECONDS = 300;
 
 const BREVITY_INSTRUCTION_BLOCK = `# Antwortstil (Telefon)
 - Antworte IMMER kurz und präzise: maximal 1–2 Sätze pro Turn.
 - Keine Monologe oder langen Aufzählungen am Telefon.
 - Lieber eine klärende Rückfrage als eine lange Erklärung.`;
+
+const CHAT_INSTRUCTION_BLOCK = `# Antwortstil (Chat-Test)
+- Schreibe vollständige Antworten — brich niemals mitten im Satz ab.
+- Bei Terminanfragen: zuerst check_availability, dann book_appointment — erst danach bestätigen.
+- Leite nicht an Mitarbeitende weiter, wenn du den Termin selbst buchen kannst.
+- Einen Termin als «eingetragen» bezeichnen ist nur erlaubt, wenn book_appointment erfolgreich war.`;
 
 export function buildTtsConfig(voiceId: string) {
   return {
@@ -71,6 +89,30 @@ export function buildVoicemailDetectionTool(): SystemToolConfigInput {
   };
 }
 
+export function buildTransferToNumberTool(
+  phoneNumber: string
+): SystemToolConfigInput {
+  return {
+    type: "system",
+    name: "transfer_to_number",
+    description:
+      "Verbindet den Anruf mit einer echten Person im Praxisteam bei Beschwerden oder medizinischen Fragen.",
+    params: {
+      systemToolType: "transfer_to_number",
+      transfers: [
+        {
+          transferDestination: {
+            type: "phone",
+            phoneNumber,
+          },
+          condition:
+            "Anrufer hat Beschwerden, Symptome, Schmerzen, einen Notfall, eine medizinische Frage oder möchte mit einer echten Person sprechen.",
+        },
+      ],
+    },
+  };
+}
+
 export function buildBuiltInToolsDefaults(
   existing?: BuiltInToolsInput | null
 ): BuiltInToolsInput {
@@ -81,9 +123,9 @@ export function buildBuiltInToolsDefaults(
   };
 }
 
-export function buildTurnDefaults() {
+export function buildTurnDefaults(timeoutSeconds = ELEVENLABS_TURN_TIMEOUT_SECONDS) {
   return {
-    turnTimeout: ELEVENLABS_TURN_TIMEOUT_SECONDS,
+    turnTimeout: timeoutSeconds,
   };
 }
 
@@ -112,15 +154,20 @@ export function buildAgentPromptDefaults(
   options?: {
     knowledgeBase?: KnowledgeBaseLocator[] | unknown;
     builtInTools?: BuiltInToolsInput | null;
+    maxTokens?: number;
+    webhookTools?: WebhookToolInput[];
   }
 ) {
   return {
     prompt: systemPrompt,
     llm: ELEVENLABS_LLM_MODEL,
     temperature: ELEVENLABS_PROMPT_TEMPERATURE,
-    maxTokens: ELEVENLABS_PROMPT_MAX_TOKENS,
+    maxTokens: options?.maxTokens ?? ELEVENLABS_PROMPT_MAX_TOKENS,
     knowledgeBase: normalizeKnowledgeBase(options?.knowledgeBase),
     builtInTools: buildBuiltInToolsDefaults(options?.builtInTools),
+    ...(options?.webhookTools?.length
+      ? { tools: options.webhookTools }
+      : {}),
   };
 }
 
@@ -128,6 +175,20 @@ export function ensureBrevityInstruction(systemPrompt: string): string {
   const trimmed = systemPrompt.trim();
   if (/maximal 1.?2 sätze/i.test(trimmed)) return trimmed;
   return `${trimmed}\n\n${BREVITY_INSTRUCTION_BLOCK}`;
+}
+
+/** Chat test: no phone brevity cap, explicit booking completion rules. */
+export function prepareAgentChatSystemPrompt(
+  rawPrompt: string,
+  language: AgentLanguageLabel
+): string {
+  const sections = parseSystemPrompt(rawPrompt);
+  const behaviorPrompt = composeBehaviorSystemPrompt(sections);
+  const base = behaviorPrompt.trim() || rawPrompt.trim();
+  return applyLanguageInstructions(
+    `${base}\n\n${CHAT_INSTRUCTION_BLOCK}`,
+    language
+  );
 }
 
 /** Slim prompt for ElevenLabs: behavior only + brevity (FAQ sections stay out of prompt tokens). */
@@ -172,22 +233,29 @@ export function buildConversationConfig(params: {
   voiceId: string;
   knowledgeBase?: KnowledgeBaseLocator[] | unknown;
   builtInTools?: BuiltInToolsInput | null;
+  maxTokens?: number;
+  turnTimeoutSeconds?: number;
+  chatMode?: boolean;
+  webhookTools?: WebhookToolInput[];
 }) {
   const language = normalizeAgentLanguage(params.language);
+  const preparedPrompt = params.chatMode
+    ? prepareAgentChatSystemPrompt(params.systemPrompt, language)
+    : prepareAgentSystemPrompt(params.systemPrompt, language);
+
   return {
     agent: {
       firstMessage: params.greeting,
       language: toLanguageCode(language),
-      prompt: buildAgentPromptDefaults(
-        prepareAgentSystemPrompt(params.systemPrompt, language),
-        {
-          knowledgeBase: params.knowledgeBase,
-          builtInTools: params.builtInTools,
-        }
-      ),
+      prompt: buildAgentPromptDefaults(preparedPrompt, {
+        knowledgeBase: params.knowledgeBase,
+        builtInTools: params.builtInTools,
+        maxTokens: params.maxTokens,
+        webhookTools: params.webhookTools,
+      }),
     },
     tts: buildTtsConfig(params.voiceId),
-    turn: buildTurnDefaults(),
+    turn: buildTurnDefaults(params.turnTimeoutSeconds),
     conversation: buildConversationDefaults(),
   };
 }

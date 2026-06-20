@@ -1,3 +1,4 @@
+import type { AppointmentConfig } from "@/lib/integrations/appointment-config";
 import type { CalendarAgentPermissions } from "@/lib/integrations/calendar-agent-permissions";
 import type { CalendarProvider } from "@/lib/store";
 
@@ -31,4 +32,10 @@ export interface StoredAgent {
   calendarPermissions?: CalendarAgentPermissions;
   /** Whether this agent may book appointments into the selected calendar. */
   appointmentBookingEnabled?: boolean;
+  /** Branchen-Preset, Terminarten und Buchungsregeln für diesen Agenten. */
+  appointmentConfig?: AppointmentConfig;
+  /** E.164-Nummer für Weiterleitung an eine echte Person (z. B. Praxisteam). */
+  escalationPhoneNumber?: string;
+  /** Medizinische Guardrails erzwingen (keine Diagnosen, Weiterleitung bei Beschwerden). */
+  medicalGuardrailsEnabled?: boolean;
 }

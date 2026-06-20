@@ -1,20 +1,7 @@
 import type { Metadata } from "next";
-import { Hedvig_Letters_Serif, Rethink_Sans } from "next/font/google";
 import { ConditionalShell } from "@/components/layout/ConditionalShell";
 import "./globals.css";
 import "@/styles/retell-fonts.css";
-
-const rethinkSans = Rethink_Sans({
-  subsets: ["latin"],
-  variable: "--font-rethink",
-  weight: ["400", "500", "600", "700"],
-});
-
-const hedvigSerif = Hedvig_Letters_Serif({
-  subsets: ["latin"],
-  variable: "--font-hedvig",
-  weight: ["400"],
-});
 
 export const metadata: Metadata = {
   title: "Cura — KI-Telefonagent für automatisierte Anrufe",
@@ -29,7 +16,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="de-CH">
-      <body className={`${rethinkSans.variable} ${hedvigSerif.variable} font-sans`}>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Hedvig+Letters+Serif&family=Rethink+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="font-sans">
         <ConditionalShell>{children}</ConditionalShell>
       </body>
     </html>

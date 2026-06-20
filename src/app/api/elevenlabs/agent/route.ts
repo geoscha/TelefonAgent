@@ -7,16 +7,10 @@ import {
 import {
   getAgentCalendarIntegration,
 } from "@/lib/integrations/agent-calendar";
+import { buildSystemPrompt } from "@/lib/elevenlabs/prompt";
+import { normalizeEscalationPhone } from "@/lib/integrations/medical-guardrails";
+import { buildLiveAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
 import {
-  buildAppointmentBlock,
-  buildSystemPrompt,
-} from "@/lib/elevenlabs/prompt";
-import {
-  applyEuComplianceGreeting,
-  applyEuCompliancePrompt,
-} from "@/lib/elevenlabs/compliance";
-import {
-  buildConversationConfig,
   filterAgentVoices,
   normalizeAgentLanguage,
   type RawElevenLabsVoice,
@@ -41,6 +35,8 @@ interface AgentBody {
   phoneNumberId?: string;
   euComplianceEnabled?: boolean;
   website?: string;
+  escalationPhoneNumber?: string;
+  medicalGuardrailsEnabled?: boolean;
   /** Save to app settings only — used for auto-save in the detail panel. */
   persistOnly?: boolean;
   /** Clear the active agent without deleting it. */
@@ -49,17 +45,6 @@ interface AgentBody {
   activate?: boolean;
 }
 
-function buildEffectiveSystemPrompt(
-  systemPrompt: string,
-  complianceEnabled: boolean,
-  appointmentBookingEnabled: boolean
-): string {
-  let prompt = applyEuCompliancePrompt(systemPrompt, complianceEnabled);
-  if (appointmentBookingEnabled) {
-    prompt += buildAppointmentBlock();
-  }
-  return prompt;
-}
 
 async function persistAgentRecord(params: {
   body: AgentBody;
@@ -96,6 +81,15 @@ async function persistAgentRecord(params: {
     calendarProvider: existing?.calendarProvider ?? null,
     calendarPermissions: existing?.calendarPermissions,
     appointmentBookingEnabled: existing?.appointmentBookingEnabled,
+    appointmentConfig: existing?.appointmentConfig,
+    escalationPhoneNumber:
+      body.escalationPhoneNumber !== undefined
+        ? normalizeEscalationPhone(body.escalationPhoneNumber)
+        : existing?.escalationPhoneNumber,
+    medicalGuardrailsEnabled:
+      typeof body.medicalGuardrailsEnabled === "boolean"
+        ? body.medicalGuardrailsEnabled
+        : existing?.medicalGuardrailsEnabled,
   };
 
   const phones = await listUserPhoneNumbers(userId);
@@ -276,23 +270,56 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedAgentId = body.createNew ? undefined : targetAgentId;
-    const appointmentEnabled = resolvedAgentId
-      ? getAgentCalendarIntegration(settings, resolvedAgentId)
-          .appointmentBookingEnabled
-      : false;
-
-    const effectivePrompt = buildEffectiveSystemPrompt(
-      systemPrompt,
-      complianceEnabled,
-      appointmentEnabled
-    );
-
-    const conversationConfig = buildConversationConfig({
-      greeting: applyEuComplianceGreeting(greeting, complianceEnabled),
-      language,
-      systemPrompt: effectivePrompt,
+    const draftAgent: StoredAgent = {
+      ...(existing ?? {
+        id: "draft",
+        name,
+        voiceId,
+        language,
+        greeting,
+        systemPrompt,
+      }),
+      id: resolvedAgentId ?? existing?.id ?? "draft",
+      name,
       voiceId,
-    });
+      voiceName: body.voiceName ?? existing?.voiceName,
+      language,
+      greeting,
+      systemPrompt,
+      euComplianceEnabled: complianceEnabled,
+      website: body.website?.trim() || existing?.website,
+      escalationPhoneNumber:
+        body.escalationPhoneNumber !== undefined
+          ? normalizeEscalationPhone(body.escalationPhoneNumber)
+          : existing?.escalationPhoneNumber,
+      medicalGuardrailsEnabled:
+        typeof body.medicalGuardrailsEnabled === "boolean"
+          ? body.medicalGuardrailsEnabled
+          : existing?.medicalGuardrailsEnabled,
+      appointmentBookingEnabled:
+        existing?.appointmentBookingEnabled ??
+        getAgentCalendarIntegration(settings, resolvedAgentId ?? "").appointmentBookingEnabled,
+      appointmentConfig: existing?.appointmentConfig,
+      calendarProvider: existing?.calendarProvider ?? null,
+      calendarPermissions: existing?.calendarPermissions,
+      phoneNumberId: body.phoneNumberId ?? existing?.phoneNumberId,
+    };
+
+    if (
+      body.escalationPhoneNumber?.trim() &&
+      !normalizeEscalationPhone(body.escalationPhoneNumber)
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Bitte eine gültige Eskalationsnummer im internationalen Format angeben (z. B. +41791234567).",
+        },
+        { status: 400 }
+      );
+    }
+
+    const conversationConfig = buildLiveAgentConversationConfig(draftAgent);
 
     let agentId = body.createNew ? undefined : targetAgentId;
 

@@ -14,26 +14,17 @@ export function toLanguageCode(language: string): string {
   return LANGUAGE_CODES[language] ?? "de";
 }
 
+import {
+  buildAppointmentPrompt,
+  type AppointmentConfig,
+} from "@/lib/integrations/appointment-config";
+
 /**
  * Instructions appended to the agent prompt when appointment booking is enabled.
- * The agent calls the registered server tools `check_availability` and
- * `book_appointment` (webhook → /api/agent-tools/appointment).
+ * The agent calls the registered server tools (webhook → /api/agent-tools/appointment).
  */
-export function buildAppointmentBlock(): string {
-  return `
-
-# Terminvereinbarung
-Du darfst Termine (z. B. Besichtigungen, Rückrufe, Beratungen) verbindlich vereinbaren.
-- Prüfe zuerst mit dem Tool «check_availability», ob Terminvereinbarung möglich ist.
-- Wenn ja: frage nach dem gewünschten Datum und der Uhrzeit sowie nach dem Namen der anrufenden Person.
-- Wiederhole Datum und Uhrzeit zur Bestätigung, bevor du buchst.
-- Trage den Termin anschliessend mit dem Tool «book_appointment» ein. Übergib:
-  - title: kurzer Titel (z. B. «Besichtigung Musterstrasse 1»)
-  - startIso: Startzeitpunkt als ISO 8601 mit Zeitzone Europe/Zurich (z. B. 2026-06-20T14:00:00+02:00)
-  - durationMinutes: Dauer in Minuten (Standard 30)
-  - attendeeName und attendeePhone: Name und Telefonnummer der anrufenden Person
-- Bestätige der anrufenden Person danach den eingetragenen Termin freundlich.
-- Wenn Terminvereinbarung nicht möglich ist, biete einen Rückruf an.`;
+export function buildAppointmentBlock(config?: AppointmentConfig): string {
+  return buildAppointmentPrompt(config);
 }
 
 /**

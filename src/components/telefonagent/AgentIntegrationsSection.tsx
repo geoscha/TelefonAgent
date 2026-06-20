@@ -13,6 +13,14 @@ import {
   DEFAULT_CALENDAR_AGENT_PERMISSIONS,
   type CalendarAgentPermissions,
 } from "@/lib/integrations/calendar-agent-permissions";
+import {
+  APPOINTMENT_INDUSTRY_PRESETS,
+  configFromPreset,
+  DEFAULT_APPOINTMENT_CONFIG,
+  normalizeAppointmentConfig,
+  type AppointmentConfig,
+  type AppointmentIndustryPresetId,
+} from "@/lib/integrations/appointment-config";
 import type { StoredAgent } from "@/lib/onboarding-types";
 import type { CalendarProvider } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -82,6 +90,9 @@ export function AgentIntegrationsSection({
   const [permissions, setPermissions] = useState<CalendarAgentPermissions>(
     agent.calendarPermissions ?? { ...DEFAULT_CALENDAR_AGENT_PERMISSIONS }
   );
+  const [appointmentConfig, setAppointmentConfig] = useState<AppointmentConfig>(
+    normalizeAppointmentConfig(agent.appointmentConfig ?? DEFAULT_APPOINTMENT_CONFIG)
+  );
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -124,7 +135,10 @@ export function AgentIntegrationsSection({
     setPermissions(
       agent.calendarPermissions ?? { ...DEFAULT_CALENDAR_AGENT_PERMISSIONS }
     );
-  }, [agent.id, agent.calendarProvider, agent.appointmentBookingEnabled, agent.calendarPermissions]);
+    setAppointmentConfig(
+      normalizeAppointmentConfig(agent.appointmentConfig ?? DEFAULT_APPOINTMENT_CONFIG)
+    );
+  }, [agent.id, agent.calendarProvider, agent.appointmentBookingEnabled, agent.calendarPermissions, agent.appointmentConfig]);
 
   useEffect(() => {
     return () => {
@@ -136,6 +150,8 @@ export function AgentIntegrationsSection({
     calendarProvider?: CalendarProvider | null;
     appointmentBookingEnabled?: boolean;
     calendarPermissions?: Partial<CalendarAgentPermissions>;
+    appointmentConfig?: Partial<AppointmentConfig>;
+    medicalGuardrailsEnabled?: boolean;
   }) {
     setSaving(true);
     try {
@@ -177,6 +193,28 @@ export function AgentIntegrationsSection({
     await persist({ calendarProvider: provider });
   }
 
+  function scheduleAppointmentConfigSave(patch: Partial<AppointmentConfig>) {
+    const nextConfig = normalizeAppointmentConfig({
+      ...appointmentConfig,
+      ...patch,
+    });
+    setAppointmentConfig(nextConfig);
+
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void persist({ appointmentConfig: nextConfig });
+    }, 500);
+  }
+
+  function handlePresetChange(presetId: AppointmentIndustryPresetId) {
+    const nextConfig = configFromPreset(presetId);
+    setAppointmentConfig(nextConfig);
+    void persist({
+      appointmentConfig: nextConfig,
+      ...(presetId === "hausarzt" ? { medicalGuardrailsEnabled: true } : {}),
+    });
+  }
+
   async function handleBookingToggle(enabled: boolean) {
     let provider = calendarProvider;
     if (enabled && !provider && connectedCalendars.length > 0) {
@@ -188,6 +226,9 @@ export function AgentIntegrationsSection({
     await persist({
       appointmentBookingEnabled: enabled,
       ...(provider ? { calendarProvider: provider } : {}),
+      ...(enabled && !agent.appointmentConfig
+        ? { appointmentConfig: DEFAULT_APPOINTMENT_CONFIG }
+        : {}),
     });
     toast.success(
       enabled
@@ -306,12 +347,161 @@ export function AgentIntegrationsSection({
 
           <PermissionToggleRow
             label="Termine durch den Agenten eintragen"
-            description="Dieser Agent darf Besichtigungen und Termine buchen."
+            description="Dieser Agent darf Termine buchen und — je nach Branche — stornieren."
             checked={appointmentBookingEnabled}
             disabled={saving || !activeProvider}
             onCheckedChange={(checked) => void handleBookingToggle(checked)}
             ariaLabel="Termine durch den Agenten eintragen"
           />
+
+          {appointmentBookingEnabled ? (
+            <div className="space-y-3 rounded border border-[#E1E4EA] bg-[#FAFAFA] p-3">
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor={`agent-${agent.id}-industry-preset`}
+                  className="text-[12px] text-[#525866]"
+                >
+                  Branche
+                </Label>
+                <select
+                  id={`agent-${agent.id}-industry-preset`}
+                  value={appointmentConfig.industryPreset}
+                  disabled={saving}
+                  onChange={(event) =>
+                    handlePresetChange(
+                      event.target.value as AppointmentIndustryPresetId
+                    )
+                  }
+                  className="landing-body landing-radius-sm h-9 w-full border border-[#E1E4EA] bg-white px-3 text-[13px] text-[#0E121B] focus:border-[#335cff] focus:outline-none focus:ring-2 focus:ring-[#335cff]/20"
+                >
+                  {Object.values(APPOINTMENT_INDUSTRY_PRESETS).map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-[#99A0AE]">
+                  {
+                    APPOINTMENT_INDUSTRY_PRESETS[appointmentConfig.industryPreset]
+                      .description
+                  }
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor={`agent-${agent.id}-allowed-callers`}
+                  className="text-[12px] text-[#525866]"
+                >
+                  Wer darf Termine vereinbaren?
+                </Label>
+                <Input
+                  id={`agent-${agent.id}-allowed-callers`}
+                  value={appointmentConfig.allowedCallersDescription}
+                  disabled={saving}
+                  onChange={(event) =>
+                    scheduleAppointmentConfigSave({
+                      allowedCallersDescription: event.target.value,
+                    })
+                  }
+                  className="h-9 border-[#E1E4EA] bg-white text-[13px]"
+                />
+              </div>
+
+              <PermissionToggleRow
+                label="Termine vereinbaren"
+                description="Neue Termine in den Kalender eintragen."
+                checked={appointmentConfig.allowBooking}
+                disabled={saving}
+                onCheckedChange={(checked) =>
+                  scheduleAppointmentConfigSave({ allowBooking: checked })
+                }
+                ariaLabel="Termine vereinbaren"
+              />
+
+              <PermissionToggleRow
+                label="Termine stornieren"
+                description="Bestehende Termine am bekannten Tag löschen."
+                checked={appointmentConfig.allowCancellation}
+                disabled={saving}
+                onCheckedChange={(checked) =>
+                  scheduleAppointmentConfigSave({ allowCancellation: checked })
+                }
+                ariaLabel="Termine stornieren"
+              />
+
+              <PermissionToggleRow
+                label="Name des Anrufers erforderlich"
+                description="Der Agent fragt vor Buchung oder Storno nach dem Namen."
+                checked={appointmentConfig.requireCallerName}
+                disabled={saving}
+                onCheckedChange={(checked) =>
+                  scheduleAppointmentConfigSave({ requireCallerName: checked })
+                }
+                ariaLabel="Name des Anrufers erforderlich"
+              />
+
+              {appointmentConfig.allowCancellation ? (
+                <PermissionToggleRow
+                  label="Termintag für Storno erforderlich"
+                  description="Zum Stornieren muss der Anrufer den Tag des Termins kennen."
+                  checked={appointmentConfig.requireAppointmentDateForCancel}
+                  disabled={saving}
+                  onCheckedChange={(checked) =>
+                    scheduleAppointmentConfigSave({
+                      requireAppointmentDateForCancel: checked,
+                    })
+                  }
+                  ariaLabel="Termintag für Storno erforderlich"
+                />
+              ) : null}
+
+              <PermissionToggleRow
+                label="Telefonnummer erforderlich"
+                description="Der Agent fragt zusätzlich nach der Telefonnummer."
+                checked={appointmentConfig.requireCallerPhone}
+                disabled={saving}
+                onCheckedChange={(checked) =>
+                  scheduleAppointmentConfigSave({ requireCallerPhone: checked })
+                }
+                ariaLabel="Telefonnummer erforderlich"
+              />
+
+              <div className="space-y-2">
+                <p className="text-[12px] font-medium text-[#0E121B]">
+                  Erlaubte Terminarten
+                </p>
+                {appointmentConfig.appointmentTypes.map((type) => (
+                  <div
+                    key={type.id}
+                    className="flex items-center justify-between gap-3 rounded border border-[#E1E4EA] bg-white px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[13px] text-[#0E121B]">{type.label}</p>
+                      <p className="text-[11px] text-[#99A0AE]">
+                        {type.durationMinutes} Minuten
+                      </p>
+                    </div>
+                    <Switch
+                      checked={type.enabled}
+                      disabled={saving}
+                      onCheckedChange={(checked) =>
+                        scheduleAppointmentConfigSave({
+                          appointmentTypes: appointmentConfig.appointmentTypes.map(
+                            (entry) =>
+                              entry.id === type.id
+                                ? { ...entry, enabled: checked }
+                                : entry
+                          ),
+                        })
+                      }
+                      aria-label={`${type.label} erlauben`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <PermissionToggleRow
             label="Zugriff auf private Termine"

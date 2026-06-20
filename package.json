@@ -12,6 +12,7 @@
     "migrate:elevenlabs-agent-config": "npx tsx scripts/migrate-elevenlabs-flash.ts"
   },
   "dependencies": {
+    "@elevenlabs/client": "^1.12.0",
     "@elevenlabs/elevenlabs-js": "^2.52.0",
     "@radix-ui/react-avatar": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.16",

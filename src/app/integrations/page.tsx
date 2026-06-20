@@ -8,7 +8,8 @@ export default function IntegrationsPage() {
         <h1 className={userTitleClass}>Integrationen</h1>
         <p className={`${userLabelClass} mt-1`}>
           Verbinden Sie Kalender und weitere Dienste mit Ihrem Konto. Pro Agent
-          legen Sie später fest, welche Integration genutzt wird.
+          legen Sie unter Telefonagent fest, welche Branche, Terminarten und
+          Buchungsregeln gelten.
         </p>
       </div>
 

@@ -67,9 +67,9 @@ export default function SignupPage() {
         return;
       }
 
+      void fetch("/api/provision", { method: "POST" }).catch(() => {});
+      router.push("/telefonagent");
       router.refresh();
-      await fetch("/api/provision", { method: "POST" }).catch(() => {});
-      window.location.assign("/telefonagent");
     } catch {
       setError("Registrierung fehlgeschlagen.");
     } finally {

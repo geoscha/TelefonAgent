@@ -425,6 +425,10 @@ export default function TelefonagentPage() {
       euComplianceEnabled:
         patch.euComplianceEnabled ?? agent.euComplianceEnabled ?? false,
       website: patch.website ?? agent.website ?? "",
+      escalationPhoneNumber:
+        patch.escalationPhoneNumber ?? agent.escalationPhoneNumber ?? "",
+      medicalGuardrailsEnabled:
+        patch.medicalGuardrailsEnabled ?? agent.medicalGuardrailsEnabled,
     };
 
     if (!draft.name.trim() || !draft.greeting.trim() || !draft.voiceId) {
@@ -449,7 +453,11 @@ export default function TelefonagentPage() {
         if (data.settings) applySettings(data.settings as Settings);
         if (data.agents) setStoredAgents(data.agents as StoredAgent[]);
         if (settings.connected || caps.hasApiKey) {
-          if (patch.euComplianceEnabled !== undefined) {
+          if (
+            patch.euComplianceEnabled !== undefined ||
+            patch.escalationPhoneNumber !== undefined ||
+            patch.medicalGuardrailsEnabled !== undefined
+          ) {
             void handleSaveAgent(
               { ...draft, agentId, createNew: false },
               { silent: true }

@@ -1,3 +1,5 @@
+import type { AppointmentConfig } from "@/lib/integrations/appointment-config";
+import { normalizeAppointmentConfig } from "@/lib/integrations/appointment-config";
 import type { CalendarAgentPermissions } from "@/lib/integrations/calendar-agent-permissions";
 import {
   DEFAULT_CALENDAR_AGENT_PERMISSIONS,
@@ -10,6 +12,7 @@ export interface AgentCalendarIntegration {
   appointmentBookingEnabled: boolean;
   calendarProvider: CalendarProvider | null;
   calendarPermissions: CalendarAgentPermissions;
+  appointmentConfig: AppointmentConfig;
 }
 
 export function getAgentCalendarIntegration(
@@ -23,6 +26,7 @@ export function getAgentCalendarIntegration(
     calendarPermissions: normalizeCalendarAgentPermissions(
       agent?.calendarPermissions ?? DEFAULT_CALENDAR_AGENT_PERMISSIONS
     ),
+    appointmentConfig: normalizeAppointmentConfig(agent?.appointmentConfig),
   };
 }
 
@@ -43,6 +47,11 @@ export function patchStoredAgentCalendar(
           calendarPermissions: normalizeCalendarAgentPermissions(
             patch.calendarPermissions
           ),
+        }
+      : {}),
+    ...(patch.appointmentConfig !== undefined
+      ? {
+          appointmentConfig: normalizeAppointmentConfig(patch.appointmentConfig),
         }
       : {}),
   };

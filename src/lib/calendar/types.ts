@@ -30,6 +30,16 @@ export interface CreatedEvent {
   htmlLink?: string;
 }
 
+export interface ListedCalendarEvent {
+  id: string;
+  title: string;
+  description?: string;
+  startIso: string;
+  eventUrl?: string;
+  cancelled?: boolean;
+  agentCreated?: boolean;
+}
+
 /** Provider metadata shown in the UI. */
 export interface ProviderMeta {
   id: CalendarProvider;

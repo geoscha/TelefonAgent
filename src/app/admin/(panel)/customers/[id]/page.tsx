@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +97,10 @@ export default function AdminCustomerDetailPage() {
   const [customerNumber, setCustomerNumber] = useState("");
   const [forwardingInstructions, setForwardingInstructions] = useState("");
 
+  const [grantAmount, setGrantAmount] = useState("");
+  const [grantNote, setGrantNote] = useState("");
+  const [granting, setGranting] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -157,6 +161,45 @@ export default function AdminCustomerDetailPage() {
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function grantTokens() {
+    const amount = Math.floor(Number(grantAmount.replace(/[’'\s]/g, "")));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Bitte eine gültige Token-Anzahl eingeben.");
+      return;
+    }
+
+    setGranting(true);
+    try {
+      const res = await fetch(`/api/admin/customers/${id}/tokens`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount,
+          note: grantNote.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        if (data.customer) {
+          setCustomer(data.customer as CustomerDetail);
+        } else {
+          await load();
+        }
+        setGrantAmount("");
+        setGrantNote("");
+        toast.success(
+          data.duplicate
+            ? "Tokens waren bereits gutgeschrieben."
+            : `${formatTokenCount(amount)} Gratis-Tokens gutgeschrieben.`
+        );
+      } else {
+        toast.error(data.error ?? "Gutschrift fehlgeschlagen.");
+      }
+    } finally {
+      setGranting(false);
     }
   }
 
@@ -255,6 +298,54 @@ export default function AdminCustomerDetailPage() {
               {formatTokenCount(customer.profile.tokenBalance)} Tokens
             </p>
           </Field>
+
+          <div className="rounded-btn border border-stroke bg-bg/50 p-3 space-y-3">
+            <p className="text-caption font-medium text-navy">Gratis-Tokens hinzufügen</p>
+            <div className="flex flex-wrap gap-2">
+              {[2_000, 5_000, 20_000].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className="rounded-btn border border-stroke bg-surface px-2.5 py-1 text-caption text-text-muted transition-colors hover:border-accent hover:text-navy"
+                  onClick={() => setGrantAmount(String(preset))}
+                >
+                  {formatTokenCount(preset)}
+                </button>
+              ))}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-caption text-text-muted">Anzahl</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="z. B. 5000"
+                  value={grantAmount}
+                  onChange={(e) => setGrantAmount(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-caption text-text-muted">Grund (optional)</Label>
+                <Input
+                  placeholder="z. B. Testguthaben"
+                  value={grantNote}
+                  onChange={(e) => setGrantNote(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => void grantTokens()}
+              disabled={granting || saving || deleting}
+            >
+              {granting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="mr-2 h-4 w-4" />
+              )}
+              Gutschreiben
+            </Button>
+          </div>
+
           <p className="text-caption text-text-muted">
             Registriert {new Date(customer.profile.createdAt).toLocaleString("de-CH")}
           </p>

@@ -1,17 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { buildConversationConfig } from "@/lib/elevenlabs/agent-config";
+import { buildLiveAgentConversationConfig } from "@/lib/elevenlabs/agent-sync";
 import {
   describeElevenLabsError,
   getElevenLabsClient,
 } from "@/lib/elevenlabs/client";
-import {
-  applyEuComplianceGreeting,
-  applyEuCompliancePrompt,
-} from "@/lib/elevenlabs/compliance";
-import {
-  buildAppointmentBlock,
-} from "@/lib/elevenlabs/prompt";
 import {
   getAgentCalendarIntegration,
   patchStoredAgentCalendar,
@@ -20,6 +13,11 @@ import {
   normalizeCalendarAgentPermissions,
   type CalendarAgentPermissions,
 } from "@/lib/integrations/calendar-agent-permissions";
+import {
+  normalizeAppointmentConfig,
+  type AppointmentConfig,
+} from "@/lib/integrations/appointment-config";
+import { normalizeEscalationPhone } from "@/lib/integrations/medical-guardrails";
 import {
   getCalendar,
   getSettings,
@@ -36,6 +34,9 @@ interface Body {
   calendarProvider?: CalendarProvider | null;
   appointmentBookingEnabled?: boolean;
   calendarPermissions?: Partial<CalendarAgentPermissions>;
+  appointmentConfig?: Partial<AppointmentConfig>;
+  escalationPhoneNumber?: string;
+  medicalGuardrailsEnabled?: boolean;
 }
 
 async function syncLiveAgentPrompt(
@@ -45,23 +46,7 @@ async function syncLiveAgentPrompt(
   if (!activeAgentId || activeAgentId !== agent.id) return;
 
   const client = getElevenLabsClient();
-  let prompt = applyEuCompliancePrompt(
-    agent.systemPrompt,
-    Boolean(agent.euComplianceEnabled)
-  );
-  if (agent.appointmentBookingEnabled) {
-    prompt += buildAppointmentBlock();
-  }
-
-  const conversationConfig = buildConversationConfig({
-    greeting: applyEuComplianceGreeting(
-      agent.greeting,
-      Boolean(agent.euComplianceEnabled)
-    ),
-    language: agent.language ?? "Deutsch",
-    systemPrompt: prompt,
-    voiceId: agent.voiceId,
-  });
+  const conversationConfig = buildLiveAgentConversationConfig(agent);
 
   await client.conversationalAi.agents.update(agent.id, {
     name: agent.name,
@@ -113,6 +98,10 @@ export async function POST(req: NextRequest) {
       ...current.calendarPermissions,
       ...body.calendarPermissions,
     });
+    const appointmentConfig = normalizeAppointmentConfig({
+      ...current.appointmentConfig,
+      ...body.appointmentConfig,
+    });
 
     if (appointmentBookingEnabled) {
       if (!calendarProvider) {
@@ -151,11 +140,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const updatedAgent = patchStoredAgentCalendar(existing, {
-      calendarProvider,
-      appointmentBookingEnabled,
-      calendarPermissions,
-    });
+    const updatedAgent: StoredAgent = {
+      ...patchStoredAgentCalendar(existing, {
+        calendarProvider,
+        appointmentBookingEnabled,
+        calendarPermissions,
+        appointmentConfig,
+      }),
+      ...(body.escalationPhoneNumber !== undefined
+        ? {
+            escalationPhoneNumber: normalizeEscalationPhone(
+              body.escalationPhoneNumber
+            ),
+          }
+        : {}),
+      ...(typeof body.medicalGuardrailsEnabled === "boolean"
+        ? { medicalGuardrailsEnabled: body.medicalGuardrailsEnabled }
+        : {}),
+    };
 
     const nextAgents = agents.map((agent) =>
       agent.id === agentId ? updatedAgent : agent
