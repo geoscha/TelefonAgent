@@ -8,10 +8,13 @@ const RELATIVE_DATE_INSTRUCTION_BLOCK = `### Relative Datumsangaben
 - Bei bereits **exaktem** Datum und Uhrzeit in einem Satz (z. B. «15. Juni um 10 Uhr») kann die Datums-Rückfrage entfallen, wenn eindeutig.`;
 
 const LIVE_PHONE_BOOKING_BLOCK = `### Terminbuchung (während des Anrufs)
-- **check_availability** mit appointmentDate (YYYY-MM-DD), appointmentTime (HH:mm) und passender durationMinutes.
-- Bei available=true: **book_appointment** aufrufen — dem Kunden **vorher nicht** sagen, dass eingetragen wird.
-- Erst bei **booked:true** laut bestätigen: Dank + **konkretes Datum und Uhrzeit** («Vielen Dank, [Nachname], Ihr Termin am Montag, den 23. Juni um 14 Uhr ist eingetragen.»).
-- **Sofort danach end_call** — kein weiteres Gespräch, keine Rückfragen.`;
+- Vor **check_availability** genau **einen kurzen Überbrückungssatz** sagen (z. B. «Einen Moment, ich prüfe das kurz für Sie»), damit während der Prüfung keine Stille entsteht.
+- **check_availability** mit appointmentDate (YYYY-MM-DD), appointmentTime (HH:mm) und passender durationMinutes aufrufen.
+- Bei available=true: **book_appointment** aufrufen — dass eingetragen wird, **vorher nicht** ankündigen.
+- Erst bei **booked:true** laut bestätigen: Dank + **konkretes Datum und Uhrzeit** («Vielen Dank, [Nachname], Ihr Termin am Freitag, den 26. Juni um 10 Uhr ist eingetragen.»).
+- **Sofort danach end_call** — kein weiteres Gespräch.
+- Bei available=false: die zurückgegebenen **Alternativen** anbieten.
+- Bei einem Fehler/Problem bei der Prüfung (calendarError): **einmal** dieselbe Prüfung wiederholen. Klappt es dann immer noch nicht, freundlich einen **Rückruf** anbieten — **niemals kommentarlos still** bleiben.`;
 
 export type AppointmentIndustryPresetId =
   | "allgemein"
@@ -399,7 +402,7 @@ function buildIndustryFastPathBlock(
 - «Haareschneiden» → appointmentTypeId=haareschneiden (30 Min, automatisch). Andere Behandlung → behandlung (60 Min).
 - durationMinutes **nicht** vom Kunden erfragen — aus der Terminart übernehmen.
 - Hat der Kunde Nachname, Datum und Uhrzeit genannt und check_availability liefert available=true: **book_appointment** aufrufen, mit Datum/Uhrzeit bestätigen und bedanken, dann **sofort** end_call.
-- Maximal **eine** Rückfrage im ganzen Gespräch — nur wenn Nachname oder Datum/Uhrzeit wirklich fehlen, oder bei relativem Datum zur Bestätigung.
+- Stelle nur die wirklich nötigen Rückfragen (fehlender Nachname, fehlendes Datum/Uhrzeit, oder Bestätigung eines relativen Datums) — eine nach der anderen, aber bleibe **nicht kommentarlos still**.
 - Keine Wiederholung der Dauer, keine «Passt 60 Minuten?»-Frage.`;
   }
 
@@ -472,9 +475,9 @@ export function buildAppointmentPrompt(
         "### Ablauf",
         "1. **Nachname** und **Datum/Uhrzeit** erfassen — auch relative Angaben wie «Montag nächste Woche».",
         "2. Bei relativem Datum: einmal mit **konkretem Kalenderdatum** bestätigend nachfragen.",
-        "3. «check_availability» mit appointmentDate (YYYY-MM-DD) und appointmentTime (HH:mm).",
-        "4. Ergebnis mitteilen — nie vorher «ich prüfe» sagen.",
-        "5. available=false → Alternativen nennen, erneut prüfen.",
+        "3. Kurzer Überbrückungssatz, dann «check_availability» mit appointmentDate (YYYY-MM-DD) und appointmentTime (HH:mm).",
+        "4. Ergebnis mitteilen.",
+        "5. available=false → die zurückgegebenen Alternativen anbieten.",
         "6. available=true → **book_appointment** aufrufen.",
         "7. booked:true → bedanken, Termin mit **Datum und Uhrzeit** bestätigen, **sofort** end_call.",
         "",
