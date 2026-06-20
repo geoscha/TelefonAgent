@@ -1,7 +1,6 @@
 import "server-only";
 
 import type { CalendarConnection } from "@/lib/store";
-import { redirectUri } from "./config";
 import {
   DEFAULT_TZ,
   type CalendarContext,
@@ -23,10 +22,10 @@ const SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
 ];
 
-export function googleAuthUrl(state: string): string {
+export function googleAuthUrl(state: string, redirectUriValue: string): string {
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID ?? "",
-    redirect_uri: redirectUri("google"),
+    redirect_uri: redirectUriValue,
     response_type: "code",
     scope: SCOPES.join(" "),
     access_type: "offline",
@@ -39,7 +38,8 @@ export function googleAuthUrl(state: string): string {
 
 /** Exchanges the auth code for tokens and returns a connection patch (no persist). */
 export async function googleExchangeCode(
-  code: string
+  code: string,
+  redirectUriValue: string
 ): Promise<Partial<CalendarConnection>> {
   const res = await fetch(TOKEN_URL, {
     method: "POST",
@@ -48,7 +48,7 @@ export async function googleExchangeCode(
       code,
       client_id: process.env.GOOGLE_CLIENT_ID ?? "",
       client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-      redirect_uri: redirectUri("google"),
+      redirect_uri: redirectUriValue,
       grant_type: "authorization_code",
     }),
   });
@@ -138,7 +138,7 @@ export async function googleCreateEvent(
         start: { dateTime: input.startIso, timeZone: input.timeZone ?? DEFAULT_TZ },
         end: { dateTime: input.endIso, timeZone: input.timeZone ?? DEFAULT_TZ },
         extendedProperties: {
-          private: { curaAgent: "1" },
+          private: { linkerAgent: "1" },
         },
         colorId: "6",
       }),
@@ -179,6 +179,7 @@ function mapGoogleListedEvent(item: GoogleEventItem): ListedCalendarEvent | null
   if (isCancelledCalendarEvent(title, item.status)) return null;
 
   const agentCreated =
+    item.extendedProperties?.private?.linkerAgent === "1" ||
     item.extendedProperties?.private?.curaAgent === "1" ||
     isAgentCreatedCalendarEvent(title, item.description);
 

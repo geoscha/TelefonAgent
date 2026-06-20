@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { CuraLogo } from "@/components/brand/CuraLogo";
+import { LinkerLogo } from "@/components/brand/LinkerLogo";
 import { cn } from "@/lib/utils";
 
 interface AuthFrameProps {
@@ -35,7 +35,7 @@ export function AuthFrame({
         )}
       >
         <div className="mb-8 flex justify-center">
-          <CuraLogo mode="contextual" theme="dark" size="md" href="/" />
+          <LinkerLogo mode="contextual" theme="dark" size="md" href="/" />
         </div>
 
         <h1 className="text-center text-[26px] font-semibold leading-tight tracking-[-0.02em] text-[#0E121B]">

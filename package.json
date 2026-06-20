@@ -1,9 +1,9 @@
 {
-  "name": "cura-admin",
+  "name": "linker-admin",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NEXT_DIST_DIR=.next-dev next dev",
+    "dev": "ulimit -n 10240 2>/dev/null; NEXT_DIST_DIR=.next-dev next dev",
     "dev:tunnel": "npx --yes cloudflared tunnel --url http://localhost:3000",
     "dev:clean": "rm -rf .next .next-dev && NEXT_DIST_DIR=.next-dev next dev",
     "build": "next build",

@@ -6,7 +6,7 @@ import {
   AGENT_CALENDAR_SOURCE_LABEL,
   AGENT_CREATED_DESCRIPTION,
   buildAgentCancelledDescription,
-  CURA_CALENDAR_LABEL,
+  LINKER_CALENDAR_LABEL,
   formatAgentCancelledTitle,
   isAgentCreatedCalendarEvent,
   isCancelledCalendarEvent,
@@ -547,7 +547,7 @@ function buildAppleEventIcs(
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Cura//Telefonagent//DE",
+    "PRODID:-//Linker//Telefonagent//DE",
     "CALSCALE:GREGORIAN",
     ...(mode === "tzid" ? ZURICH_VTIMEZONE_BLOCK : []),
     "BEGIN:VEVENT",
@@ -738,7 +738,7 @@ function caldavDayRange(dayIso: string): { start: string; end: string } {
   };
 }
 
-function isCuraManagedEvent(
+function isLinkerManagedEvent(
   title: string,
   description: string | undefined,
   categories?: string
@@ -746,7 +746,8 @@ function isCuraManagedEvent(
   const normalizedCategories = categories?.toLowerCase() ?? "";
   return (
     isAgentCreatedCalendarEvent(title, description) ||
-    normalizedCategories.includes(CURA_CALENDAR_LABEL.toLowerCase()) ||
+    normalizedCategories.includes(LINKER_CALENDAR_LABEL.toLowerCase()) ||
+    normalizedCategories.includes("linker agent") ||
     normalizedCategories.includes("cura agent")
   );
 }
@@ -968,7 +969,7 @@ function parseListedEvents(
       endIso: dtend ?? undefined,
       eventUrl,
       cancelled: isCancelledCalendarEvent(title, status),
-      agentCreated: isCuraManagedEvent(
+      agentCreated: isLinkerManagedEvent(
         title,
         normalizedDescription,
         categories

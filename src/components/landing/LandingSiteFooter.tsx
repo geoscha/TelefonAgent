@@ -172,7 +172,7 @@ export function LandingSiteFooter() {
                 KI-Zusammenfassung anfordern
               </h3>
               <p className="landing-subtitle mt-2 text-[#525866]">
-                Erfahren Sie mehr darüber, wie Cura das Kundenerlebnis bei
+                Erfahren Sie mehr darüber, wie Linker das Kundenerlebnis bei
                 führenden Unternehmen verbessert.
               </p>
               <AiProviderIcons />
@@ -187,7 +187,7 @@ export function LandingSiteFooter() {
         </div>
 
         <div className="mt-6 flex flex-col gap-3 border-t border-[#E1E4EA] pt-4 sm:flex-row sm:items-center sm:justify-between lg:mt-7">
-          <p className="landing-caption text-[#99A0AE]">© {year} Cura</p>
+          <p className="landing-caption text-[#99A0AE]">© {year} Linker</p>
           <nav
             aria-label="Rechtliches"
             className="flex flex-wrap gap-x-5 gap-y-2 sm:justify-end"
@@ -210,7 +210,7 @@ export function LandingSiteFooter() {
           <div className="flex translate-y-[12%] items-center gap-[0.12em] text-white">
             <CareMark className="h-[0.72em] w-[0.72em] shrink-0" />
             <span className="font-retell-display text-[clamp(80px,20vw,240px)] font-medium leading-[0.85] tracking-[-0.03em]">
-              Cura
+              Linker
             </span>
           </div>
         </div>

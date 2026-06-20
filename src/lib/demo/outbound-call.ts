@@ -68,7 +68,7 @@ export async function initiateDemoCallback(
       name,
       scenario: useCase.scenario,
       adminContext: agentConfig.context,
-      curaAgent: useCase.curaAgent,
+      linkerAgent: useCase.linkerAgent,
     });
 
     const { agentId, agentPhoneNumberId, phoneProvider } =
@@ -111,7 +111,7 @@ export async function initiateDemoCallback(
 
     return {
       ok: true,
-      message: "Cura ruft Sie gleich an — bitte nehmen Sie Ihr Telefon entgegen.",
+      message: "Linker ruft Sie gleich an — bitte nehmen Sie Ihr Telefon entgegen.",
       conversationId: data.conversationId,
     };
   } catch (error) {

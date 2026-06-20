@@ -174,7 +174,7 @@ async function persistAgentRecord(params: {
       updated = await getSettings();
     } catch (err) {
       console.warn("[agent] phone reconcile on activate:", err);
-      if (stored.phoneNumberId || updated.curaForwardingNumber) {
+      if (stored.phoneNumberId || updated.linkerForwardingNumber) {
         await linkAgentToPhone(userId, agentId, stored.phoneNumberId);
       }
     }
@@ -224,7 +224,7 @@ export async function POST(req: NextRequest) {
   const language = normalizeAgentLanguage(body.language);
   const greeting = body.greeting?.trim();
   const systemPrompt =
-    body.systemPrompt?.trim() || buildSystemPrompt(name ?? "Cura Telefonagent");
+    body.systemPrompt?.trim() || buildSystemPrompt(name ?? "Linker Telefonagent");
 
   if (!name || !voiceId || !greeting) {
     return NextResponse.json(
@@ -385,7 +385,7 @@ export async function POST(req: NextRequest) {
           ...draftAgent,
           id: "pending",
         }),
-        tags: ["cura"],
+        tags: ["linker"],
       } as Parameters<typeof client.conversationalAi.agents.create>[0])) as {
         agentId: string;
       };

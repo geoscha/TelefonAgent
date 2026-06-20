@@ -22,14 +22,14 @@ function normalizePairingInput(code: string): string {
 
 function generatePairingCode(): string {
   const suffix = String(randomInt(1000, 9999));
-  return `CURA-${suffix}`;
+  return `LINKER-${suffix}`;
 }
 
 export function whatsappVerificationStubEnabled(): boolean {
   return process.env.WHATSAPP_VERIFY_STUB !== "false";
 }
 
-async function findMatchingCuraPhoneId(
+async function findMatchingLinkerPhoneId(
   userId: string,
   whatsappNumber: string
 ): Promise<string | undefined> {
@@ -53,7 +53,7 @@ export async function startWhatsAppPairing(input: {
   normalizedNumber: string;
   displayNumber: string;
   pairingCode: string;
-  matchedCuraPhone: boolean;
+  matchedLinkerPhone: boolean;
   steps: string[];
 }> {
   const userId = await requireUserId();
@@ -87,7 +87,7 @@ export async function startWhatsAppPairing(input: {
 
   if (foreignConnection) {
     throw new Error(
-      "Diese WhatsApp-Nummer ist bereits mit einem anderen Cura-Konto verbunden."
+      "Diese WhatsApp-Nummer ist bereits mit einem anderen Linker-Konto verbunden."
     );
   }
 
@@ -106,7 +106,7 @@ export async function startWhatsAppPairing(input: {
   }
 
   const pairingCode = generatePairingCode();
-  const matchedCuraPhoneId = await findMatchingCuraPhoneId(
+  const matchedLinkerPhoneId = await findMatchingLinkerPhoneId(
     userId,
     normalizedNumber
   );
@@ -117,7 +117,7 @@ export async function startWhatsAppPairing(input: {
       {
         user_id: userId,
         whatsapp_number: normalizedNumber,
-        phone_number_id: matchedCuraPhoneId ?? null,
+        phone_number_id: matchedLinkerPhoneId ?? null,
         account_type: "personal",
         account_registered: true,
         connected: false,
@@ -142,7 +142,7 @@ export async function startWhatsAppPairing(input: {
     normalizedNumber,
     displayNumber,
     pairingCode,
-    matchedCuraPhone: Boolean(matchedCuraPhoneId),
+    matchedLinkerPhone: Boolean(matchedLinkerPhoneId),
     steps: buildPairingSteps(displayNumber, pairingCode),
   };
 }
@@ -155,7 +155,7 @@ export function buildPairingSteps(
     `Öffnen Sie WhatsApp auf dem Telefon mit der Nummer ${displayNumber}.`,
     "Tippen Sie auf ⋮ (Android) oder Einstellungen (iPhone) → Verknüpfte Geräte.",
     "Wählen Sie «Gerät hinzufügen» → «Stattdessen mit Telefonnummer verknüpfen».",
-    `Geben Sie den Cura-Code ein: ${pairingCode}`,
+    `Geben Sie den Linker-Code ein: ${pairingCode}`,
     "Bestätigen Sie die Verknüpfung auf Ihrem Telefon.",
   ];
 }
@@ -186,7 +186,7 @@ export async function confirmWhatsAppPairing(input: {
 
   const expected = normalizePairingInput((connection.pairing_code as string) ?? "");
   if (!expected || entered !== expected) {
-    throw new Error("Der Cura-Code ist ungültig. Bitte erneut eingeben.");
+    throw new Error("Der Linker-Code ist ungültig. Bitte erneut eingeben.");
   }
 
   if (stub && !isWhatsAppCloudConfigured()) {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { CuraLogo } from "@/components/brand/CuraLogo";
+import { LinkerLogo } from "@/components/brand/LinkerLogo";
 import {
   landingNavBtnPrimary,
   landingNavBtnSecondary,
@@ -20,7 +20,7 @@ export function RetellNav() {
           "px-4 py-2 sm:gap-8 sm:px-5 sm:py-2"
         )}
       >
-        <CuraLogo mode="contextual" theme="dark" size="sm" href="/" />
+        <LinkerLogo mode="contextual" theme="dark" size="sm" href="/" />
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
           <Link href="/login" className={landingNavBtnSecondary}>

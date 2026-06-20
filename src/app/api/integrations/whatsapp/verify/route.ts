@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       await verifyWhatsAppConnection({ connectionId, code: body.code });
     } else {
       return NextResponse.json(
-        { ok: false, error: "Bitte Cura-Code oder Bestätigungscode eingeben." },
+        { ok: false, error: "Bitte Linker-Code oder Bestätigungscode eingeben." },
         { status: 400 }
       );
     }

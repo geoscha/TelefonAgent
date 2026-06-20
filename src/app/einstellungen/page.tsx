@@ -52,7 +52,7 @@ export default function ProfilPage() {
   const [deleting, setDeleting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
-  const [curaNumber, setCuraNumber] = useState<string | null>(null);
+  const [linkerNumber, setLinkerNumber] = useState<string | null>(null);
   const [forwardingType, setForwardingType] =
     useState<ForwardingType>("bedingt");
   const [onboardingPhase, setOnboardingPhase] =
@@ -78,10 +78,10 @@ export default function ProfilPage() {
         if (!data.ok) return;
         const number =
           data.capabilities?.forwardingNumber ??
-          data.settings?.curaForwardingNumber ??
+          data.settings?.linkerForwardingNumber ??
           null;
         if (typeof number === "string" && number.trim()) {
-          setCuraNumber(number.trim());
+          setLinkerNumber(number.trim());
         }
         if (data.settings?.forwardingType === "alle") {
           setForwardingType("alle");
@@ -207,7 +207,7 @@ export default function ProfilPage() {
   }
 
   const showForwardingRemovalHint =
-    !!curaNumber &&
+    !!linkerNumber &&
     (onboardingPhase === "weiterleitung" ||
       onboardingPhase === "agent" ||
       onboardingPhase === "fertig");
@@ -381,7 +381,7 @@ export default function ProfilPage() {
               <p className="font-medium text-navy">Weiterleitung entfernen</p>
               <p className="mt-2 text-text-muted">
                 Falls Sie Anrufe auf{" "}
-                <span className="font-mono text-text">{curaNumber}</span>{" "}
+                <span className="font-mono text-text">{linkerNumber}</span>{" "}
                 weitergeleitet haben, deaktivieren Sie die Weiterleitung auf
                 Ihrer Geschäftsnummer — sonst gehen Anrufe weiter dorthin.
               </p>
@@ -392,7 +392,7 @@ export default function ProfilPage() {
                 </span>
               </p>
               <p className="mt-1 text-text-muted">
-                Telefonanlage: Weiterleitung auf die Cura-Nummer löschen.
+                Telefonanlage: Weiterleitung auf die Linker-Nummer löschen.
               </p>
             </div>
           )}

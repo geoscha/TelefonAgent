@@ -37,7 +37,7 @@ interface CustomerDetail {
     createdAt: string;
   };
   settings: {
-    curaForwardingNumber?: string;
+    linkerForwardingNumber?: string;
     onboardingPhase?: OnboardingPhase;
     forwardingStatus?: string;
     forwardingType?: string;
@@ -90,7 +90,7 @@ export default function AdminCustomerDetailPage() {
   const [email, setEmail] = useState("");
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("nummer_anfragen");
-  const [curaNumber, setCuraNumber] = useState("");
+  const [linkerNumber, setLinkerNumber] = useState("");
   const [forwardingStatus, setForwardingStatus] = useState("");
   const [forwardingType, setForwardingType] = useState("");
   const [agentName, setAgentName] = useState("");
@@ -112,7 +112,7 @@ export default function AdminCustomerDetailPage() {
         setName(c.profile.name);
         setEmail(c.profile.email);
         setOnboardingPhase(c.settings.onboardingPhase ?? "nummer_anfragen");
-        setCuraNumber(c.settings.curaForwardingNumber ?? "");
+        setLinkerNumber(c.settings.linkerForwardingNumber ?? "");
         setForwardingStatus(c.settings.forwardingStatus ?? "");
         setForwardingType(c.settings.forwardingType ?? "");
         setAgentName(c.settings.agentName ?? "");
@@ -143,7 +143,7 @@ export default function AdminCustomerDetailPage() {
           },
           settings: {
             onboardingPhase,
-            curaForwardingNumber: curaNumber,
+            linkerForwardingNumber: linkerNumber,
             forwardingStatus: forwardingStatus || undefined,
             forwardingType: forwardingType || undefined,
             agentName,
@@ -353,11 +353,11 @@ export default function AdminCustomerDetailPage() {
 
         <section className="rounded-card border border-stroke bg-surface p-5 space-y-4">
           <p className="font-medium text-navy">Telefon & Onboarding</p>
-          <Field label="Cura-Nummer">
+          <Field label="Linker-Nummer">
             <Input
               className="font-mono"
-              value={curaNumber}
-              onChange={(e) => setCuraNumber(e.target.value)}
+              value={linkerNumber}
+              onChange={(e) => setLinkerNumber(e.target.value)}
             />
           </Field>
           <Field label="Geschäftsnummer">

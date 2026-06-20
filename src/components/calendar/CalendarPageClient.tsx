@@ -49,7 +49,7 @@ interface CalendarEvent {
   dayIso: string;
   eventUrl?: string;
   cancelled?: boolean;
-  curaManaged: boolean;
+  linkerManaged: boolean;
 }
 
 interface EventsResponse {
@@ -1140,9 +1140,9 @@ function CalendarEventBlock({
           {formatTime(event.startIso)} – {formatTime(event.endIso)}
         </p>
       ) : null}
-      {event.curaManaged ? (
+      {event.linkerManaged ? (
         <span className="mt-0.5 block truncate text-[9px] text-blue-200/80">
-          via Cura
+          via Linker
         </span>
       ) : null}
     </button>
@@ -1202,8 +1202,8 @@ function EventDetailDialog({
                 <p className="mt-1 text-[20px] font-medium tabular-nums">
                   {formatTime(event.startIso)} – {formatTime(event.endIso)}
                 </p>
-                {event.curaManaged ? (
-                  <p className="mt-2 text-[11px] text-blue-200/80">via Cura gebucht</p>
+                {event.linkerManaged ? (
+                  <p className="mt-2 text-[11px] text-blue-200/80">via Linker gebucht</p>
                 ) : null}
               </div>
 

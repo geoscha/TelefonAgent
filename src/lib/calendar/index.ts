@@ -36,11 +36,12 @@ export { ensureSingleCalendarConnection } from "./single-connection";
 /** OAuth providers only (Apple uses a credential form, not a redirect). */
 export function oauthAuthUrl(
   provider: "google" | "microsoft",
-  state: string
+  state: string,
+  redirectUriValue: string
 ): string {
   return provider === "google"
-    ? googleAuthUrl(state)
-    : microsoftAuthUrl(state);
+    ? googleAuthUrl(state, redirectUriValue)
+    : microsoftAuthUrl(state, redirectUriValue);
 }
 
 export async function createCalendarEvent(

@@ -17,7 +17,7 @@ export interface AdminCustomerSummary {
   email: string;
   tokenBalance: number;
   createdAt: string;
-  curaNumber?: string;
+  linkerNumber?: string;
   onboardingPhase?: string;
   callCount: number;
   lastCallAt?: string;
@@ -121,7 +121,7 @@ export async function listAdminCustomers(options?: {
       email: (p.email as string) ?? "",
       tokenBalance: (p.token_balance as number) ?? 0,
       createdAt: p.created_at as string,
-      curaNumber: (settings?.cura_forwarding_number as string) ?? undefined,
+      linkerNumber: (settings?.cura_forwarding_number as string) ?? undefined,
       onboardingPhase: (settings?.onboarding_phase as string) ?? undefined,
       callCount: calls?.count ?? 0,
       lastCallAt: calls?.lastCallAt,
@@ -136,7 +136,7 @@ export async function listAdminCustomers(options?: {
       (c) =>
         c.name.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q) ||
-        c.curaNumber?.includes(q)
+        c.linkerNumber?.includes(q)
     );
   }
 

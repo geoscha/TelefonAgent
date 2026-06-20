@@ -27,9 +27,9 @@ export async function GET() {
     capabilities: {
       hasApiKey: hasApiKey(),
       enrichmentEnabled: await isEnrichmentEnabled(),
-      forwardingNumber: settings.curaForwardingNumber ?? null,
+      forwardingNumber: settings.linkerForwardingNumber ?? null,
       defaultSystemPrompt: buildSystemPrompt(
-        settings.agentName || "Cura Telefonagent"
+        settings.agentName || "Linker Telefonagent"
       ),
     },
   });

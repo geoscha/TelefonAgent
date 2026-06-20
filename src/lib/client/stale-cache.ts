@@ -3,7 +3,7 @@
 const memory = new Map<string, { data: unknown; fetchedAt: number }>();
 
 function storageKey(key: string): string {
-  return `cura:cache:${key}`;
+  return `linker:cache:${key}`;
 }
 
 export function readStaleCache<T>(key: string, maxAgeMs = 120_000): T | null {
@@ -50,9 +50,9 @@ export function invalidateStaleCache(key: string): void {
 
 export function sessionThrottle(key: string, intervalMs: number): boolean {
   if (typeof window === "undefined") return false;
-  const raw = sessionStorage.getItem(`cura:throttle:${key}`);
+  const raw = sessionStorage.getItem(`linker:throttle:${key}`);
   const last = raw ? Number(raw) : 0;
   if (Date.now() - last < intervalMs) return false;
-  sessionStorage.setItem(`cura:throttle:${key}`, String(Date.now()));
+  sessionStorage.setItem(`linker:throttle:${key}`, String(Date.now()));
   return true;
 }

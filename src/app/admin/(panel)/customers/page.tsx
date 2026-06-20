@@ -20,7 +20,7 @@ interface Customer {
   email: string;
   tokenBalance: number;
   createdAt: string;
-  curaNumber?: string;
+  linkerNumber?: string;
   onboardingPhase?: string;
   callCount: number;
   lastCallAt?: string;
@@ -104,7 +104,7 @@ export default function AdminCustomersPage() {
                     </Badge>
                   </td>
                   <td className="px-3 py-2.5 font-mono landing-caption">
-                    {c.curaNumber || "—"}
+                    {c.linkerNumber || "—"}
                   </td>
                   <td className="px-3 py-2.5">{c.callCount}</td>
                   <td className="px-3 py-2.5">

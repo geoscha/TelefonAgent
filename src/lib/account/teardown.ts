@@ -8,7 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 interface UserSettingsSnapshot {
   agentId?: string;
   agents?: StoredAgent[];
-  curaForwardingNumber?: string;
+  linkerForwardingNumber?: string;
   elevenLabsPhoneNumberId?: string;
 }
 
@@ -29,7 +29,7 @@ async function loadSettingsSnapshot(
   return {
     agentId: data.agent_id ?? undefined,
     agents: Array.isArray(data.agents) ? (data.agents as StoredAgent[]) : [],
-    curaForwardingNumber: data.cura_forwarding_number ?? undefined,
+    linkerForwardingNumber: data.cura_forwarding_number ?? undefined,
     elevenLabsPhoneNumberId: data.elevenlabs_phone_number_id ?? undefined,
   };
 }
@@ -105,10 +105,10 @@ export async function teardownUserResources(userId: string): Promise<void> {
     }
   }
 
-  if (settings.curaForwardingNumber) {
+  if (settings.linkerForwardingNumber) {
     await admin
       .from("forwarding_number_pool")
       .update({ assigned_user_id: null, assigned_at: null })
-      .eq("phone_number", normalizePhoneNumber(settings.curaForwardingNumber));
+      .eq("phone_number", normalizePhoneNumber(settings.linkerForwardingNumber));
   }
 }

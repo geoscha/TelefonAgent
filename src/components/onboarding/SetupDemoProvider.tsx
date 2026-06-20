@@ -20,7 +20,7 @@ import {
 import { dispatchSetupDemoSkipped } from "@/lib/setup-demo-events";
 import type { SetupDemoStep } from "@/lib/setup-demo";
 
-const DEMO_STARTED_KEY = "cura-setup-demo-started";
+const DEMO_STARTED_KEY = "linker-setup-demo-started";
 
 interface SetupDemoContextValue {
   active: boolean;

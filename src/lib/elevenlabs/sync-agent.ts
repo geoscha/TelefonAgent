@@ -64,7 +64,7 @@ export async function upsertAgentForUser(
     const created = (await client.conversationalAi.agents.create({
       name: input.name,
       conversationConfig,
-      tags: ["cura"],
+      tags: ["linker"],
     } as Parameters<typeof client.conversationalAi.agents.create>[0])) as {
       agentId: string;
     };
@@ -92,7 +92,7 @@ export async function ensureAgentConfigForUser(userId: string): Promise<void> {
 
   // One-time cleanup of the old Boris/Ćevapi demo agent only.
   if (isLegacyAgentConfig(settings)) {
-    const agentName = settings.agentName?.trim() || "Cura Telefonagent";
+    const agentName = settings.agentName?.trim() || "Linker Telefonagent";
     settings = await updateSettingsForUser(userId, {
       agentName,
       greeting: defaultGreeting(agentName),
@@ -100,7 +100,7 @@ export async function ensureAgentConfigForUser(userId: string): Promise<void> {
     });
   }
 
-  const agentName = settings.agentName?.trim() || "Cura Telefonagent";
+  const agentName = settings.agentName?.trim() || "Linker Telefonagent";
   const patch: Partial<typeof settings> = {};
   if (!settings.greeting?.trim()) patch.greeting = defaultGreeting(agentName);
   if (!settings.systemPrompt?.trim()) {
@@ -133,7 +133,7 @@ export interface PhoneAgentLinkResult {
 }
 
 /**
- * Ensures the user's ElevenLabs phone number points at their Cura agent.
+ * Ensures the user's ElevenLabs phone number points at their Linker agent.
  * Resolves stale/missing phone IDs and verifies the assignment after PATCH.
  */
 export async function reconcileUserPhoneAgentLink(
@@ -154,7 +154,7 @@ export async function reconcileUserPhoneAgentLink(
 
   let phoneNumberId =
     primaryPhone?.elevenLabsPhoneNumberId ?? settings.elevenLabsPhoneNumberId;
-  let phoneNumber = primaryPhone?.phoneNumber ?? settings.curaForwardingNumber;
+  let phoneNumber = primaryPhone?.phoneNumber ?? settings.linkerForwardingNumber;
 
   if (!phoneNumberId) {
     const pool = await getAssignedPoolNumber(userId);
@@ -176,7 +176,7 @@ export async function reconcileUserPhoneAgentLink(
 
   if (!phoneNumberId) {
     throw new Error(
-      "ElevenLabs-Telefonnummer nicht gefunden. Bitte CURA_NUMBER_POOL und Migration 0002 prüfen."
+      "ElevenLabs-Telefonnummer nicht gefunden. Bitte LINKER_NUMBER_POOL und Migration 0002 prüfen."
     );
   }
 
@@ -185,18 +185,18 @@ export async function reconcileUserPhoneAgentLink(
 
   if (
     phoneNumberId !== settings.elevenLabsPhoneNumberId ||
-    phoneNumber !== settings.curaForwardingNumber
+    phoneNumber !== settings.linkerForwardingNumber
   ) {
     await updateSettingsForUser(userId, {
       elevenLabsPhoneNumberId: phoneNumberId,
-      curaForwardingNumber: phoneNumber,
+      linkerForwardingNumber: phoneNumber,
     });
   }
 
   await assignAgentToPhoneNumber(
     phoneNumberId,
     settings.agentId,
-    settings.agentName ?? "Cura Telefonagent"
+    settings.agentName ?? "Linker Telefonagent"
   );
 
   for (const extra of userPhones) {
@@ -208,7 +208,7 @@ export async function reconcileUserPhoneAgentLink(
       await assignAgentToPhoneNumber(
         extra.elevenLabsPhoneNumberId,
         settings.agentId,
-        settings.agentName ?? "Cura Telefonagent"
+        settings.agentName ?? "Linker Telefonagent"
       );
     }
   }
@@ -217,7 +217,7 @@ export async function reconcileUserPhoneAgentLink(
   const after = afterList.find((w) => w.phoneNumberId === phoneNumberId);
   if (after?.assignedAgentId !== settings.agentId) {
     throw new Error(
-      `Telefonnummer konnte nicht auf «${settings.agentName ?? "Cura Telefonagent"}» umgestellt werden.`
+      `Telefonnummer konnte nicht auf «${settings.agentName ?? "Linker Telefonagent"}» umgestellt werden.`
     );
   }
 
@@ -254,7 +254,7 @@ export async function linkAgentToPhone(
   await assignAgentToPhoneNumber(
     phone.elevenLabsPhoneNumberId,
     agentId,
-    settings.agentName ?? "Cura Telefonagent"
+    settings.agentName ?? "Linker Telefonagent"
   );
 }
 

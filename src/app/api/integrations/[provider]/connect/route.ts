@@ -8,6 +8,11 @@ import {
   microsoftAuthUrl,
   ensureSingleCalendarConnection,
 } from "@/lib/calendar";
+import {
+  calendarOAuthRedirectUri,
+  OAUTH_ORIGIN_COOKIE,
+  resolveAppUrl,
+} from "@/lib/integrations/oauth-origin";
 import { upsertCalendar, type CalendarProvider } from "@/lib/store";
 import { requireUserId } from "@/lib/supabase/server";
 
@@ -17,7 +22,7 @@ const OAUTH_PROVIDERS = new Set<CalendarProvider>(["google", "microsoft"]);
 
 /** Starts OAuth for Google / Microsoft. */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ provider: string }> }
 ) {
   const { provider: raw } = await params;
@@ -40,20 +45,32 @@ export async function GET(
     );
   }
 
+  const appUrl = resolveAppUrl(req);
+
   try {
     await requireUserId();
   } catch {
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/login?next=/integrationen`
+      `${appUrl}/login?next=/integrationen`
     );
   }
 
   const state = randomBytes(16).toString("hex");
+  const redirectUri = calendarOAuthRedirectUri(provider, appUrl);
   const authUrl =
-    provider === "google" ? googleAuthUrl(state) : microsoftAuthUrl(state);
+    provider === "google"
+      ? googleAuthUrl(state, redirectUri)
+      : microsoftAuthUrl(state, redirectUri);
 
   const res = NextResponse.redirect(authUrl);
   res.cookies.set(`oauth_state_${provider}`, state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 600,
+    path: "/",
+  });
+  res.cookies.set(OAUTH_ORIGIN_COOKIE, appUrl, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

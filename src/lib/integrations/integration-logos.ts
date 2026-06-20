@@ -46,3 +46,14 @@ export type IntegrationLogoAsset = {
   height: number;
   label: string;
 };
+
+/** All connectable integrations — used on the landing hero marquee. */
+export const LANDING_INTEGRATION_MARQUEE: IntegrationLogoAsset[] = [
+  { ...CALENDAR_LOGOS.google, label: "Google Kalender" },
+  { ...CALENDAR_LOGOS.microsoft, label: "Microsoft Outlook" },
+  { ...CALENDAR_LOGOS.apple, label: "Apple Kalender" },
+  { ...INTEGRATION_LOGOS.gmail, label: "Gmail" },
+  { ...INTEGRATION_LOGOS.outlook, label: "Outlook Mail" },
+  { ...INTEGRATION_LOGOS.appleMail, label: "Apple Mail" },
+  { ...INTEGRATION_LOGOS.whatsapp, label: "WhatsApp" },
+];

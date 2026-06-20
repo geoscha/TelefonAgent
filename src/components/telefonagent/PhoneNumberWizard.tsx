@@ -75,11 +75,11 @@ function needsCoupling(num: UserPhoneNumberView): boolean {
 }
 
 function phoneListSubtitle(num: UserPhoneNumberView, isConnected: boolean): string {
-  const parts: string[] = [num.source === "sip_trunk" ? "SIP Trunk" : "Cura Nummer"];
+  const parts: string[] = [num.source === "sip_trunk" ? "SIP Trunk" : "Linker Nummer"];
   const label = num.label?.trim();
   if (
     label &&
-    label.toLowerCase() !== "cura nummer" &&
+    label.toLowerCase() !== "linker nummer" &&
     label !== num.phoneNumber
   ) {
     parts.push(label);
@@ -115,7 +115,7 @@ function PhoneNumberInfoDialog({
             {phone.phoneNumber}
           </DialogTitle>
           <DialogDescription>
-            {phone.source === "sip_trunk" ? "SIP Trunk" : "Cura Nummer"}
+            {phone.source === "sip_trunk" ? "SIP Trunk" : "Linker Nummer"}
           </DialogDescription>
         </DialogHeader>
         <dl className="space-y-3 text-[13px]">
@@ -230,15 +230,15 @@ export function PhoneNumberWizard({
   const [sipUnsupportedOpen, setSipUnsupportedOpen] = useState(false);
 
   const activePhone = numbers.find((n) => n.id === activePhoneId);
-  const curaNumber = activePhone?.phoneNumber ?? "";
+  const linkerNumber = activePhone?.phoneNumber ?? "";
   const activeForwardingType = activePhone?.forwardingType ?? forwardingType;
 
   const activateCode = useMemo(
     () =>
-      curaNumber
-        ? forwardingActivateCode(curaNumber, activeForwardingType)
+      linkerNumber
+        ? forwardingActivateCode(linkerNumber, activeForwardingType)
         : "",
-    [curaNumber, activeForwardingType]
+    [linkerNumber, activeForwardingType]
   );
   const deactivateCode = forwardingDeactivateCode(activeForwardingType);
 
@@ -338,7 +338,7 @@ export function PhoneNumberWizard({
 
       {flow === "connect" && connectStep === "code" && (
         <ConnectCodeStep
-          curaNumber={curaNumber}
+          linkerNumber={linkerNumber}
           customerNumber={customerNumber}
           activateCode={activateCode}
           onBack={() => setConnectStep("customer")}
@@ -463,7 +463,7 @@ function OverviewStep({
         <div className="space-y-1">
           <p className={userLabelClass}>Noch keine Telefonnummer hinterlegt.</p>
           <p className={userLabelClass}>
-            Cura-Nummer: {formatPhoneNumberCostLabel()}
+            Linker-Nummer: {formatPhoneNumberCostLabel()}
           </p>
         </div>
       )}
@@ -506,7 +506,7 @@ function OverviewStep({
             >
               <div className="min-w-0">
                 <p className="text-[14px] text-[#525866]">Nummer in Bearbeitung</p>
-                <p className="text-[11px] text-[#525866]">Cura Nummer</p>
+                <p className="text-[11px] text-[#525866]">Linker Nummer</p>
               </div>
               <button
                 type="button"
@@ -741,7 +741,7 @@ function ConnectTypeStep({
   return (
     <div className="space-y-3">
       <p className={userLabelClass}>
-        Koppeln Sie Ihre Handynummer mit der Cura-Nummer: Wählen Sie den
+        Koppeln Sie Ihre Handynummer mit der Linker-Nummer: Wählen Sie den
         Weiterleitungstyp und folgen Sie den nächsten Schritten.
       </p>
       <p className={userLabelClass}>Weiterleitungstyp</p>
@@ -763,13 +763,13 @@ function ConnectTypeStep({
 }
 
 function ConnectCodeStep({
-  curaNumber,
+  linkerNumber,
   customerNumber,
   activateCode,
   onBack,
   onNext,
 }: {
-  curaNumber: string;
+  linkerNumber: string;
   customerNumber: string;
   activateCode: string;
   onBack: () => void;
@@ -781,7 +781,7 @@ function ConnectCodeStep({
         Wählen Sie auf <strong>{customerNumber}</strong> den Code und drücken Sie
         die Anruftaste.
       </p>
-      <CopyRow label="Cura-Nummer" value={curaNumber} mono />
+      <CopyRow label="Linker-Nummer" value={linkerNumber} mono />
       {activateCode && <CopyRow label="Code" value={activateCode} mono />}
       <StepNav onBack={onBack} onNext={onNext} nextLabel="Weiter" />
     </div>

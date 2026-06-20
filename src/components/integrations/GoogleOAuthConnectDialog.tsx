@@ -24,24 +24,24 @@ const COPY: Record<
   calendar: {
     title: "Google Kalender verbinden",
     intro:
-      "Melden Sie sich mit Ihrem persönlichen Google-Konto an (z. B. @gmail.com). Cura erhält Zugriff nur auf Ihren Kalender — nicht auf andere Google-Dienste.",
+      "Melden Sie sich mit Ihrem persönlichen Google-Konto an (z. B. @gmail.com). Linker erhält Zugriff nur auf Ihren Kalender — nicht auf andere Google-Dienste.",
     steps: [
       "Klicken Sie auf «Mit Google anmelden».",
       "Wählen Sie Ihr Google-Konto oder melden Sie sich an.",
-      "Bestätigen Sie den Kalender-Zugriff für Cura.",
-      "Sie werden zurück zu Cura geleitet — der Kalender ist verbunden.",
+      "Bestätigen Sie den Kalender-Zugriff für Linker.",
+      "Sie werden zurück zu Linker geleitet — der Kalender ist verbunden.",
     ],
     connectLabel: "Mit Google anmelden",
   },
   gmail: {
     title: "Gmail verbinden",
     intro:
-      "Melden Sie sich mit Ihrem persönlichen Google-Konto an (z. B. @gmail.com). Cura kann dann E-Mails in Ihrem Namen lesen und senden.",
+      "Melden Sie sich mit Ihrem persönlichen Google-Konto an (z. B. @gmail.com). Linker kann dann E-Mails in Ihrem Namen lesen und senden.",
     steps: [
       "Klicken Sie auf «Mit Google anmelden».",
       "Wählen Sie Ihr Google-Konto oder melden Sie sich an.",
-      "Bestätigen Sie den Gmail-Zugriff für Cura.",
-      "Sie werden zurück zu Cura geleitet — Gmail erscheint unter «Nachrichten».",
+      "Bestätigen Sie den Gmail-Zugriff für Linker.",
+      "Sie werden zurück zu Linker geleitet — Gmail erscheint unter «Nachrichten».",
     ],
     connectLabel: "Mit Google anmelden",
   },

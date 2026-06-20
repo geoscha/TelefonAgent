@@ -29,11 +29,11 @@ export function QuotaGate({ children }: { children: React.ReactNode }) {
     syncPending();
     window.addEventListener("pageshow", syncPending);
     document.addEventListener("visibilitychange", syncPending);
-    window.addEventListener("cura:token-balance-changed", syncPending);
+    window.addEventListener("linker:token-balance-changed", syncPending);
     return () => {
       window.removeEventListener("pageshow", syncPending);
       document.removeEventListener("visibilitychange", syncPending);
-      window.removeEventListener("cura:token-balance-changed", syncPending);
+      window.removeEventListener("linker:token-balance-changed", syncPending);
     };
   }, []);
 

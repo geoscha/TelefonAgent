@@ -80,7 +80,7 @@ export default function SignupPage() {
   return (
     <AuthFrame
       title="Konto erstellen"
-      subtitle="Registrieren Sie sich bei Cura, um loszulegen."
+      subtitle="Registrieren Sie sich bei Linker, um loszulegen."
       showGoogle
       onGoogleClick={handleGoogleSignUp}
       googleLoading={googleLoading}

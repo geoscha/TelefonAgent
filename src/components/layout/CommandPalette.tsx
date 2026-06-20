@@ -14,9 +14,9 @@ import { toast } from "sonner";
 import { USER_NAV_ITEMS } from "@/components/layout/user-nav";
 import { mockCalls } from "@/lib/mock/calls";
 
-const OPEN_EVENT = "cura:open-command";
+const OPEN_EVENT = "linker:open-command";
 
-/** Dispatch from anywhere to open the palette: window.dispatchEvent(new Event("cura:open-command")) */
+/** Dispatch from anywhere to open the palette: window.dispatchEvent(new Event("linker:open-command")) */
 export function openCommandPalette() {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }

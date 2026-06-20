@@ -1,7 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { googleExchangeCode, microsoftExchangeCode, ensureSingleCalendarConnection } from "@/lib/calendar";
-import { APP_URL } from "@/lib/calendar/config";
+import {
+  googleExchangeCode,
+  microsoftExchangeCode,
+  ensureSingleCalendarConnection,
+} from "@/lib/calendar";
+import {
+  calendarOAuthRedirectUri,
+  OAUTH_ORIGIN_COOKIE,
+  resolveAppUrl,
+} from "@/lib/integrations/oauth-origin";
 import { upsertCalendar } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -15,10 +23,12 @@ export async function GET(
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const oauthError = url.searchParams.get("error");
+  const appUrl =
+    req.cookies.get(OAUTH_ORIGIN_COOKIE)?.value ?? resolveAppUrl(req);
 
   const fail = (reason: string) =>
     NextResponse.redirect(
-      `${APP_URL}/integrationen?error=${reason}&provider=${provider}`
+      `${appUrl}/integrationen?error=${reason}&provider=${provider}`
     );
 
   if (oauthError) return fail("denied");
@@ -31,11 +41,13 @@ export async function GET(
     return fail("state_mismatch");
   }
 
+  const redirectUri = calendarOAuthRedirectUri(provider, appUrl);
+
   try {
     const patch =
       provider === "google"
-        ? await googleExchangeCode(code)
-        : await microsoftExchangeCode(code);
+        ? await googleExchangeCode(code, redirectUri)
+        : await microsoftExchangeCode(code, redirectUri);
     await ensureSingleCalendarConnection(provider);
     await upsertCalendar(provider, patch);
   } catch {
@@ -43,8 +55,9 @@ export async function GET(
   }
 
   const res = NextResponse.redirect(
-    `${APP_URL}/integrationen?connected=${provider}`
+    `${appUrl}/integrationen?connected=${provider}`
   );
   res.cookies.delete(`oauth_state_${provider}`);
+  res.cookies.delete(OAUTH_ORIGIN_COOKIE);
   return res;
 }

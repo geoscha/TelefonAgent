@@ -81,8 +81,8 @@ const agents = await el("/v1/convai/agents");
 const demoAgent = (agents.json?.agents ?? []).find(
   (a) =>
     a.name?.includes("Live-Demo") ||
-    a.tags?.includes("cura-demo") ||
-    a.name === "Cura Live-Demo (Lea)"
+    a.tags?.includes("linker-demo") ||
+    a.name === "Linker Live-Demo (Lea)"
 );
 console.log("\n=== DEMO AGENT ===");
 if (demoAgent) {

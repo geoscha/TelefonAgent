@@ -15,7 +15,7 @@ export const mockCalls: Call[] = [
     urgency: "hoch",
     status: "offen",
     transcript: [
-      { speaker: "Agent", text: "Grüezi, Sie erreichen die Cura Telefonassistenz der Liegenschaft Bahnhofstrasse 12. Wie kann ich Ihnen helfen?", timestamp: "00:00" },
+      { speaker: "Agent", text: "Grüezi, Sie erreichen die Linker Telefonassistenz der Liegenschaft Bahnhofstrasse 12. Wie kann ich Ihnen helfen?", timestamp: "00:00" },
       { speaker: "Anrufer", text: "Guten Tag, hier ist Marina Keller aus der Wohnung 3B. Ich habe einen Wasserschaden im Bad.", timestamp: "00:08" },
       { speaker: "Agent", text: "Das tut mir leid. Können Sie mir beschreiben, wo genau das Wasser austritt?", timestamp: "00:18" },
       { speaker: "Anrufer", text: "An der Decke über der Badewanne. Es tropft seit gestern Abend.", timestamp: "00:26" },
@@ -47,7 +47,7 @@ export const mockCalls: Call[] = [
     urgency: "niedrig",
     status: "erledigt",
     transcript: [
-      { speaker: "Agent", text: "Grüezi, Cura Telefonassistenz Seestrasse 45. Womit kann ich dienen?", timestamp: "00:00" },
+      { speaker: "Agent", text: "Grüezi, Linker Telefonassistenz Seestrasse 45. Womit kann ich dienen?", timestamp: "00:00" },
       { speaker: "Anrufer", text: "Ich habe eine Frage zur Mietzinsanpassung ab Juli.", timestamp: "00:06" },
     ],
     structuredSummary: {
@@ -73,7 +73,7 @@ export const mockCalls: Call[] = [
     urgency: "mittel",
     status: "offen",
     transcript: [
-      { speaker: "Agent", text: "Grüezi, Cura Telefonassistenz Limmatquai 88.", timestamp: "00:00" },
+      { speaker: "Agent", text: "Grüezi, Linker Telefonassistenz Limmatquai 88.", timestamp: "00:00" },
       { speaker: "Anrufer", text: "Ich interessiere mich für die 3.5-Zi-Wohnung. Gibt es einen Besichtigungstermin?", timestamp: "00:05" },
     ],
     structuredSummary: {
@@ -100,7 +100,7 @@ export const mockCalls: Call[] = [
     urgency: "niedrig",
     status: "erledigt",
     transcript: [
-      { speaker: "Agent", text: "Grüezi, Cura Telefonassistenz Rämistrasse 5.", timestamp: "00:00" },
+      { speaker: "Agent", text: "Grüezi, Linker Telefonassistenz Rämistrasse 5.", timestamp: "00:00" },
       { speaker: "Anrufer", text: "Wo kann ich Elektroschrott entsorgen?", timestamp: "00:04" },
     ],
     structuredSummary: {
@@ -125,7 +125,7 @@ export const mockCalls: Call[] = [
     urgency: "hoch",
     status: "eskaliert",
     transcript: [
-      { speaker: "Agent", text: "Grüezi, Cura Notfall-Hotline Hardturmstrasse 161.", timestamp: "00:00" },
+      { speaker: "Agent", text: "Grüezi, Linker Notfall-Hotline Hardturmstrasse 161.", timestamp: "00:00" },
       { speaker: "Anrufer", text: "Die Heizung ist komplett ausgefallen! Wir haben ein Baby zu Hause.", timestamp: "00:05" },
     ],
     structuredSummary: {
@@ -153,7 +153,7 @@ export const mockCalls: Call[] = [
     urgency: "hoch",
     status: "offen",
     transcript: [
-      { speaker: "Agent", text: "Grüezi, Cura Telefonassistenz Universitätsstrasse 15.", timestamp: "00:00" },
+      { speaker: "Agent", text: "Grüezi, Linker Telefonassistenz Universitätsstrasse 15.", timestamp: "00:00" },
       { speaker: "Anrufer", text: "Der Aufzug funktioniert seit Stunden nicht.", timestamp: "00:05" },
     ],
     structuredSummary: {

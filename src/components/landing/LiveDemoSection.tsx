@@ -37,7 +37,7 @@ function DemoOrb() {
 }
 
 export function LiveDemoSection() {
-  const [useCaseId, setUseCaseId] = useState<DemoUseCaseId>("cura");
+  const [useCaseId, setUseCaseId] = useState<DemoUseCaseId>("linker");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
@@ -128,7 +128,7 @@ export function LiveDemoSection() {
         <div className="landing-radius flex min-h-[420px] flex-col bg-[#F5F7FA] p-6 sm:p-8">
           <p className="landing-subtitle max-w-[420px]">
             Erhalten Sie einen Live-Anruf von unserem Telefonagenten und erleben
-            Sie, wie Cura Kundengespräche natürlich und effizient abwickelt.
+            Sie, wie Linker Kundengespräche natürlich und effizient abwickelt.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-8 flex flex-1 flex-col">

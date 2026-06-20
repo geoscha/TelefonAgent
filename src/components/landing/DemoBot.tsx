@@ -16,7 +16,7 @@ import {
 
 type ChatEntry = DemoMessage & {
   id: string;
-  /** Live-Ticker für Cura — wächst synchron zur Sprachausgabe */
+  /** Live-Ticker für Linker — wächst synchron zur Sprachausgabe */
   spokenText?: string;
 };
 

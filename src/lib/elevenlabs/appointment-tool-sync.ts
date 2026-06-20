@@ -202,7 +202,7 @@ async function listWorkspaceWebhookTools(client: ElevenLabsClient) {
   return response.tools ?? [];
 }
 
-/** Registers shared Cura appointment webhook tools and returns their IDs. */
+/** Registers shared Linker appointment webhook tools and returns their IDs. */
 export async function ensureAppointmentToolIds(
   client: ElevenLabsClient,
   appointmentConfig?: AppointmentConfig,

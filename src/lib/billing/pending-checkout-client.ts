@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
 
-const STORAGE_KEY = "cura_pending_stripe_checkout";
+const STORAGE_KEY = "linker_pending_stripe_checkout";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const POLL_ATTEMPTS = 10;
 const POLL_INTERVAL_MS = 2000;

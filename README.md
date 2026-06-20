@@ -1,6 +1,6 @@
-# Cura — Admin Dashboard
+# Linker — Admin Dashboard
 
-Customer-facing admin area for **Cura**, an AI phone agent SaaS for Swiss residential property managers (Immobilienverwaltungen).
+Customer-facing admin area for **Linker**, an AI phone agent SaaS for Swiss residential property managers (Immobilienverwaltungen).
 
 ## Tech Stack
 
@@ -42,7 +42,7 @@ user only sees their own rows (enforced by Row Level Security).
 
 ### Migrate existing local data (optional)
 
-If you already have calls in the legacy file store (`.data/cura-store.json`),
+If you already have calls in the legacy file store (`.data/linker-store.json`),
 log in as the account that should own them and run once:
 
 ```bash
@@ -77,16 +77,16 @@ Follow this order — the UI mirrors it top to bottom:
    - `ELEVENLABS_WEBHOOK_SECRET` (required for the call feed) — generated when you add the webhook
    - `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` (required only to connect a phone number)
    - `ENRICHMENT_API_KEY` (optional) — any OpenAI-compatible key for the LLM enrichment pass.
-     If unset, Cura falls back to ElevenLabs' own call analysis.
+     If unset, Linker falls back to ElevenLabs' own call analysis.
    - Restart `npm run dev` after editing env files.
-2. **Connect** — on `/telefonagent`, click **Verbinden**. Cura validates the key by
+2. **Connect** — on `/telefonagent`, click **Verbinden**. Linker validates the key by
    listing your agents and shows **Verbunden** with workspace info. → `POST /api/elevenlabs/connect`
 3. **Voice + Agent** — the *Stimme* dropdown is populated with your real ElevenLabs
    voices (German/multilingual first). Fill in name, voice, language and greeting, then
    **Agent erstellen**. The agent (with a Swiss property-management system prompt) is
    created and its `agent_id` persisted. → `GET /api/elevenlabs/voices`, `POST /api/elevenlabs/agent`
 4. **Twilio number** — enter your purchased Twilio number and a label, then **Nummer
-   verbinden**. Cura imports it into ElevenLabs and assigns the agent for inbound calls.
+   verbinden**. Linker imports it into ElevenLabs and assigns the agent for inbound calls.
    → `POST /api/elevenlabs/phone`
 5. **Webhook** — copy the **Post-Call Webhook** URL from the card and register it under
    ElevenLabs → Agents → Settings → Post-call webhooks, using the same
@@ -97,11 +97,11 @@ Follow this order — the UI mirrors it top to bottom:
      ngrok http 3000
      ```
 6. **Test call** — call your Twilio number, talk to the agent, then hang up. When
-   analysis completes, ElevenLabs POSTs the `post_call_transcription` event; Cura verifies
+   analysis completes, ElevenLabs POSTs the `post_call_transcription` event; Linker verifies
    the HMAC signature, enriches the transcript, and the call appears automatically in the
    dashboard feed (`/`). → `POST /api/webhooks/elevenlabs`
 
-> Persistence uses a small file-backed store at `.data/cura-store.json` (git-ignored).
+> Persistence uses a small file-backed store at `.data/linker-store.json` (git-ignored).
 > Swap `src/lib/store/index.ts` for Supabase queries to go fully managed — no other code changes needed.
 
 ## Project Structure
@@ -132,9 +132,9 @@ Brand colors from the Straightforward guidelines:
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `cura-navy` | `#234B63` | Sidebar, headings |
-| `cura-accent` | `#F36C21` | Primary buttons, active nav |
-| `cura-surface` | `#F7F8FA` | Content background |
+| `linker-navy` | `#234B63` | Sidebar, headings |
+| `linker-accent` | `#F36C21` | Primary buttons, active nav |
+| `linker-surface` | `#F7F8FA` | Content background |
 
 All UI copy is in **German (Swiss market)**. Code identifiers are in English.
 

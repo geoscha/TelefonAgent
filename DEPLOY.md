@@ -22,7 +22,7 @@ Im Projektordner (Terminal):
 cd "/Users/georgschali/Desktop/Telemarketing AI"
 git init
 git add .
-git commit -m "Initial commit — Cura admin dashboard"
+git commit -m "Initial commit — Linker admin dashboard"
 ```
 
 Auf [github.com/new](https://github.com/new) ein **leeres** Repo erstellen (ohne README).
@@ -62,7 +62,7 @@ Nach dem ersten Deploy: `NEXT_PUBLIC_APP_URL` auf die echte Vercel-URL setzen un
 
 | Variable | Beschreibung |
 |---|---|
-| `CURA_NUMBER_POOL` | Telefonnummern (E.164), kommagetrennt |
+| `LINKER_NUMBER_POOL` | Telefonnummern (E.164), kommagetrennt |
 | `AGENT_TOOL_SECRET` | Bearer-Token für Termin-Tool |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Kalender OAuth |
 | `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | Outlook OAuth |

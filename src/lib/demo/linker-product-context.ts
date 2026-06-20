@@ -7,15 +7,15 @@ import {
 } from "@/lib/billing/quota-display";
 
 /** Shared product facts for demo / sales agents (client-safe). */
-export function buildCuraProductKnowledgeBlock(
+export function buildLinkerProductKnowledgeBlock(
   language: AgentLanguageLabel = "Deutsch"
 ): string {
   const callRate = formatCallMinuteCostLabel();
   const phoneRate = formatPhoneNumberCostLabel();
 
   if (language === "Schweizerdeutsch") {
-    return `# Cura — Produktwissen
-Cura isch en KI-Telefonagänt für Liegenschaftsverwaltige in de Schwiiz.
+    return `# Linker — Produktwissen
+Linker isch en KI-Telefonagänt für Liegenschaftsverwaltige in de Schwiiz.
 Er nimmt Ahruuf 24/7 a (Schäde, Mietfrage, Termin, Empfang), transkribiert Gspröch und fasst sie zämm.
 Setup: Agent aalege, Telefonnummere beantrage oder SIP verbinde, Nummere wiiterleite.
 
@@ -32,8 +32,8 @@ Setup: Agent aalege, Telefonnummere beantrage oder SIP verbinde, Nummere wiiterl
 - Mehreri Agente und Nummere pro Konto`;
   }
 
-  return `# Cura — Produktwissen
-Cura ist ein KI-Telefonagent für Liegenschaftsverwaltungen in der Schweiz.
+  return `# Linker — Produktwissen
+Linker ist ein KI-Telefonagent für Liegenschaftsverwaltungen in der Schweiz.
 Er nimmt Anrufe 24/7 entgegen (Schäden, Miete, Termine, Empfang), transkribiert Gespräche und fasst sie zusammen.
 Setup: Agent anlegen, Telefonnummer beantragen oder SIP verbinden, Nummer weiterleiten.
 
@@ -54,7 +54,7 @@ export function buildDemoAgentContextBlock(
   language: AgentLanguageLabel = "Deutsch",
   adminContext?: string | null
 ): string {
-  const base = buildCuraProductKnowledgeBlock(language);
+  const base = buildLinkerProductKnowledgeBlock(language);
   const extra = adminContext?.trim();
   if (!extra) return base;
   return `${base}\n\n# Zusätzlicher Kontext (Admin)\n${extra}`;

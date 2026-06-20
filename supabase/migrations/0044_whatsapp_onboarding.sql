@@ -1,4 +1,4 @@
--- WhatsApp onboarding: account number, optional Cura phone link, verification
+-- WhatsApp onboarding: account number, optional Linker phone link, verification
 
 alter table public.whatsapp_connections
   add column if not exists whatsapp_number text,

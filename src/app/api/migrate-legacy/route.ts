@@ -25,19 +25,19 @@ interface LegacyStore {
 }
 
 /**
- * One-time migration: imports the legacy file store (.data/cura-store.json)
+ * One-time migration: imports the legacy file store (.data/linker-store.json)
  * into the signed-in user's Supabase rows. Run this once, logged in as the
  * account that should own the existing data, then it can be removed.
  */
 export async function POST() {
-  const file = path.join(process.cwd(), ".data", "cura-store.json");
+  const file = path.join(process.cwd(), ".data", "linker-store.json");
 
   let legacy: LegacyStore;
   try {
     legacy = JSON.parse(await fs.readFile(file, "utf-8")) as LegacyStore;
   } catch {
     return NextResponse.json(
-      { ok: false, error: "Keine Legacy-Daten (.data/cura-store.json) gefunden." },
+      { ok: false, error: "Keine Legacy-Daten (.data/linker-store.json) gefunden." },
       { status: 404 }
     );
   }

@@ -120,7 +120,7 @@ export async function assignNumberFromPool(
 
   if (!free) {
     throw new Error(
-      "Keine Weiterleitungsnummern mehr verfügbar. Bitte CURA_NUMBER_POOL erweitern."
+      "Keine Weiterleitungsnummern mehr verfügbar. Bitte LINKER_NUMBER_POOL erweitern."
     );
   }
 

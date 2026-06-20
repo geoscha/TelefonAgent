@@ -740,7 +740,7 @@ export async function purchaseTwilioPhoneNumber(
 
   const body: Record<string, string> = {
     PhoneNumber: phoneNumber,
-    FriendlyName: `Cura ${phoneNumber}`,
+    FriendlyName: `Linker ${phoneNumber}`,
   };
 
   const addressSid = await resolveAddressSidForPurchase(

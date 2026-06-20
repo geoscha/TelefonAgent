@@ -4,7 +4,7 @@ import "./globals.css";
 import "@/styles/retell-fonts.css";
 
 export const metadata: Metadata = {
-  title: "Cura — KI-Telefonagent für automatisierte Anrufe",
+  title: "Linker — KI-Telefonagent für automatisierte Anrufe",
   description:
     "Erstellen, einsetzen und verwalten Sie KI-Telefonagenten der nächsten Generation — natürlich klingend, aufgabenorientiert und mühelos skalierbar.",
 };

@@ -35,7 +35,7 @@ export function SetupDemoWelcomeModal() {
         )}
       >
         <p id="setup-demo-welcome-title" className={userTitleClass}>
-          Willkommen bei Cura
+          Willkommen bei Linker
         </p>
         <p className={`${userLabelClass} mt-2`}>
           In wenigen Schritten richten Sie Ihren ersten KI-Telefonagenten ein.

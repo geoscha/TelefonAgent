@@ -13,7 +13,7 @@ export async function getCurrentUser(): Promise<SupabaseUser | null> {
   // TODO: supabase.auth.getUser()
   return {
     id: "user-001",
-    email: "verwaltung@cura-demo.ch",
+    email: "verwaltung@linker-demo.ch",
     fullName: "Admin Demo",
   };
 }

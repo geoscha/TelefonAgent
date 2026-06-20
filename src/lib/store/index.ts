@@ -53,8 +53,8 @@ export interface ElevenLabsSettings {
   forwardingActivatedAt?: string;
   appointmentBookingEnabled?: boolean;
   appointmentProvider?: CalendarProvider;
-  /** This user's dedicated Cura DID (from the number pool). */
-  curaForwardingNumber?: string;
+  /** This user's dedicated Linker DID (from the number pool). */
+  linkerForwardingNumber?: string;
   /** ElevenLabs phone_numbers id for agent assignment. */
   elevenLabsPhoneNumberId?: string;
   lastSync?: string;
@@ -114,7 +114,7 @@ function rowToSettings(row: any): ElevenLabsSettings {
     forwardingActivatedAt: row.forwarding_activated_at ?? undefined,
     appointmentBookingEnabled: row.appointment_booking_enabled ?? undefined,
     appointmentProvider: row.appointment_provider ?? undefined,
-    curaForwardingNumber: row.cura_forwarding_number ?? undefined,
+    linkerForwardingNumber: row.cura_forwarding_number ?? undefined,
     elevenLabsPhoneNumberId: row.elevenlabs_phone_number_id ?? undefined,
     lastSync: row.last_sync ?? undefined,
     onboardingPhase: row.onboarding_phase ?? undefined,
@@ -149,7 +149,7 @@ function settingsPatchToRow(patch: Partial<ElevenLabsSettings>): Record<string, 
     forwardingActivatedAt: "forwarding_activated_at",
     appointmentBookingEnabled: "appointment_booking_enabled",
     appointmentProvider: "appointment_provider",
-    curaForwardingNumber: "cura_forwarding_number",
+    linkerForwardingNumber: "cura_forwarding_number",
     elevenLabsPhoneNumberId: "elevenlabs_phone_number_id",
     lastSync: "last_sync",
     onboardingPhase: "onboarding_phase",

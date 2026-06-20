@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-interface CuraMarkProps {
+interface LinkerMarkProps {
   className?: string;
   markClassName?: string;
   wordmarkClassName?: string;
@@ -8,12 +8,12 @@ interface CuraMarkProps {
 }
 
 /** Minimal care-loop mark + Hedvig serif wordmark */
-export function CuraMark({
+export function LinkerMark({
   className,
   markClassName,
   wordmarkClassName,
   showMark = true,
-}: CuraMarkProps) {
+}: LinkerMarkProps) {
   return (
     <div className={cn("flex items-center gap-3", className)}>
       {showMark && (
@@ -44,13 +44,13 @@ export function CuraMark({
           wordmarkClassName
         )}
       >
-        Cura
+        Linker
       </span>
     </div>
   );
 }
 
-interface CuraWordmarkProps {
+interface LinkerWordmarkProps {
   className?: string;
   size?: "sm" | "md" | "lg";
 }
@@ -61,7 +61,7 @@ const sizeMap = {
   lg: "text-[40px]",
 };
 
-export function CuraWordmark({ className, size = "md" }: CuraWordmarkProps) {
+export function LinkerWordmark({ className, size = "md" }: LinkerWordmarkProps) {
   return (
     <span
       className={cn(
@@ -70,7 +70,7 @@ export function CuraWordmark({ className, size = "md" }: CuraWordmarkProps) {
         className
       )}
     >
-      Cura
+      Linker
     </span>
   );
 }

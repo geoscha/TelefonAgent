@@ -61,7 +61,7 @@ export async function fetchWebsiteContext(
       headers: {
         Accept: "text/html,application/xhtml+xml",
         "User-Agent":
-          "CuraBot/1.0 (+https://cura.ch; agent-setup preview)",
+          "LinkerBot/1.0 (+https://linker.app; agent-setup preview)",
       },
       redirect: "follow",
     });

@@ -1,7 +1,7 @@
 import type { DemoVoicePresetId } from "@/lib/demo/voices";
 
 export type DemoUseCaseId =
-  | "cura"
+  | "linker"
   | "reception"
   | "appointment"
   | "lead"
@@ -14,18 +14,18 @@ export interface DemoUseCase {
   label: string;
   voice: DemoVoicePresetId;
   scenario: string;
-  /** Cura sales demo — answers product questions instead of role-play. */
-  curaAgent?: boolean;
+  /** Linker sales demo — answers product questions instead of role-play. */
+  linkerAgent?: boolean;
 }
 
 export const DEMO_USE_CASES: DemoUseCase[] = [
   {
-    id: "cura",
-    label: "Cura Agent",
+    id: "linker",
+    label: "Linker Agent",
     voice: "female-de",
-    curaAgent: true,
+    linkerAgent: true,
     scenario:
-      "Sie sind der Cura-Demo-Telefonagent. Fragen Sie zuerst, ob die Person Fragen zu Cura hat, und beantworten Sie diese zu Preisen, Funktionen und Setup.",
+      "Sie sind der Linker-Demo-Telefonagent. Fragen Sie zuerst, ob die Person Fragen zu Linker hat, und beantworten Sie diese zu Preisen, Funktionen und Setup.",
   },
   {
     id: "reception",
@@ -81,9 +81,9 @@ export function buildDemoOutboundGreeting(
 ): string {
   const salutation = name.trim() ? `Guten Tag ${name.trim()}` : "Guten Tag";
 
-  if (useCase.curaAgent) {
-    return `${salutation}, hier ist Cura. Schön, dass Sie unsere Live-Demo ausprobieren. Haben Sie Fragen zu Cura — zum Beispiel zu Preisen, Funktionen oder dem Setup? Ich beantworte sie gern.`;
+  if (useCase.linkerAgent) {
+    return `${salutation}, hier ist Linker. Schön, dass Sie unsere Live-Demo ausprobieren. Haben Sie Fragen zu Linker — zum Beispiel zu Preisen, Funktionen oder dem Setup? Ich beantworte sie gern.`;
   }
 
-  return `${salutation}, hier ist Cura. Schön, dass Sie unsere Live-Demo ausprobieren — Sie haben «${useCase.label}» gewählt. Haben Sie kurz Zeit? Ich zeige Ihnen, wie angenehm unsere Gespräche klingen.`;
+  return `${salutation}, hier ist Linker. Schön, dass Sie unsere Live-Demo ausprobieren — Sie haben «${useCase.label}» gewählt. Haben Sie kurz Zeit? Ich zeige Ihnen, wie angenehm unsere Gespräche klingen.`;
 }

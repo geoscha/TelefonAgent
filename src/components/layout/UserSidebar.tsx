@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { CuraLogo } from "@/components/brand/CuraLogo";
+import { LinkerLogo } from "@/components/brand/LinkerLogo";
 import {
   isUserNavActive,
   USER_NAV_ITEMS,
@@ -20,7 +20,7 @@ export function UserSidebar() {
   return (
     <aside className="flex w-[220px] shrink-0 flex-col border-r border-[#E1E4EA] bg-white px-3 py-4 lg:w-[240px]">
       <div className="mb-6 px-1">
-        <CuraLogo mode="contextual" theme="dark" size="sm" href="/anrufe" />
+        <LinkerLogo mode="contextual" theme="dark" size="sm" href="/anrufe" />
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5" aria-label="Hauptnavigation">

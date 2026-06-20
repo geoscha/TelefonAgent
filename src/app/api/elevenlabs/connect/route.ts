@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     reconcile &&
     hasApiKey() &&
     settings.agentId &&
-    settings.curaForwardingNumber &&
+    settings.linkerForwardingNumber &&
     (settings.onboardingPhase === "fertig" ||
       settings.onboardingPhase === "agent" ||
       !settings.onboardingPhase)
@@ -42,9 +42,9 @@ export async function GET(req: NextRequest) {
     capabilities: {
       hasApiKey: hasApiKey(),
       enrichmentEnabled: await isEnrichmentEnabled(),
-      forwardingNumber: settings.curaForwardingNumber ?? null,
+      forwardingNumber: settings.linkerForwardingNumber ?? null,
       defaultSystemPrompt: buildSystemPrompt(
-        settings.agentName || "Cura Telefonagent"
+        settings.agentName || "Linker Telefonagent"
       ),
     },
   });

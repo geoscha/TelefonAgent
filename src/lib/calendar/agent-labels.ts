@@ -1,11 +1,11 @@
-export const CURA_CALENDAR_LABEL = "Cura";
-/** @deprecated Use CURA_CALENDAR_LABEL — kept for backwards-compatible detection. */
-export const AGENT_CALENDAR_SOURCE_LABEL = "Cura Agent";
-export const AGENT_CREATED_DESCRIPTION = "Vom Cura Telefonagenten erstellt.";
+export const LINKER_CALENDAR_LABEL = "Linker";
+/** @deprecated Use LINKER_CALENDAR_LABEL — kept for backwards-compatible detection. */
+export const AGENT_CALENDAR_SOURCE_LABEL = "Linker Agent";
+export const AGENT_CREATED_DESCRIPTION = "Vom Linker Telefonagenten erstellt.";
 export const AGENT_CANCELLED_DESCRIPTION_PREFIX =
-  "Abgesagt vom Cura Telefonagenten";
+  "Abgesagt vom Linker Telefonagenten";
 
-const CANCELLED_TITLE_PREFIX = `[Abgesagt · ${CURA_CALENDAR_LABEL}]`;
+const CANCELLED_TITLE_PREFIX = `[Abgesagt · ${LINKER_CALENDAR_LABEL}]`;
 
 /** Clean calendar title: «Termin — Max Müller» (label lives in CATEGORIES). */
 export function formatAppointmentTitle(
@@ -24,7 +24,7 @@ export function formatAgentBookedTitle(title: string): string {
 
 export function formatAgentCancelledTitle(title: string): string {
   const stripped = title
-    .replace(/^\[(?:Abgesagt\s*·\s*)?(?:Cura(?: Agent)?)\]\s*/i, "")
+    .replace(/^\[(?:Abgesagt\s*·\s*)?(?:Cura|Linker(?: Agent)?)\]\s*/i, "")
     .trim();
   return `${CANCELLED_TITLE_PREFIX} ${stripped || title.trim()}`;
 }
@@ -56,7 +56,8 @@ export function isAgentCreatedCalendarEvent(
   description?: string
 ): boolean {
   return (
-    title.includes(CURA_CALENDAR_LABEL) ||
+    title.includes(LINKER_CALENDAR_LABEL) ||
+    title.includes("Cura") ||
     title.includes(AGENT_CALENDAR_SOURCE_LABEL) ||
     Boolean(description?.includes(AGENT_CREATED_DESCRIPTION))
   );

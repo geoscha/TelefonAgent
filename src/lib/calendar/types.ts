@@ -25,7 +25,7 @@ export interface CalendarEventInput {
   /** IANA time zone; defaults to Europe/Zurich. */
   timeZone?: string;
   location?: string;
-  /** Calendar category/label, e.g. «Cura». */
+  /** Calendar category/label, e.g. «Linker». */
   categories?: string[];
 }
 

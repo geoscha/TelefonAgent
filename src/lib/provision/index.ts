@@ -43,7 +43,7 @@ export async function provisionCurrentUser(): Promise<ProvisionResult> {
   let next = settings;
 
   if (
-    next.curaForwardingNumber &&
+    next.linkerForwardingNumber &&
     next.elevenLabsPhoneNumberId &&
     next.agentId
   ) {

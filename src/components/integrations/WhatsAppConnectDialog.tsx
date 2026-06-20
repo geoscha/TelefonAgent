@@ -179,7 +179,7 @@ export function WhatsAppConnectDialog({
               <Input
                 id="whatsapp-pairing"
                 autoComplete="off"
-                placeholder="CURA-1234"
+                placeholder="LINKER-1234"
                 value={pairingConfirm}
                 onChange={(event) =>
                   onPairingConfirmChange(event.target.value.toUpperCase())

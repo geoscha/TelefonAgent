@@ -65,7 +65,7 @@ async function clearPublicTables(admin) {
 }
 
 function clearLegacyStore() {
-  const storePath = path.join(root, ".data", "cura-store.json");
+  const storePath = path.join(root, ".data", "linker-store.json");
   if (!fs.existsSync(storePath)) return false;
   fs.writeFileSync(
     storePath,
@@ -97,7 +97,7 @@ async function main() {
   await resetPool(admin);
 
   if (clearLegacyStore()) {
-    console.log("Legacy-Datei .data/cura-store.json zurückgesetzt.");
+    console.log("Legacy-Datei .data/linker-store.json zurückgesetzt.");
   }
 
   console.log("\nFertig — Plattform ist zurückgesetzt.");

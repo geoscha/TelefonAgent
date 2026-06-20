@@ -5,10 +5,10 @@ export function normalizePhoneCode(phoneNumber: string): string {
 }
 
 export function forwardingActivateCode(
-  curaNumber: string,
+  linkerNumber: string,
   type: ForwardingType
 ): string {
-  const code = normalizePhoneCode(curaNumber);
+  const code = normalizePhoneCode(linkerNumber);
   return type === "alle" ? `**21*${code}#` : `**61*${code}#`;
 }
 

@@ -37,8 +37,8 @@ const PHONE_REQUEST_TYPES = ["nummer_beantragen", "nummer_zuweisung"];
 
 function defaultPhase(settings: ElevenLabsSettings): OnboardingPhase {
   if (settings.onboardingPhase) return settings.onboardingPhase;
-  if (settings.agentId && settings.curaForwardingNumber) return "fertig";
-  if (settings.curaForwardingNumber) return "weiterleitung";
+  if (settings.agentId && settings.linkerForwardingNumber) return "fertig";
+  if (settings.linkerForwardingNumber) return "weiterleitung";
   return "nummer_anfragen";
 }
 
@@ -89,9 +89,9 @@ export async function getPhoneOnboardingState(
   const pendingRequest = pendingRequests[0] ?? null;
   let phase = defaultPhase(settings);
 
-  if (primary && !settings.curaForwardingNumber) {
+  if (primary && !settings.linkerForwardingNumber) {
     await updateSettingsForUser(id, {
-      curaForwardingNumber: primary.phoneNumber,
+      linkerForwardingNumber: primary.phoneNumber,
       elevenLabsPhoneNumberId: primary.elevenLabsPhoneNumberId,
       forwardingType: primary.forwardingType ?? settings.forwardingType,
       forwardingStatus: primary.forwardingStatus ?? settings.forwardingStatus,
@@ -370,7 +370,7 @@ export async function assignPhoneNumberToUser(
   });
 
   return updateSettingsForUser(userId, {
-    curaForwardingNumber: normalized,
+    linkerForwardingNumber: normalized,
     elevenLabsPhoneNumberId: elevenLabsId ?? undefined,
     forwardingStatus: "anleitung",
     forwardingType: "bedingt",
@@ -386,15 +386,15 @@ export async function completeAgentOnboarding(): Promise<ElevenLabsSettings> {
   });
 }
 
-export function defaultForwardingInstructions(curaNumber: string): string {
-  const code = curaNumber.replace(/[\s()./-]/g, "");
+export function defaultForwardingInstructions(linkerNumber: string): string {
+  const code = linkerNumber.replace(/[\s()./-]/g, "");
   return [
     "So richten Sie die Weiterleitung ein:",
     "",
     "1. Wählen Sie auf Ihrem Handy den gewählten Code (Nur Überlauf oder Alle Anrufe) und drücken Sie die Anruftaste.",
-    "2. Alternativ können Sie die Weiterleitung in Ihrer Telefonanlage (PBX) auf die Cura-Nummer einrichten.",
+    "2. Alternativ können Sie die Weiterleitung in Ihrer Telefonanlage (PBX) auf die Linker-Nummer einrichten.",
     "",
-    `Cura-Nummer: ${curaNumber}`,
+    `Linker-Nummer: ${linkerNumber}`,
     `Nur Überlauf: **61*${code}#`,
     `Alle Anrufe: **21*${code}#`,
   ].join("\n");

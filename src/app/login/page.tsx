@@ -115,7 +115,7 @@ function LoginForm() {
   return (
     <AuthFrame
       title="Willkommen"
-      subtitle="Melden Sie sich bei Cura an, um fortzufahren."
+      subtitle="Melden Sie sich bei Linker an, um fortzufahren."
       showGoogle={step === "email"}
       onGoogleClick={handleGoogleSignIn}
       googleLoading={googleLoading}

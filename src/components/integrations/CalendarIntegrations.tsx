@@ -517,7 +517,7 @@ function AppleConnectDialog({
               </GuideStep>
               <GuideStep n={2}>
                 Erstellen Sie unter «App-spezifische Passwörter» ein neues
-                Passwort (z. B. «Cura»).{" "}
+                Passwort (z. B. «Linker»).{" "}
                 <DocLink href={APPLE_LINKS.appPasswordHelp}>
                   Anleitung von Apple
                 </DocLink>

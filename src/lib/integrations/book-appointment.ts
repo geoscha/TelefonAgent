@@ -7,7 +7,7 @@ import {
 } from "@/lib/calendar";
 import {
   buildAgentBookedDescription,
-  CURA_CALENDAR_LABEL,
+  LINKER_CALENDAR_LABEL,
   formatAppointmentTitle,
 } from "@/lib/calendar/agent-labels";
 import {
@@ -264,7 +264,7 @@ export async function bookAppointmentForAgent(
         startIso: start.toISOString(),
         endIso: end.toISOString(),
         timeZone: DEFAULT_TZ,
-        categories: [CURA_CALENDAR_LABEL],
+        categories: [LINKER_CALENDAR_LABEL],
       },
       calendarCtx
     );

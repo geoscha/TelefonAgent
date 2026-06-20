@@ -42,7 +42,7 @@ async function importTwilioNumberToElevenLabs(
   const created = (await client.conversationalAi.phoneNumbers.create({
     provider: "twilio",
     phoneNumber,
-    label: `Cura ${phoneNumber}`,
+    label: `Linker ${phoneNumber}`,
     sid: twilio.accountSid,
     token: twilio.authToken,
     supportsInbound: true,

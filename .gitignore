@@ -31,8 +31,9 @@ yarn-error.log*
 vercel.env
 stripe_backup_code.txt
 twilio_2FA_recovery_code.txt
+client_secret_*.json
 
-# Cura local file-backed store (settings + call feed)
+# Linker local file-backed store (settings + call feed)
 /.data
 
 # vercel

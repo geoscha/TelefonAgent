@@ -15,7 +15,7 @@ type ForwardingType = "alle" | "bedingt";
 
 interface PhoneOnboardingProps {
   phase: OnboardingPhase;
-  curaNumber: string;
+  linkerNumber: string;
   forwardingInstructions?: string;
   forwardingType: ForwardingType;
   onForwardingTypeChange: (v: ForwardingType) => void;
@@ -27,7 +27,7 @@ interface PhoneOnboardingProps {
 
 export function PhoneOnboarding({
   phase,
-  curaNumber,
+  linkerNumber,
   forwardingInstructions,
   forwardingType,
   onForwardingTypeChange,
@@ -38,9 +38,9 @@ export function PhoneOnboarding({
 }: PhoneOnboardingProps) {
   if (phase === "fertig" || phase === "agent") return null;
 
-  const curaCode = curaNumber.replace(/[\s()./-]/g, "");
-  const overflowCode = curaCode ? `**61*${curaCode}#` : "";
-  const allCallsCode = curaCode ? `**21*${curaCode}#` : "";
+  const linkerCode = linkerNumber.replace(/[\s()./-]/g, "");
+  const overflowCode = linkerCode ? `**61*${linkerCode}#` : "";
+  const allCallsCode = linkerCode ? `**21*${linkerCode}#` : "";
   const activeCode =
     forwardingType === "alle" ? allCallsCode : overflowCode;
 
@@ -51,7 +51,7 @@ export function PhoneOnboarding({
       {phase === "nummer_anfragen" && (
         <div className="mt-4 space-y-3">
           <p className="text-body text-text-muted">
-            Beantragen Sie eine dedizierte Cura-Weiterleitungsnummer. Wir
+            Beantragen Sie eine dedizierte Linker-Weiterleitungsnummer. Wir
             richten diese für Sie ein und melden uns, sobald sie bereit ist.
           </p>
           <Button size="sm" onClick={onRequestNumber} disabled={requesting}>
@@ -76,10 +76,10 @@ export function PhoneOnboarding({
         <div className="mt-4 space-y-4 rounded-btn border border-stroke bg-bg/50 p-4">
           <div>
             <p className="text-caption font-medium text-text-muted">
-              Ihre Cura-Nummer
+              Ihre Linker-Nummer
             </p>
             <p className="mt-1 font-mono text-h3 text-navy">
-              {curaNumber || "—"}
+              {linkerNumber || "—"}
             </p>
             <p className="mt-2 text-body text-text-muted">
               Richten Sie die Weiterleitung Ihrer Geschäftsnummer auf diese
@@ -107,7 +107,7 @@ export function PhoneOnboarding({
               <p>
                 <strong>Nur Überlauf:</strong> Anrufe werden weitergeleitet, wenn
                 Sie nicht erreichbar sind oder besetzt ist.{" "}
-                <strong>Alle Anrufe:</strong> Jeder Anruf geht direkt an Cura —
+                <strong>Alle Anrufe:</strong> Jeder Anruf geht direkt an Linker —
                 Ihr Handy klingelt nicht mehr.
               </p>
             </div>
@@ -142,7 +142,7 @@ export function PhoneOnboarding({
               size="sm"
               className="mt-3"
               onClick={onConfirmForwarding}
-              disabled={confirming || !curaNumber}
+              disabled={confirming || !linkerNumber}
             >
               {confirming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Weiterleitung eingerichtet — OK

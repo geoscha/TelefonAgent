@@ -1,6 +1,5 @@
 import "server-only";
 
-import { mailRedirectUri } from "@/lib/integrations/mail/config";
 import type { MailConnection } from "@/lib/integrations/mail/store";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -12,10 +11,10 @@ const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
 ];
 
-export function gmailAuthUrl(state: string): string {
+export function gmailAuthUrl(state: string, redirectUriValue: string): string {
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID ?? "",
-    redirect_uri: mailRedirectUri("gmail"),
+    redirect_uri: redirectUriValue,
     response_type: "code",
     scope: SCOPES.join(" "),
     access_type: "offline",
@@ -27,7 +26,8 @@ export function gmailAuthUrl(state: string): string {
 }
 
 export async function gmailExchangeCode(
-  code: string
+  code: string,
+  redirectUriValue: string
 ): Promise<Partial<MailConnection>> {
   const res = await fetch(TOKEN_URL, {
     method: "POST",
@@ -36,7 +36,7 @@ export async function gmailExchangeCode(
       code,
       client_id: process.env.GOOGLE_CLIENT_ID ?? "",
       client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-      redirect_uri: mailRedirectUri("gmail"),
+      redirect_uri: redirectUriValue,
       grant_type: "authorization_code",
     }),
   });

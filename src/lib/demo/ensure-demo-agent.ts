@@ -58,8 +58,8 @@ function findDemoAgent(agents: ListedAgent[]): ListedAgent | undefined {
     (a) =>
       a.name === DEMO_AGENT_NAME ||
       a.tags?.includes(DEMO_AGENT_TAG) ||
-      a.name?.includes("Cura Live-Demo") ||
-      a.name?.includes("Cura Agent")
+      a.name?.includes("Linker Live-Demo") ||
+      a.name?.includes("Linker Agent")
   );
 }
 
@@ -142,7 +142,7 @@ async function createOrUpdateDemoAgent(existingId?: string): Promise<string> {
     await client.conversationalAi.agents.update(existingId, {
       name: DEMO_AGENT_NAME,
       conversationConfig,
-      tags: [DEMO_AGENT_TAG, "cura"],
+      tags: [DEMO_AGENT_TAG, "linker"],
     } as Parameters<typeof client.conversationalAi.agents.update>[1]);
     return existingId;
   }
@@ -150,7 +150,7 @@ async function createOrUpdateDemoAgent(existingId?: string): Promise<string> {
   const created = (await client.conversationalAi.agents.create({
     name: DEMO_AGENT_NAME,
     conversationConfig,
-    tags: [DEMO_AGENT_TAG, "cura"],
+    tags: [DEMO_AGENT_TAG, "linker"],
   } as Parameters<typeof client.conversationalAi.agents.create>[0])) as {
     agentId: string;
   };
@@ -181,7 +181,7 @@ export async function updateDemoAgentForOutbound(params: {
   await client.conversationalAi.agents.update(agentId, {
     name: DEMO_AGENT_NAME,
     conversationConfig,
-    tags: [DEMO_AGENT_TAG, "cura"],
+    tags: [DEMO_AGENT_TAG, "linker"],
   } as Parameters<typeof client.conversationalAi.agents.update>[1]);
 }
 
@@ -201,7 +201,7 @@ export async function ensureDemoCallTarget(): Promise<DemoCallTarget> {
   await assignAgentToPhoneNumber(
     agentPhoneNumberId,
     agentId,
-    "Cura Live-Demo"
+    "Linker Live-Demo"
   );
 
   cachedTarget = { agentId, agentPhoneNumberId, phoneProvider };

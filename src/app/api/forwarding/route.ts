@@ -13,7 +13,7 @@ interface ForwardingBody {
 /**
  * Persists the customer's existing number and chosen forwarding type, and moves
  * onboarding into the "instructions shown" state. No telephony credentials are
- * stored — the customer forwards their number to the Cura DID themselves.
+ * stored — the customer forwards their number to the Linker DID themselves.
  */
 export async function POST(req: NextRequest) {
   let body: ForwardingBody;
@@ -50,6 +50,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     settings: updated,
-    forwardingNumber: updated.curaForwardingNumber ?? null,
+    forwardingNumber: updated.linkerForwardingNumber ?? null,
   });
 }

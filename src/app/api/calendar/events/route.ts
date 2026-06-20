@@ -53,7 +53,7 @@ function mapEvent(event: ListedCalendarEvent) {
     dayIso: eventDayIso(startIso),
     eventUrl: event.eventUrl,
     cancelled: Boolean(event.cancelled),
-    curaManaged: Boolean(event.agentCreated),
+    linkerManaged: Boolean(event.agentCreated),
   };
 }
 
@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
         title,
         startIso,
         endIso,
-        description: body.description?.trim() || "In Cura Kalender erstellt.",
+        description: body.description?.trim() || "In Linker Kalender erstellt.",
       },
       calendarCtx
     );

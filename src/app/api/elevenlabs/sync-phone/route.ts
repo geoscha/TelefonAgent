@@ -8,7 +8,7 @@ import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-/** Re-assigns the user's pool number to their Cura agent in ElevenLabs. */
+/** Re-assigns the user's pool number to their Linker agent in ElevenLabs. */
 export async function POST() {
   try {
     const userId = await requireUserId();

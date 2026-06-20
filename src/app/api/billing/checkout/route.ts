@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
             unit_amount: stripeUnitAmountFromChf(pack.priceChf),
             product_data: {
               name: pack.label,
-              description: "Token-Guthaben für Cura Telefonagent",
+              description: "Token-Guthaben für Linker Telefonagent",
             },
           },
         },

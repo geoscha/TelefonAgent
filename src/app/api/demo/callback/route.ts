@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const result = await initiateDemoCallback({
       name: body.name ?? "",
       phone: body.phone ?? "",
-      useCaseId: body.useCaseId ?? "cura",
+      useCaseId: body.useCaseId ?? "linker",
       voice: body.voice,
     });
 

@@ -62,8 +62,8 @@ export async function PATCH(
   if (typeof s.onboardingPhase === "string") {
     settingsPatch.onboardingPhase = s.onboardingPhase as OnboardingPhase;
   }
-  if (typeof s.curaForwardingNumber === "string") {
-    settingsPatch.curaForwardingNumber = s.curaForwardingNumber.trim() || undefined;
+  if (typeof s.linkerForwardingNumber === "string") {
+    settingsPatch.linkerForwardingNumber = s.linkerForwardingNumber.trim() || undefined;
   }
   if (s.forwardingStatus === "nicht_eingerichtet" || s.forwardingStatus === "anleitung" || s.forwardingStatus === "aktiv") {
     settingsPatch.forwardingStatus = s.forwardingStatus as ForwardingStatus;

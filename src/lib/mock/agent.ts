@@ -1,11 +1,11 @@
 import type { AgentConfig } from "@/lib/types";
 
 export const mockAgentConfig: AgentConfig = {
-  name: "Cura Telefonagent",
+  name: "Linker Telefonagent",
   voiceId: "eleven-sarah-ch",
   language: "Deutsch",
   greeting:
-    "Grüezi, Sie erreichen die Cura Telefonassistenz. Wie kann ich Ihnen helfen?",
+    "Grüezi, Sie erreichen die Linker Telefonassistenz. Wie kann ich Ihnen helfen?",
   businessHours: {
     weekdays: "Mo–Fr 07:00–20:00",
     saturday: "Sa 09:00–17:00",

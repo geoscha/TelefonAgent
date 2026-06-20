@@ -1,7 +1,6 @@
 import "server-only";
 
 import type { CalendarConnection } from "@/lib/store";
-import { redirectUri } from "./config";
 import {
   DEFAULT_TZ,
   type CalendarContext,
@@ -10,7 +9,7 @@ import {
   type ListedCalendarEvent,
 } from "./types";
 import {
-  CURA_CALENDAR_LABEL,
+  LINKER_CALENDAR_LABEL,
   isAgentCreatedCalendarEvent,
   isCancelledCalendarEvent,
 } from "./agent-labels";
@@ -26,10 +25,10 @@ const SCOPES = [
   "Calendars.ReadWrite",
 ];
 
-export function microsoftAuthUrl(state: string): string {
+export function microsoftAuthUrl(state: string, redirectUriValue: string): string {
   const params = new URLSearchParams({
     client_id: process.env.MICROSOFT_CLIENT_ID ?? "",
-    redirect_uri: redirectUri("microsoft"),
+    redirect_uri: redirectUriValue,
     response_type: "code",
     scope: SCOPES.join(" "),
     response_mode: "query",
@@ -40,7 +39,8 @@ export function microsoftAuthUrl(state: string): string {
 }
 
 export async function microsoftExchangeCode(
-  code: string
+  code: string,
+  redirectUriValue: string
 ): Promise<Partial<CalendarConnection>> {
   const res = await fetch(TOKEN_URL, {
     method: "POST",
@@ -49,7 +49,7 @@ export async function microsoftExchangeCode(
       code,
       client_id: process.env.MICROSOFT_CLIENT_ID ?? "",
       client_secret: process.env.MICROSOFT_CLIENT_SECRET ?? "",
-      redirect_uri: redirectUri("microsoft"),
+      redirect_uri: redirectUriValue,
       grant_type: "authorization_code",
     }),
   });
@@ -148,7 +148,7 @@ export async function microsoftCreateEvent(
       location: input.location ? { displayName: input.location } : undefined,
       start: { dateTime: input.startIso, timeZone: input.timeZone ?? DEFAULT_TZ },
       end: { dateTime: input.endIso, timeZone: input.timeZone ?? DEFAULT_TZ },
-      categories: input.categories ?? ["Cura"],
+      categories: input.categories ?? ["Linker"],
     }),
   });
   if (!res.ok) {
@@ -180,7 +180,7 @@ function mapMicrosoftListedEvent(item: MicrosoftEventItem): ListedCalendarEvent 
 
   const description = item.body?.content;
   const agentCreated =
-    item.categories?.includes(CURA_CALENDAR_LABEL) ||
+    item.categories?.includes(LINKER_CALENDAR_LABEL) ||
     isAgentCreatedCalendarEvent(title, description);
 
   return {
@@ -298,7 +298,7 @@ export async function microsoftCancelEvent(
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ comment: "Storniert via Cura" }),
+      body: JSON.stringify({ comment: "Storniert via Linker" }),
     }
   );
   if (res.status === 404) return;

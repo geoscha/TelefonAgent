@@ -76,7 +76,7 @@ interface AgentPhoneNumber {
 interface AgentDetailPanelProps {
   agent: StoredAgent;
   isActive: boolean;
-  curaNumber?: string;
+  linkerNumber?: string;
   customerNumber?: string;
   voices: VoiceOption[];
   voicesLoading: boolean;
@@ -130,25 +130,25 @@ function ToggleRow({
 function resolvePrimaryAgentNumber(
   phoneNumbers: AgentPhoneNumber[],
   agentPhoneNumberId?: string,
-  curaNumber?: string
+  linkerNumber?: string
 ): string | null {
   const assigned =
     phoneNumbers.find((p) => p.id === agentPhoneNumberId) ??
     phoneNumbers.find((p) => p.isPrimary) ??
     phoneNumbers[0];
 
-  return assigned?.phoneNumber ?? curaNumber?.trim() ?? null;
+  return assigned?.phoneNumber ?? linkerNumber?.trim() ?? null;
 }
 
 function AgentReachability({
   isActive,
-  curaNumber,
+  linkerNumber,
   customerNumber,
   phoneNumbers,
   agentPhoneNumberId,
 }: {
   isActive: boolean;
-  curaNumber?: string;
+  linkerNumber?: string;
   customerNumber?: string;
   phoneNumbers: AgentPhoneNumber[];
   agentPhoneNumberId?: string;
@@ -174,8 +174,8 @@ function AgentReachability({
 
   const lines: Array<{ label: string; number: string }> = [];
 
-  if (curaNumber) {
-    lines.push({ label: "Cura-Nummer", number: curaNumber });
+  if (linkerNumber) {
+    lines.push({ label: "Linker-Nummer", number: linkerNumber });
   }
 
   for (const sip of connectedSip) {
@@ -244,7 +244,7 @@ function LabeledField({
 export function AgentDetailPanel({
   agent,
   isActive,
-  curaNumber,
+  linkerNumber,
   customerNumber,
   voices,
   voicesLoading,
@@ -566,7 +566,7 @@ export function AgentDetailPanel({
   const primaryAgentNumber = resolvePrimaryAgentNumber(
     phoneNumbers,
     selectedPhoneId || agent.phoneNumberId,
-    curaNumber
+    linkerNumber
   );
 
   const voiceOptions =
@@ -715,7 +715,7 @@ export function AgentDetailPanel({
           >
             <AgentReachability
               isActive={isActive}
-              curaNumber={curaNumber}
+              linkerNumber={linkerNumber}
               customerNumber={customerNumber}
               phoneNumbers={phoneNumbers}
               agentPhoneNumberId={agent.phoneNumberId}

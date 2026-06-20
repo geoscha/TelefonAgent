@@ -255,6 +255,23 @@
     line-height: 1.5;
   }
 
+  .integration-marquee-track {
+    display: flex;
+    width: max-content;
+    animation: integration-marquee 42s linear infinite;
+  }
+
+  .integration-marquee-logo {
+    filter: grayscale(1);
+    opacity: 0.38;
+  }
+
+  @keyframes integration-marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
   .landing-card-label {
     font-family: "Untitled Sans", Georgia, sans-serif;
     font-size: var(--landing-fs-card-label);

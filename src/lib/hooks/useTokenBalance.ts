@@ -24,7 +24,7 @@ async function fetchTokenBalance(): Promise<TokenBalanceView> {
 export function notifyTokenBalanceChanged(): void {
   if (typeof window === "undefined") return;
   invalidateStaleCache(TOKEN_BALANCE_CACHE_KEY);
-  window.dispatchEvent(new Event("cura:token-balance-changed"));
+  window.dispatchEvent(new Event("linker:token-balance-changed"));
 }
 
 export function useTokenBalance(options?: { syncOnMount?: boolean }) {
@@ -58,8 +58,8 @@ export function useTokenBalance(options?: { syncOnMount?: boolean }) {
     function onChanged() {
       void refresh(false);
     }
-    window.addEventListener("cura:token-balance-changed", onChanged);
-    return () => window.removeEventListener("cura:token-balance-changed", onChanged);
+    window.addEventListener("linker:token-balance-changed", onChanged);
+    return () => window.removeEventListener("linker:token-balance-changed", onChanged);
   }, [refresh]);
 
   const invalidate = useCallback(() => {

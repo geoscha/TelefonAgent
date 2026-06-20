@@ -1,6 +1,5 @@
 import "server-only";
 
-import { mailRedirectUri } from "@/lib/integrations/mail/config";
 import type { MailConnection } from "@/lib/integrations/mail/store";
 
 const AUTH_URL =
@@ -14,10 +13,10 @@ const SCOPES = [
   "Mail.ReadWrite",
 ];
 
-export function outlookAuthUrl(state: string): string {
+export function outlookAuthUrl(state: string, redirectUriValue: string): string {
   const params = new URLSearchParams({
     client_id: process.env.MICROSOFT_CLIENT_ID ?? "",
-    redirect_uri: mailRedirectUri("outlook"),
+    redirect_uri: redirectUriValue,
     response_type: "code",
     scope: SCOPES.join(" "),
     response_mode: "query",
@@ -28,7 +27,8 @@ export function outlookAuthUrl(state: string): string {
 }
 
 export async function outlookExchangeCode(
-  code: string
+  code: string,
+  redirectUriValue: string
 ): Promise<Partial<MailConnection>> {
   const res = await fetch(TOKEN_URL, {
     method: "POST",
@@ -37,7 +37,7 @@ export async function outlookExchangeCode(
       code,
       client_id: process.env.MICROSOFT_CLIENT_ID ?? "",
       client_secret: process.env.MICROSOFT_CLIENT_SECRET ?? "",
-      redirect_uri: mailRedirectUri("outlook"),
+      redirect_uri: redirectUriValue,
       grant_type: "authorization_code",
     }),
   });

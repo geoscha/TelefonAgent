@@ -42,7 +42,7 @@ interface Settings {
   forwardingActivatedAt?: string;
   appointmentBookingEnabled?: boolean;
   appointmentProvider?: CalendarProviderId;
-  curaForwardingNumber?: string;
+  linkerForwardingNumber?: string;
   lastSync?: string;
   onboardingPhase?: OnboardingPhase;
   forwardingInstructions?: string;
@@ -671,8 +671,8 @@ export default function TelefonagentPage() {
             <AgentDetailPanel
               agent={detailAgent}
               isActive={settings.agentId === detailAgent.id}
-              curaNumber={
-                settings.curaForwardingNumber ?? caps.forwardingNumber ?? undefined
+              linkerNumber={
+                settings.linkerForwardingNumber ?? caps.forwardingNumber ?? undefined
               }
               customerNumber={settings.customerNumber}
               voices={voices}

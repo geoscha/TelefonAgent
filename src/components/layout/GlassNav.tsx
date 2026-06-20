@@ -14,7 +14,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { AvatarGradient } from "@/components/brand/AvatarGradient";
-import { CuraLogo } from "@/components/brand/CuraLogo";
+import { LinkerLogo } from "@/components/brand/LinkerLogo";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -64,7 +64,7 @@ export function GlassNav() {
     <>
       <header className="fixed inset-x-0 top-0 z-50 px-4 pt-3 lg:px-8">
         <div className="glass-pill mx-auto flex h-[60px] max-w-4xl items-center justify-between gap-6 rounded-full px-6 lg:px-8">
-          <CuraLogo mode="difference" size="sm" href="/anrufe" />
+          <LinkerLogo mode="difference" size="sm" href="/anrufe" />
 
           <nav className="hidden md:flex md:items-center">
             <ul className="flex items-center gap-1">

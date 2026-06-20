@@ -1,5 +1,5 @@
 /**
- * One-off migration: apply Cura cost-optimized ElevenLabs agent defaults
+ * One-off migration: apply Linker cost-optimized ElevenLabs agent defaults
  * (TTS model, LLM, temperature, turn timeout, max duration, voicemail detection).
  *
  * Usage: npm run migrate:elevenlabs-agent-config
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  console.log("Applying Cura cost-optimized ElevenLabs agent defaults…");
+  console.log("Applying Linker cost-optimized ElevenLabs agent defaults…");
   console.log(
     [
       `TTS=${ELEVENLABS_TTS_MODEL}`,

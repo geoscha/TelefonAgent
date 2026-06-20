@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       connectionId: result.connectionId,
       displayNumber: result.displayNumber,
       pairingCode: result.pairingCode,
-      matchedCuraPhone: result.matchedCuraPhone,
+      matchedLinkerPhone: result.matchedLinkerPhone,
       steps: result.steps,
     });
   } catch (error) {

@@ -80,7 +80,7 @@ export async function assignAgentToPhoneNumber(
   const client = getElevenLabsClient();
   await client.conversationalAi.phoneNumbers.update(phoneNumberId, {
     agentId,
-    label: label ?? `Cura Agent ${agentId.slice(0, 8)}`,
+    label: label ?? `Linker Agent ${agentId.slice(0, 8)}`,
   });
 }
 
@@ -312,7 +312,7 @@ export async function validateSipTrunkForBotCalls(options: {
     await assignAgentToPhoneNumber(
       options.phoneNumberId,
       options.agentId,
-      "Cura SIP Validierung"
+      "Linker SIP Validierung"
     );
   } catch {
     return {
@@ -373,13 +373,19 @@ export async function validateSipTrunkForBotCalls(options: {
   return { ok: true };
 }
 
-/** Parses CURA_NUMBER_POOL (comma-separated E.164) with legacy CURA_FORWARDING_NUMBER fallback. */
+/** Parses LINKER_NUMBER_POOL (comma-separated E.164) with legacy env fallbacks. */
 export function configuredPoolNumbers(): string[] {
-  const raw = process.env.CURA_NUMBER_POOL?.trim();
+  const raw = (
+    process.env.LINKER_NUMBER_POOL ??
+    process.env.CURA_NUMBER_POOL
+  )?.trim();
   const fromPool = raw
     ? raw.split(/[,;\n]+/).map((s) => normalizePhoneNumber(s.trim())).filter(Boolean)
     : [];
-  const legacy = process.env.CURA_FORWARDING_NUMBER?.trim();
+  const legacy = (
+    process.env.LINKER_FORWARDING_NUMBER ??
+    process.env.CURA_FORWARDING_NUMBER
+  )?.trim();
   const fromLegacy = legacy ? [normalizePhoneNumber(legacy)] : [];
   return Array.from(new Set([...fromPool, ...fromLegacy]));
 }

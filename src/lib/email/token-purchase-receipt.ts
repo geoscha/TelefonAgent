@@ -58,7 +58,7 @@ export function buildTokenPurchaseReceiptHtml(input: TokenPurchaseReceiptInput):
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border:1px solid #E1E4EA;border-radius:4px;overflow:hidden;">
             <tr>
               <td style="background:#050f1f;padding:28px 32px;">
-                <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:36px;line-height:1;font-weight:500;letter-spacing:-0.03em;color:#ffffff;">Cura</p>
+                <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:36px;line-height:1;font-weight:500;letter-spacing:-0.03em;color:#ffffff;">Linker</p>
               </td>
             </tr>
             <tr>

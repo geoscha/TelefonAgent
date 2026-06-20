@@ -122,13 +122,13 @@ export async function releaseStalePausedPhones(userId: string): Promise<boolean>
 
   if (primary) {
     await updateSettingsForUser(userId, {
-      curaForwardingNumber: primary.phoneNumber,
+      linkerForwardingNumber: primary.phoneNumber,
       elevenLabsPhoneNumberId: primary.elevenLabsPhoneNumberId,
       forwardingStatus: primary.forwardingStatus,
     });
   } else if (poolPhones.length > 0) {
     await updateSettingsForUser(userId, {
-      curaForwardingNumber: undefined,
+      linkerForwardingNumber: undefined,
       elevenLabsPhoneNumberId: undefined,
       forwardingStatus: "nicht_eingerichtet",
       onboardingPhase: "nummer_anfragen",

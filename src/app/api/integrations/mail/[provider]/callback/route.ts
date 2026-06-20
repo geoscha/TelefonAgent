@@ -1,12 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { APP_URL } from "@/lib/integrations/mail/config";
 import { gmailExchangeCode } from "@/lib/integrations/mail/gmail";
 import { outlookExchangeCode } from "@/lib/integrations/mail/outlook";
 import {
   ensureSingleMailConnection,
   upsertMailConnection,
 } from "@/lib/integrations/mail/store";
+import {
+  mailOAuthRedirectUri,
+  OAUTH_ORIGIN_COOKIE,
+  resolveAppUrl,
+} from "@/lib/integrations/oauth-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +23,12 @@ export async function GET(
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const oauthError = url.searchParams.get("error");
+  const appUrl =
+    req.cookies.get(OAUTH_ORIGIN_COOKIE)?.value ?? resolveAppUrl(req);
 
   const fail = (reason: string) =>
     NextResponse.redirect(
-      `${APP_URL}/integrationen?error=${reason}&provider=mail_${provider}`
+      `${appUrl}/integrationen?error=${reason}&provider=mail_${provider}`
     );
 
   if (oauthError) return fail("denied");
@@ -35,11 +41,13 @@ export async function GET(
     return fail("state_mismatch");
   }
 
+  const redirectUri = mailOAuthRedirectUri(provider, appUrl);
+
   try {
     const patch =
       provider === "gmail"
-        ? await gmailExchangeCode(code)
-        : await outlookExchangeCode(code);
+        ? await gmailExchangeCode(code, redirectUri)
+        : await outlookExchangeCode(code, redirectUri);
     await ensureSingleMailConnection(provider);
     await upsertMailConnection(provider, patch);
   } catch {
@@ -47,8 +55,9 @@ export async function GET(
   }
 
   const res = NextResponse.redirect(
-    `${APP_URL}/integrationen?connected=mail_${provider}`
+    `${appUrl}/integrationen?connected=mail_${provider}`
   );
   res.cookies.delete(`oauth_state_mail_${provider}`);
+  res.cookies.delete(OAUTH_ORIGIN_COOKIE);
   return res;
 }

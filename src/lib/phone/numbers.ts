@@ -94,14 +94,14 @@ async function syncPrimaryToSettings(
 ): Promise<ElevenLabsSettings> {
   if (!phone) {
     return updateSettingsForUser(userId, {
-      curaForwardingNumber: undefined,
+      linkerForwardingNumber: undefined,
       elevenLabsPhoneNumberId: undefined,
       forwardingStatus: "nicht_eingerichtet",
     });
   }
 
   return updateSettingsForUser(userId, {
-    curaForwardingNumber: phone.phoneNumber,
+    linkerForwardingNumber: phone.phoneNumber,
     elevenLabsPhoneNumberId: phone.elevenLabsPhoneNumberId,
     forwardingType: phone.forwardingType ?? "bedingt",
     forwardingStatus: phone.forwardingStatus ?? "anleitung",
@@ -216,7 +216,7 @@ export async function addPoolPhoneNumber(
         phone_number: normalized,
         elevenlabs_phone_number_id: elevenLabsPhoneNumberId,
         source: "pool",
-        label: "Cura Nummer",
+        label: "Linker Nummer",
         is_primary: makePrimary,
         forwarding_type: "bedingt",
         forwarding_status: "anleitung",

@@ -19,7 +19,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 function buildSnapshot(settings: ElevenLabsSettings): StoredAgent | null {
   if (!settings.voiceId?.trim() || !settings.greeting?.trim()) return null;
 
-  const name = settings.agentName?.trim() || "Cura Telefonagent";
+  const name = settings.agentName?.trim() || "Linker Telefonagent";
   return {
     id: settings.agentId ?? `archived-${Date.now()}`,
     name,
@@ -125,7 +125,7 @@ export async function suspendAgentForQuota(userId: string): Promise<boolean> {
 export async function restoreAgentAfterUpgrade(userId: string): Promise<boolean> {
   const settings = await getSettingsForUser(userId);
   if (settings.agentId) {
-    if (settings.curaForwardingNumber) {
+    if (settings.linkerForwardingNumber) {
       try {
         await linkUserPhoneToAgent(userId);
       } catch (err) {
@@ -174,7 +174,7 @@ export async function restoreAgentAfterUpgrade(userId: string): Promise<boolean>
     .eq("user_id", userId);
 
   const refreshed = await getSettingsForUser(userId);
-  if (refreshed.curaForwardingNumber) {
+  if (refreshed.linkerForwardingNumber) {
     await linkUserPhoneToAgent(userId);
   }
 

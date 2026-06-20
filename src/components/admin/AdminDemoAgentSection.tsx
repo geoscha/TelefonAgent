@@ -87,7 +87,7 @@ export function AdminDemoAgentSection() {
         <h2 className="landing-body font-medium text-[#0E121B]">Demo-Agent</h2>
         <p className="landing-caption mt-1 text-[#99A0AE]">
           Stimme und Kontext für Landing-Demo und Live-Anrufe. Standard ist der
-          Cura Agent — er fragt zuerst nach Fragen zu Cura und beantwortet sie.
+          Linker Agent — er fragt zuerst nach Fragen zu Linker und beantwortet sie.
         </p>
       </div>
 

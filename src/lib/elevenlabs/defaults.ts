@@ -16,10 +16,10 @@ export function isLegacyAgentConfig(settings: ElevenLabsSettings): boolean {
 
 export function defaultAgentName(profileName: string): string {
   const first = profileName.trim().split(/\s+/)[0];
-  return first ? `${first}s Telefonagent` : "Cura Telefonagent";
+  return first ? `${first}s Telefonagent` : "Linker Telefonagent";
 }
 
 export function defaultGreeting(agentName: string): string {
-  const short = agentName.replace(/s Telefonagent$/, "").trim() || "Cura";
+  const short = agentName.replace(/s Telefonagent$/, "").trim() || "Linker";
   return `Guten Tag, mein Name ist ${short}. Wie kann ich Ihnen helfen?`;
 }

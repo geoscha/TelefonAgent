@@ -12,7 +12,7 @@ import {
   Wallet,
 } from "lucide-react";
 
-import { CuraLogo } from "@/components/brand/CuraLogo";
+import { LinkerLogo } from "@/components/brand/LinkerLogo";
 import {
   landingBtnSecondary,
   landingNavBtnSecondary,
@@ -49,7 +49,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <div className="flex h-screen overflow-hidden">
         <aside className="flex w-[220px] shrink-0 flex-col border-r border-[#E1E4EA] bg-white px-3 py-4 lg:w-[240px]">
           <div className="mb-6 px-1">
-            <CuraLogo mode="contextual" theme="dark" size="sm" href="/admin" />
+            <LinkerLogo mode="contextual" theme="dark" size="sm" href="/admin" />
           </div>
 
           <nav

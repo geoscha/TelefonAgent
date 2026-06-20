@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-export type CuraLogoMode = "difference" | "contextual";
-export type CuraLogoTheme = "light" | "dark";
+export type LinkerLogoMode = "difference" | "contextual";
+export type LinkerLogoTheme = "light" | "dark";
 
-interface CuraLogoProps {
+interface LinkerLogoProps {
   /**
    * difference — white wordmark + mix-blend-mode:difference (auto-inverts).
    *   Default for nav; tints blue/cyan over multi-colour gradients — switch to
@@ -14,10 +14,10 @@ interface CuraLogoProps {
    *   theme="light" → white on gradient/dark backgrounds (login, banner)
    *
    * To use contextual nav instead of difference:
-   *   <CuraLogo mode="contextual" theme="dark" />
+   *   <LinkerLogo mode="contextual" theme="dark" />
    */
-  mode?: CuraLogoMode;
-  theme?: CuraLogoTheme;
+  mode?: LinkerLogoMode;
+  theme?: LinkerLogoTheme;
   size?: "sm" | "md" | "lg";
   showMark?: boolean;
   className?: string;
@@ -50,14 +50,14 @@ function CareMark({ className }: { className?: string }) {
   );
 }
 
-export function CuraLogo({
+export function LinkerLogo({
   mode = "contextual",
   theme = "dark",
   size = "md",
   showMark = false,
   className,
   href,
-}: CuraLogoProps) {
+}: LinkerLogoProps) {
   const sizes = sizeMap[size];
 
   const wordmark = (
@@ -75,7 +75,7 @@ export function CuraLogo({
       {showMark && (
         <CareMark className={cn("shrink-0", sizes.mark, "currentColor")} />
       )}
-      <span className={sizes.word}>Cura</span>
+      <span className={sizes.word}>Linker</span>
     </span>
   );
 

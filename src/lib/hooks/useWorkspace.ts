@@ -24,7 +24,7 @@ export interface WorkspaceSettings {
   customerNumber?: string;
   forwardingType?: string;
   forwardingStatus?: string;
-  curaForwardingNumber?: string;
+  linkerForwardingNumber?: string;
   onboardingPhase?: OnboardingPhase;
   agents?: StoredAgent[];
   appointmentBookingEnabled?: boolean;
