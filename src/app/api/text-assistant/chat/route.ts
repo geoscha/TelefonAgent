@@ -11,6 +11,10 @@ import {
 } from "@/lib/text-assistant/chat";
 import type { TextChannelKind } from "@/lib/text-assistant/prompt";
 import { getSettings } from "@/lib/store";
+import {
+  PHONE_NUMBER_REQUIRED_MESSAGE,
+  userHasPhoneNumbers,
+} from "@/lib/phone/numbers";
 import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +59,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await requireUserId();
+    const userId = await requireUserId();
+    if (!(await userHasPhoneNumbers(userId))) {
+      return NextResponse.json(
+        { ok: false, error: PHONE_NUMBER_REQUIRED_MESSAGE },
+        { status: 403 }
+      );
+    }
+
     const settings = await getSettings();
     const existing = (settings.agents ?? []).find((agent) => agent.id === agentId);
     if (!existing) {
@@ -98,6 +109,7 @@ export async function POST(req: NextRequest) {
       reply: result.reply,
       history: result.history,
       goalCompleted: result.goalCompleted,
+      bookedAppointment: result.bookedAppointment,
       greeting,
       provider: "openai",
     });

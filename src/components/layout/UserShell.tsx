@@ -84,7 +84,7 @@ export function UserShell({ children }: { children: React.ReactNode }) {
               </Link>
             </header>
 
-            <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-white p-4 sm:p-5 lg:p-6">
+            <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-white px-4 py-4 sm:px-5 sm:py-5 lg:px-5 lg:py-6">
               {children}
             </main>
           </div>

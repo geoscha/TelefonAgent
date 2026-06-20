@@ -13,6 +13,7 @@ function screeningLabel(call: Call): string | null {
   if (call.screening.status === "pending") return "Wird analysiert…";
   if (call.screening.appointmentBooked) return "Termin eingetragen";
   if (call.screening.appointmentAttempted) return "Kein Termin";
+  if (call.callerPhone === "Chat") return "Chat";
   return null;
 }
 

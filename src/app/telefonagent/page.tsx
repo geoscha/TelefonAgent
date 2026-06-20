@@ -434,12 +434,20 @@ export default function TelefonagentPage() {
         patch.escalationPhoneNumber ?? agent.escalationPhoneNumber ?? "",
       medicalGuardrailsEnabled:
         patch.medicalGuardrailsEnabled ?? agent.medicalGuardrailsEnabled,
-      assistantBranch: patch.assistantBranch ?? inferAssistantBranch(agent),
+      ...(patch.assistantBranch !== undefined
+        ? { assistantBranch: patch.assistantBranch }
+        : {}),
     };
 
     if (!draft.name.trim() || !draft.greeting.trim() || !draft.voiceId) {
       return;
     }
+
+    const syncDraft = {
+      ...draft,
+      assistantBranch: patch.assistantBranch ?? inferAssistantBranch(agent),
+      agentId,
+    };
 
     setAutoSavingAgent(true);
     setAutoSaveError(false);
@@ -465,12 +473,9 @@ export default function TelefonagentPage() {
             patch.medicalGuardrailsEnabled !== undefined ||
             patch.assistantBranch !== undefined
           ) {
-            void handleSaveAgent(
-              { ...draft, agentId, createNew: false },
-              { silent: true }
-            );
+            void handleSaveAgent({ ...syncDraft, createNew: false }, { silent: true });
           } else {
-            queueElevenLabsSync({ ...draft, agentId });
+            queueElevenLabsSync(syncDraft);
           }
         }
       } else {
@@ -530,10 +535,10 @@ export default function TelefonagentPage() {
     const agent = storedAgents.find((a) => a.id === agentId);
     if (!agent) return;
 
-    if (phoneNumbers.length === 0) {
+    if (!agent.phoneNumberId) {
       toast.error("Keine Telefonnummer", {
         description:
-          "Richten Sie zuerst eine Nummer unter Telefonnummern ein, bevor Sie den Assistenten aktivieren.",
+          "Wählen Sie unter Konfiguration eine Telefonnummer aus, bevor Sie den Assistenten aktivieren.",
       });
       return;
     }
@@ -580,21 +585,29 @@ export default function TelefonagentPage() {
     }
   }
 
-  async function handleAssignPhone(agentId: string, phoneNumberId: string) {
+  async function handleAssignPhone(agentId: string, phoneNumberId: string | null) {
     setAssigningPhone(true);
     try {
       const res = await fetch("/api/elevenlabs/agent/phone", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId, phoneNumberId }),
+        body: JSON.stringify({ agentId, phoneNumberId: phoneNumberId ?? "" }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
         applySettings(data.settings as Settings);
         if (data.agents) setStoredAgents(data.agents as StoredAgent[]);
-        toast.success("Telefonnummer zugewiesen");
+        toast.success(
+          phoneNumberId
+            ? "Telefonnummer zugewiesen — Assistent ist aktiv"
+            : "Telefonnummer entfernt"
+        );
+        void revalidateWorkspace().catch(() => {});
       } else {
-        toast.error("Zuweisung fehlgeschlagen", { description: data.error });
+        toast.error(
+          phoneNumberId ? "Zuweisung fehlgeschlagen" : "Entfernen fehlgeschlagen",
+          { description: data.error }
+        );
       }
     } catch {
       toast.error("Netzwerkfehler");
@@ -635,15 +648,6 @@ export default function TelefonagentPage() {
     }
   }, [storedAgents, detailAgentId, settings.agentId]);
 
-  useEffect(() => {
-    if (!detailAgentId || phoneNumbers.length !== 1) return;
-    const agent = storedAgents.find((a) => a.id === detailAgentId);
-    if (!agent?.phoneNumberId) {
-      void handleAssignPhone(detailAgentId, phoneNumbers[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailAgentId, phoneNumbers.length, storedAgents]);
-
   const detailAgent =
     storedAgents.find((a) => a.id === detailAgentId) ?? null;
 
@@ -671,9 +675,6 @@ export default function TelefonagentPage() {
             <AgentDetailPanel
               agent={detailAgent}
               isActive={settings.agentId === detailAgent.id}
-              linkerNumber={
-                settings.linkerForwardingNumber ?? caps.forwardingNumber ?? undefined
-              }
               customerNumber={settings.customerNumber}
               voices={voices}
               voicesLoading={voicesLoading}
@@ -681,6 +682,7 @@ export default function TelefonagentPage() {
               saving={autoSavingAgent}
               saveError={autoSaveError}
               phoneNumbers={phoneNumbers}
+              allAgents={storedAgents}
               assigningPhone={assigningPhone}
               onAssignPhone={(phoneNumberId) =>
                 void handleAssignPhone(detailAgent.id, phoneNumberId)

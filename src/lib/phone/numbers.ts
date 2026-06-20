@@ -135,6 +135,14 @@ export async function listUserPhoneNumbers(
   return (data ?? []).map((row) => rowToUserPhone(row as Record<string, unknown>));
 }
 
+export const PHONE_NUMBER_REQUIRED_MESSAGE =
+  "Richten Sie zuerst eine Telefonnummer ein, bevor Sie den Assistenten testen.";
+
+export async function userHasPhoneNumbers(userId?: string): Promise<boolean> {
+  const phones = await listUserPhoneNumbers(userId);
+  return phones.length > 0;
+}
+
 export async function getUserPhoneNumberById(
   phoneId: string,
   userId?: string

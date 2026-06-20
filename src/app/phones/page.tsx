@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { notifyTokenBalanceChanged, useTokenBalance } from "@/lib/hooks/useTokenBalance";
 import { useWorkspace } from "@/lib/hooks/useWorkspace";
 import { formatBillingDateTime, PHONE_NUMBER_MONTHLY_TOKENS } from "@/lib/billing/quota-display";
-import type { OnboardingPhase } from "@/lib/onboarding-types";
+import type { OnboardingPhase, StoredAgent } from "@/lib/onboarding-types";
 
 type ForwardingType = "alle" | "bedingt";
 type ForwardingStatus = "nicht_eingerichtet" | "anleitung" | "aktiv";
@@ -39,6 +39,7 @@ export default function PhonesPage() {
   const [forwardingStatus, setForwardingStatus] =
     useState<ForwardingStatus>("nicht_eingerichtet");
   const [numbers, setNumbers] = useState<UserPhoneNumberView[]>([]);
+  const [agents, setAgents] = useState<StoredAgent[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingPhoneRequestView[]>([]);
   const [requestingNumber, setRequestingNumber] = useState(false);
   const [addingSip, setAddingSip] = useState(false);
@@ -56,6 +57,7 @@ export default function PhonesPage() {
       applySettings(data.settings as Settings);
       setOnboardingPhase(data.phase);
       setNumbers(data.numbers);
+      setAgents((data.settings.agents as StoredAgent[] | undefined) ?? []);
       setPendingRequests(
         (data.pendingRequests ?? []).map((r) => ({
           id: r.id,
@@ -284,7 +286,7 @@ export default function PhonesPage() {
   return (
     <QuotaGate>
       <div
-        className="mx-auto max-w-[820px] space-y-6"
+        className="w-full space-y-6"
         data-setup-demo="setup-demo-phone-intro"
       >
         {statusLoading ? (
@@ -308,6 +310,7 @@ export default function PhonesPage() {
             onRemove={handleRemove}
             onForwardingTypeChange={setForwardingType}
             canAffordPhoneNumber={canAffordPhoneNumber}
+            agents={agents}
           />
         )}
       </div>

@@ -42,8 +42,18 @@ import {
   resolvePhoneNextBillingAt,
 } from "@/lib/billing/quota-display";
 import { cn } from "@/lib/utils";
+import type { StoredAgent } from "@/lib/onboarding-types";
 
 type ForwardingStatus = "nicht_eingerichtet" | "anleitung" | "aktiv";
+
+type AgentPhoneAssignment = Pick<StoredAgent, "id" | "name" | "phoneNumberId">;
+
+function assignedAgentName(
+  phoneId: string,
+  agents?: AgentPhoneAssignment[]
+): string | null {
+  return agents?.find((a) => a.phoneNumberId === phoneId)?.name?.trim() ?? null;
+}
 
 export interface UserPhoneNumberView {
   id: string;
@@ -74,7 +84,11 @@ function needsCoupling(num: UserPhoneNumberView): boolean {
   return num.source === "pool";
 }
 
-function phoneListSubtitle(num: UserPhoneNumberView, isConnected: boolean): string {
+function phoneListSubtitle(
+  num: UserPhoneNumberView,
+  isConnected: boolean,
+  agentName?: string | null
+): string {
   const parts: string[] = [num.source === "sip_trunk" ? "SIP Trunk" : "Linker Nummer"];
   const label = num.label?.trim();
   if (
@@ -84,6 +98,7 @@ function phoneListSubtitle(num: UserPhoneNumberView, isConnected: boolean): stri
   ) {
     parts.push(label);
   }
+  parts.push(agentName ? `Assistent: ${agentName}` : "Kein Assistent");
   if (num.releaseAt) {
     parts.push(`Endet ${formatBillingDateTime(num.releaseAt)}`);
   }
@@ -94,10 +109,12 @@ function phoneListSubtitle(num: UserPhoneNumberView, isConnected: boolean): stri
 
 function PhoneNumberInfoDialog({
   phone,
+  assignedAgent,
   open,
   onOpenChange,
 }: {
   phone: UserPhoneNumberView | null;
+  assignedAgent?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -119,6 +136,12 @@ function PhoneNumberInfoDialog({
           </DialogDescription>
         </DialogHeader>
         <dl className="space-y-3 text-[13px]">
+          <div>
+            <dt className="text-[11px] text-[#525866]">Assistent</dt>
+            <dd className="mt-0.5 text-[#0E121B]">
+              {assignedAgent ?? "Kein Assistent zugewiesen"}
+            </dd>
+          </div>
           {phone.assignedAt && (
             <div>
               <dt className="text-[11px] text-[#525866]">Zugewiesen am</dt>
@@ -200,6 +223,7 @@ interface PhoneNumberWizardProps {
   onRemove: (phoneId: string) => Promise<void>;
   onForwardingTypeChange: (v: ForwardingType) => void;
   canAffordPhoneNumber: boolean;
+  agents?: AgentPhoneAssignment[];
 }
 
 export function PhoneNumberWizard({
@@ -220,6 +244,7 @@ export function PhoneNumberWizard({
   onRemove,
   onForwardingTypeChange,
   canAffordPhoneNumber,
+  agents = [],
 }: PhoneNumberWizardProps) {
   const [flow, setFlow] = useState<WizardFlow>("overview");
   const [connectStep, setConnectStep] = useState<ConnectStep>("type");
@@ -295,6 +320,7 @@ export function PhoneNumberWizard({
           onActivate={onActivate}
           onRemove={onRemove}
           canAffordPhoneNumber={canAffordPhoneNumber}
+          agents={agents}
         />
       )}
 
@@ -428,6 +454,7 @@ function OverviewStep({
   onActivate,
   onRemove,
   canAffordPhoneNumber,
+  agents = [],
 }: {
   phase: OnboardingPhase;
   numbers: UserPhoneNumberView[];
@@ -442,6 +469,7 @@ function OverviewStep({
   onActivate: (phoneId: string) => Promise<void>;
   onRemove: (phoneId: string) => Promise<void>;
   canAffordPhoneNumber: boolean;
+  agents?: AgentPhoneAssignment[];
 }) {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
@@ -456,6 +484,9 @@ function OverviewStep({
     <div className="space-y-4">
       <PhoneNumberInfoDialog
         phone={infoPhone}
+        assignedAgent={
+          infoPhone ? assignedAgentName(infoPhone.id, agents) : null
+        }
         open={infoPhoneId !== null}
         onOpenChange={(open) => !open && setInfoPhoneId(null)}
       />
@@ -502,7 +533,7 @@ function OverviewStep({
           {pendingRequests.map((req) => (
             <li
               key={req.id}
-              className="flex flex-wrap items-center justify-between gap-2 py-1"
+              className="flex items-center justify-between gap-3 py-1"
             >
               <div className="min-w-0">
                 <p className="text-[14px] text-[#525866]">Nummer in Bearbeitung</p>
@@ -534,20 +565,21 @@ function OverviewStep({
           {numbers.map((num) => {
             const isConnected = isPhoneLinked(num);
             const showCoupling = needsCoupling(num);
+            const agentName = assignedAgentName(num.id, agents);
             return (
               <li
                 key={num.id}
-                className="flex flex-wrap items-center justify-between gap-2 py-1"
+                className="flex items-center justify-between gap-3 py-1"
               >
                 <div className="min-w-0">
                   <p className="font-mono text-[14px] font-normal text-[#0E121B]">
                     {num.phoneNumber}
                   </p>
                   <p className="text-[11px] text-[#525866]">
-                    {phoneListSubtitle(num, isConnected)}
+                    {phoneListSubtitle(num, isConnected, agentName)}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex shrink-0 items-center gap-1.5">
                   <button
                     type="button"
                     className={landingBtnGhost}
@@ -556,44 +588,6 @@ function OverviewStep({
                   >
                     <Info className="h-4 w-4" />
                   </button>
-                  {showCoupling &&
-                    (isConnected ? (
-                      <button
-                        type="button"
-                        className={landingBtnSecondary}
-                        onClick={() => onStartDisconnect(num.id)}
-                      >
-                        Entkoppeln
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className={landingBtnPrimary}
-                        onClick={() => onStartConnect(num.id)}
-                      >
-                        Koppeln
-                      </button>
-                    ))}
-                  {!num.isPrimary && numbers.length > 1 && (
-                    <button
-                      type="button"
-                      className={landingBtnSecondary}
-                      disabled={activatingId === num.id}
-                      onClick={async () => {
-                        setActivatingId(num.id);
-                        try {
-                          await onActivate(num.id);
-                        } finally {
-                          setActivatingId(null);
-                        }
-                      }}
-                    >
-                      {activatingId === num.id && (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      )}
-                      Aktivieren
-                    </button>
-                  )}
                   {showCoupling && !isConnected && !num.releaseAt && (
                     <button
                       type="button"
@@ -616,6 +610,44 @@ function OverviewStep({
                       )}
                     </button>
                   )}
+                  {!num.isPrimary && numbers.length > 1 && (
+                    <button
+                      type="button"
+                      className={landingBtnSecondary}
+                      disabled={activatingId === num.id}
+                      onClick={async () => {
+                        setActivatingId(num.id);
+                        try {
+                          await onActivate(num.id);
+                        } finally {
+                          setActivatingId(null);
+                        }
+                      }}
+                    >
+                      {activatingId === num.id && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      )}
+                      Aktivieren
+                    </button>
+                  )}
+                  {showCoupling &&
+                    (isConnected ? (
+                      <button
+                        type="button"
+                        className={landingBtnSecondary}
+                        onClick={() => onStartDisconnect(num.id)}
+                      >
+                        Entkoppeln
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={landingBtnPrimary}
+                        onClick={() => onStartConnect(num.id)}
+                      >
+                        Koppeln
+                      </button>
+                    ))}
                 </div>
               </li>
             );

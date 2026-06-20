@@ -5,7 +5,9 @@ import { findOverlappingEvents } from "@/lib/calendar/slot-validation";
 import { getAgentCalendarIntegration, resolveConnectedCalendarProvider } from "@/lib/integrations/agent-calendar";
 import {
   normalizeAppointmentConfig,
+  resolveAppointmentDurationMinutes,
   resolveAppointmentType,
+  isFlexibleScheduling,
 } from "@/lib/integrations/appointment-config";
 import {
   isWithinBusinessHours,
@@ -215,13 +217,17 @@ export async function checkSlotForAgent(
     };
   }
 
-  const duration = Math.min(
-    Math.max(input.durationMinutes ?? appointmentType.durationMinutes, 5),
-    240
+  const duration = resolveAppointmentDurationMinutes(
+    appointmentConfig,
+    appointmentType,
+    input.durationMinutes
   );
   const end = new Date(start.getTime() + duration * 60_000);
 
-  if (!isWithinBusinessHours(start, end, businessHours)) {
+  if (
+    !isFlexibleScheduling(appointmentConfig) &&
+    !isWithinBusinessHours(start, end, businessHours)
+  ) {
     return {
       ok: true,
       available: false,

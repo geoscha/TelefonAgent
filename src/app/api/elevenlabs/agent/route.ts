@@ -18,9 +18,9 @@ import {
 } from "@/lib/elevenlabs/agent-config";
 import { linkAgentToPhone, reconcileUserPhoneAgentLink, unlinkUserPhonesFromAgent } from "@/lib/elevenlabs/sync-agent";
 import { completeAgentOnboarding } from "@/lib/phone/onboarding";
-import { listUserPhoneNumbers } from "@/lib/phone/numbers";
 import { CALENDAR_PROVIDERS } from "@/lib/calendar/resolve-connected";
 import {
+  assistantBranchChanged,
   branchAppointmentPatch,
   inferAssistantBranch,
   normalizeAssistantBranch,
@@ -78,6 +78,7 @@ async function persistAgentRecord(params: {
       : inferAssistantBranch(existing ?? { appointmentBookingEnabled: false });
 
   const appointmentPatch = branchAppointmentPatch(assistantBranch);
+  const branchChanged = assistantBranchChanged(body.assistantBranch, existing);
 
   const euComplianceEnabled =
     typeof body.euComplianceEnabled === "boolean"
@@ -102,14 +103,12 @@ async function persistAgentRecord(params: {
         : existing?.businessHours,
     calendarProvider: existing?.calendarProvider ?? null,
     calendarPermissions: existing?.calendarPermissions,
-    appointmentBookingEnabled:
-      body.assistantBranch !== undefined
-        ? appointmentPatch.appointmentBookingEnabled
-        : existing?.appointmentBookingEnabled,
-    appointmentConfig:
-      body.assistantBranch !== undefined
-        ? appointmentPatch.appointmentConfig
-        : existing?.appointmentConfig,
+    appointmentBookingEnabled: branchChanged
+      ? appointmentPatch.appointmentBookingEnabled
+      : existing?.appointmentBookingEnabled,
+    appointmentConfig: branchChanged
+      ? appointmentPatch.appointmentConfig
+      : existing?.appointmentConfig,
     escalationPhoneNumber:
       body.escalationPhoneNumber !== undefined
         ? normalizeEscalationPhone(body.escalationPhoneNumber)
@@ -121,7 +120,7 @@ async function persistAgentRecord(params: {
   };
 
   if (
-    assistantBranch === "coiffeur" &&
+    (assistantBranch === "coiffeur" || assistantBranch === "private_assistant") &&
     !stored.calendarProvider &&
     appointmentPatch.appointmentBookingEnabled
   ) {
@@ -134,10 +133,7 @@ async function persistAgentRecord(params: {
     }
   }
 
-  const phones = await listUserPhoneNumbers(userId);
-  if (!stored.phoneNumberId && phones.length === 1) {
-    stored.phoneNumberId = phones[0].id;
-  } else if (!stored.phoneNumberId) {
+  if (!stored.phoneNumberId) {
     stored.phoneNumberId = existingAgents.find((a) => a.id === agentId)?.phoneNumberId;
   }
 
@@ -238,22 +234,23 @@ export async function POST(req: NextRequest) {
 
   try {
     const userId = await requireUserId();
+    const settings = await getSettings();
 
     if (body.activate === true) {
-      const phones = await listUserPhoneNumbers(userId);
-      if (phones.length === 0) {
+      const targetId = body.agentId?.trim();
+      const targetAgent = (settings.agents ?? []).find((a) => a.id === targetId);
+      if (!targetAgent?.phoneNumberId) {
         return NextResponse.json(
           {
             ok: false,
             error:
-              "Ohne Telefonnummer kann kein Assistent aktiviert werden. Richten Sie zuerst eine Nummer unter Telefonnummern ein.",
+              "Wählen Sie unter Konfiguration eine Telefonnummer aus, bevor Sie den Assistenten aktivieren.",
           },
           { status: 400 }
         );
       }
     }
 
-    const settings = await getSettings();
     const targetAgentId =
       body.agentId?.trim() || (body.createNew ? undefined : settings.agentId);
 
@@ -317,6 +314,7 @@ export async function POST(req: NextRequest) {
         ? normalizeAssistantBranch(body.assistantBranch)
         : inferAssistantBranch(existing ?? { appointmentBookingEnabled: false });
     const appointmentPatch = branchAppointmentPatch(assistantBranch);
+    const branchChanged = assistantBranchChanged(body.assistantBranch, existing);
 
     const draftAgent: StoredAgent = {
       ...(existing ?? {
@@ -345,16 +343,14 @@ export async function POST(req: NextRequest) {
         typeof body.medicalGuardrailsEnabled === "boolean"
           ? body.medicalGuardrailsEnabled
           : existing?.medicalGuardrailsEnabled,
-      appointmentBookingEnabled:
-        body.assistantBranch !== undefined
-          ? appointmentPatch.appointmentBookingEnabled
-          : existing?.appointmentBookingEnabled ??
-            getAgentCalendarIntegration(settings, resolvedAgentId ?? "")
-              .appointmentBookingEnabled,
-      appointmentConfig:
-        body.assistantBranch !== undefined
-          ? appointmentPatch.appointmentConfig
-          : existing?.appointmentConfig,
+      appointmentBookingEnabled: branchChanged
+        ? appointmentPatch.appointmentBookingEnabled
+        : existing?.appointmentBookingEnabled ??
+          getAgentCalendarIntegration(settings, resolvedAgentId ?? "")
+            .appointmentBookingEnabled,
+      appointmentConfig: branchChanged
+        ? appointmentPatch.appointmentConfig
+        : existing?.appointmentConfig,
       calendarProvider: existing?.calendarProvider ?? null,
       calendarPermissions: existing?.calendarPermissions,
       phoneNumberId: body.phoneNumberId ?? existing?.phoneNumberId,

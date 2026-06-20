@@ -54,18 +54,28 @@ export function isAutoSuggestedName(name: string): boolean {
 
 export function greetingForAssistantName(
   assistantName: string,
-  language: "Deutsch" | "Schweizerdeutsch",
-  branchLabel?: string
+  language: "Deutsch" | "Schweizerdeutsch"
 ): string {
   const firstName = assistantName.trim().split(/\s+/)[0] || assistantName.trim();
   if (language === "Schweizerdeutsch") {
-    return branchLabel
-      ? `Grüezi, da isch ${firstName} vo ${branchLabel}. Wie cha ich Ihne hälfe?`
-      : `Grüezi, da isch ${firstName}. Wie cha ich Ihne hälfe?`;
+    return `Grüezi, Sie haben ${firstName} erreicht.`;
   }
-  return branchLabel
-    ? `Guten Tag, Sie sprechen mit ${firstName} von ${branchLabel}. Wie kann ich Ihnen helfen?`
-    : `Guten Tag, Sie sprechen mit ${firstName}. Wie kann ich Ihnen helfen?`;
+  return `Guten Tag, Sie haben ${firstName} erreicht.`;
+}
+
+/** Begrüssung für Privaten Assistenten — nennt den Inhaber statt den KI-Namen. */
+export function greetingForPrivateAssistantOwner(
+  ownerName: string,
+  language: "Deutsch" | "Schweizerdeutsch"
+): string {
+  const owner = ownerName.trim();
+  if (!owner) {
+    return greetingForAssistantName("Assistent", language);
+  }
+  if (language === "Schweizerdeutsch") {
+    return `Grüezi; Sie haben den virtuellen Assistenten von ${owner} erreicht.`;
+  }
+  return `Guten Tag; Sie haben den virtuellen Assistenten von ${owner} erreicht.`;
 }
 
 export function shouldAutoRenameAssistant(

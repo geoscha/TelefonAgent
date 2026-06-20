@@ -1,10 +1,23 @@
 import type { AgentLanguageLabel } from "@/lib/elevenlabs/agent-config";
 import {
   filterAgentVoices,
+  pickDefaultAgentVoice,
   type RawElevenLabsVoice,
 } from "@/lib/elevenlabs/agent-config";
 
 export type AgentVoiceGender = "male" | "female";
+
+export function pickDefaultAgentVoiceForLanguage(
+  rawVoices: RawElevenLabsVoice[],
+  language: AgentLanguageLabel
+) {
+  const catalog = filterAgentVoices(rawVoices);
+  const wantSwiss = language === "Schweizerdeutsch";
+  const filtered = catalog.filter((voice) =>
+    wantSwiss ? voice.swissGerman : !voice.swissGerman
+  );
+  return pickDefaultAgentVoice(filtered.length > 0 ? filtered : catalog);
+}
 
 export function pickAgentVoiceId(
   rawVoices: RawElevenLabsVoice[],

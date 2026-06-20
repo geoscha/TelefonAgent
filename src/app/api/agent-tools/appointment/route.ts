@@ -73,6 +73,16 @@ function wantsSlotCheck(body: {
 function appointmentTypesPayload(
   appointmentConfig: ReturnType<typeof normalizeAppointmentConfig>
 ) {
+  if (appointmentConfig.flexibleScheduling) {
+    return [
+      {
+        id: "termin",
+        label: "Freier Termin",
+        flexible: true,
+        durationHint: "5–240 Minuten — vom Agenten geschätzt",
+      },
+    ];
+  }
   return getEnabledAppointmentTypes(appointmentConfig).map((type) => ({
     id: type.id,
     label: type.label,

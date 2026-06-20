@@ -22,9 +22,9 @@ import {
 } from "@/lib/elevenlabs/assistant-names";
 import {
   ASSISTANT_BRANCH_OPTIONS,
-  assistantBranchLabel,
   type AssistantBranchId,
 } from "@/lib/assistant-branch";
+import { VoiceChoiceGroup } from "@/components/telefonagent/VoiceChoiceGroup";
 
 import type { BusinessHoursSchedule } from "@/lib/integrations/business-hours";
 
@@ -45,12 +45,12 @@ interface VoiceOption {
   name: string;
   displayName?: string;
   language: string;
+  gender?: "male" | "female";
 }
 
 type Step =
   | "branche"
   | "website"
-  | "gender"
   | "language"
   | "generating"
   | "review_name"
@@ -86,7 +86,6 @@ export function AgentCreateWizard({
   const [assistantBranch, setAssistantBranch] =
     useState<AssistantBranchId>("private_assistant");
   const [website, setWebsite] = useState("");
-  const [gender, setGender] = useState<"male" | "female">("female");
   const [language, setLanguage] = useState<"Deutsch" | "Schweizerdeutsch">(
     "Deutsch"
   );
@@ -99,8 +98,8 @@ export function AgentCreateWizard({
   function advanceAfterBranche() {
     if (assistantBranch === "private_assistant") {
       setWebsite("");
-      setStep("gender");
-      demoGoTo("agent_gender");
+      setStep("language");
+      demoGoTo("agent_language");
       return;
     }
     setStep("website");
@@ -115,7 +114,6 @@ export function AgentCreateWizard({
   const titles: Record<Step, string> = {
     branche: "Branche",
     website: "Website",
-    gender: "Stimme",
     language: "Sprache",
     generating: "Assistent wird erstellt…",
     review_name: "Name",
@@ -136,7 +134,6 @@ export function AgentCreateWizard({
           branch: assistantBranch,
           website:
             assistantBranch === "coiffeur" ? website.trim() || undefined : undefined,
-          gender,
           language,
         }),
       });
@@ -194,8 +191,7 @@ export function AgentCreateWizard({
       patch.name = displayName;
       patch.greeting = greetingForAssistantName(
         displayName,
-        normalizeAgentLanguage(draft.language ?? language),
-        assistantBranchLabel(assistantBranch)
+        normalizeAgentLanguage(draft.language ?? language)
       );
       nameIsAutoRef.current = true;
     }
@@ -223,9 +219,8 @@ export function AgentCreateWizard({
   function goBack() {
     const prev: Partial<Record<Step, Step>> = {
       website: "branche",
-      gender:
+      language:
         assistantBranch === "coiffeur" ? "website" : "branche",
-      language: "gender",
       review_name: "language",
       review_voice: "review_name",
       review_greeting: "review_voice",
@@ -280,8 +275,8 @@ export function AgentCreateWizard({
         {step === "website" && (
           <StepBody
             onSubmit={() => {
-              setStep("gender");
-              demoGoTo("agent_gender");
+              setStep("language");
+              demoGoTo("agent_language");
             }}
           >
             <FieldRow label="Website (optional)">
@@ -299,40 +294,10 @@ export function AgentCreateWizard({
                 secondaryLabel="Überspringen"
                 onSecondary={() => {
                   setWebsite("");
-                  setStep("gender");
-                  demoGoTo("agent_gender");
+                  setStep("language");
+                  demoGoTo("agent_language");
                 }}
               />
-            </StepFooter>
-          </StepBody>
-        )}
-
-        {step === "gender" && (
-          <StepBody
-            onSubmit={() => {
-              setStep("language");
-              demoGoTo("agent_language");
-            }}
-          >
-            <FieldRow label="Stimmgeschlecht">
-              <div
-                className="flex flex-wrap gap-2"
-                data-setup-demo="setup-demo-agent-gender"
-              >
-                <ChoicePill
-                  active={gender === "female"}
-                  onClick={() => setGender("female")}
-                  label="Weiblich"
-                />
-                <ChoicePill
-                  active={gender === "male"}
-                  onClick={() => setGender("male")}
-                  label="Männlich"
-                />
-              </div>
-            </FieldRow>
-            <StepFooter>
-              <SecondaryStepActions onBack={goBack} />
             </StepFooter>
           </StepBody>
         )}
@@ -431,18 +396,12 @@ export function AgentCreateWizard({
               ) : voices.length === 0 ? (
                 <p className={userLabelClass}>Keine Stimmen verfügbar</p>
               ) : (
-                <div
-                  className="flex flex-wrap gap-2"
-                  data-setup-demo="setup-demo-agent-review-voice"
-                >
-                  {voices.map((voice) => (
-                    <ChoicePill
-                      key={voice.id}
-                      active={draft.voiceId === voice.id}
-                      onClick={() => handleVoicePick(voice.id)}
-                      label={voice.displayName ?? voice.name}
-                    />
-                  ))}
+                <div data-setup-demo="setup-demo-agent-review-voice">
+                  <VoiceChoiceGroup
+                    voices={voices}
+                    value={draft.voiceId}
+                    onChange={handleVoicePick}
+                  />
                 </div>
               )}
             </FieldRow>

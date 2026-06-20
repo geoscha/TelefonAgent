@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { normalizeAssistantBranch, assistantBranchLabel } from "@/lib/assistant-branch";
+import { normalizeAssistantBranch } from "@/lib/assistant-branch";
 import {
   greetingForAssistantName,
+  greetingForPrivateAssistantOwner,
   suggestAssistantName,
 } from "@/lib/elevenlabs/assistant-names";
 import {
@@ -20,8 +21,10 @@ import {
 } from "@/lib/elevenlabs/client";
 import {
   pickAgentVoiceId,
+  pickDefaultAgentVoiceForLanguage,
   type AgentVoiceGender,
 } from "@/lib/elevenlabs/pick-voice";
+import { getProfile } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -51,23 +54,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const gender: AgentVoiceGender =
-      body.gender === "female" ? "female" : "male";
+    const gender: AgentVoiceGender | undefined =
+      body.gender === "female"
+        ? "female"
+        : body.gender === "male"
+          ? "male"
+          : undefined;
     const language = normalizeAgentLanguage(body.language);
     const keepVoice = Boolean(body.keepVoice);
+    const profile = await getProfile();
+    const ownerName = profile.name?.trim() || undefined;
 
     const input: GenerateAgentInput = {
       branch,
       website: body.website?.trim() || undefined,
-      gender,
+      ...(gender ? { gender } : {}),
       language,
+      ownerName,
     };
 
     const draft = await generateAgentDraft(input);
 
     let voiceId: string | undefined;
     let voiceName: string | undefined;
-    let displayName = suggestAssistantName(gender);
+    let displayName = suggestAssistantName(gender ?? "female");
 
     if (!keepVoice) {
       const client = getElevenLabsClient();
@@ -75,8 +85,12 @@ export async function POST(req: NextRequest) {
         voices?: RawElevenLabsVoice[];
       };
       const rawVoices = voiceRes.voices ?? [];
-      voiceId = pickAgentVoiceId(rawVoices, gender, language);
       const catalog = filterAgentVoices(rawVoices);
+      if (gender) {
+        voiceId = pickAgentVoiceId(rawVoices, gender, language);
+      } else {
+        voiceId = pickDefaultAgentVoiceForLanguage(rawVoices, language)?.id;
+      }
       const picked = catalog.find((v) => v.id === voiceId);
       voiceName = picked?.name;
       displayName = picked?.displayName ?? displayName;
@@ -90,11 +104,10 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedName = displayName;
-    const resolvedGreeting = greetingForAssistantName(
-      resolvedName,
-      language,
-      assistantBranchLabel(branch)
-    );
+    const resolvedGreeting =
+      branch === "private_assistant" && ownerName
+        ? greetingForPrivateAssistantOwner(ownerName, language)
+        : greetingForAssistantName(resolvedName, language);
 
     return NextResponse.json({
       ok: true,

@@ -21,5 +21,5 @@ export function defaultAgentName(profileName: string): string {
 
 export function defaultGreeting(agentName: string): string {
   const short = agentName.replace(/s Telefonagent$/, "").trim() || "Linker";
-  return `Guten Tag, mein Name ist ${short}. Wie kann ich Ihnen helfen?`;
+  return `Guten Tag, Sie haben ${short} erreicht.`;
 }

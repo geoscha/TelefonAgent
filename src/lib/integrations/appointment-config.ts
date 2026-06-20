@@ -30,6 +30,8 @@ export interface AppointmentConfig {
   requireCallerName: boolean;
   /** Storno nur möglich, wenn der Anrufer den Tag des Termins kennt. */
   requireAppointmentDateForCancel: boolean;
+  /** Freie Terminplanung — Dauer wird vom Agenten geschätzt, keine festen Terminarten. */
+  flexibleScheduling?: boolean;
   appointmentTypes: AppointmentTypeConfig[];
 }
 
@@ -163,6 +165,31 @@ export const DEFAULT_APPOINTMENT_CONFIG: AppointmentConfig = {
   ...APPOINTMENT_INDUSTRY_PRESETS.allgemein.config,
 };
 
+/** Flexible Terminplanung für private Assistenten — keine festen Terminarten. */
+export function configForPrivateAssistant(): AppointmentConfig {
+  return {
+    industryPreset: "allgemein",
+    allowedCallersDescription: "Anrufer und Kontakte",
+    allowBooking: true,
+    allowCancellation: true,
+    requireCallerName: true,
+    requireAppointmentDateForCancel: true,
+    flexibleScheduling: true,
+    appointmentTypes: [
+      {
+        id: "termin",
+        label: "Termin",
+        durationMinutes: 30,
+        enabled: true,
+      },
+    ],
+  };
+}
+
+export function isFlexibleScheduling(config: AppointmentConfig): boolean {
+  return Boolean(config.flexibleScheduling);
+}
+
 export function getAppointmentPreset(
   id: AppointmentIndustryPresetId
 ): AppointmentIndustryPreset {
@@ -233,6 +260,10 @@ export function normalizeAppointmentConfig(value: unknown): AppointmentConfig {
       raw.requireAppointmentDateForCancel !== undefined
         ? Boolean(raw.requireAppointmentDateForCancel)
         : presetDefaults.requireAppointmentDateForCancel,
+    flexibleScheduling:
+      raw.flexibleScheduling !== undefined
+        ? Boolean(raw.flexibleScheduling)
+        : presetDefaults.flexibleScheduling,
     appointmentTypes: normalizeAppointmentTypes(raw.appointmentTypes),
   };
 }
@@ -250,6 +281,17 @@ export function resolveAppointmentType(
 ): AppointmentTypeConfig | undefined {
   const enabled = getEnabledAppointmentTypes(config);
   if (enabled.length === 0) return undefined;
+
+  if (isFlexibleScheduling(config)) {
+    const fallback = enabled[0];
+    const label = title?.trim() || fallback.label;
+    return {
+      id: fallback.id,
+      label,
+      durationMinutes: fallback.durationMinutes,
+      enabled: true,
+    };
+  }
 
   const normalizedId = typeId?.trim().toLowerCase();
   if (normalizedId) {
@@ -314,7 +356,40 @@ export function resolveAppointmentType(
   return byLabel ?? enabled[0];
 }
 
-function buildIndustryFastPathBlock(presetId: AppointmentIndustryPresetId): string {
+export function resolveAppointmentDurationMinutes(
+  config: AppointmentConfig,
+  appointmentType: AppointmentTypeConfig,
+  durationMinutes?: number
+): number {
+  const fallback = appointmentType.durationMinutes;
+  const raw = durationMinutes ?? fallback;
+  return Math.min(Math.max(Math.floor(raw) || fallback, 5), 240);
+}
+
+const FLEXIBLE_SCHEDULING_BLOCK = `### Flexible Terminplanung
+- Termine sind **nicht** an feste Terminarten gebunden — jeder Termin wird individuell geplant.
+- **Dauer intelligent schätzen** anhand des Anliegens (nicht vom Anrufer erfragen):
+  - Kurzer Anruf / Arzt / Behörde: 15–30 Min.
+  - Besprechung / Beratung: 45–60 Min.
+  - Mittagessen / längeres Treffen: 60–90 Min.
+  - Ganztägiges / mehrtägiges: nur wenn explizit genannt.
+- **durationMinutes** bei check_availability und book_appointment **immer** mitgeben (5–240).
+- Optional **title** mit kurzer Beschreibung (z. B. «Zahnarzt», «Mittagessen», «Besprechung»).
+- Datum und Uhrzeit frei wählen — nur Kalender-Konflikte beachten.`;
+
+const FLEXIBLE_LIVE_BOOKING_BLOCK = `### Terminbuchung
+- check_availability mit appointmentDate, appointmentTime und durationMinutes (geschätzte Dauer).
+- Bei available=true: book_appointment mit attendeeName, appointmentDate, appointmentTime, durationMinutes und optional title.
+- Einen Termin erst als «eingetragen» bezeichnen, wenn book_appointment booked:true antwortete.`;
+
+function buildIndustryFastPathBlock(
+  presetId: AppointmentIndustryPresetId,
+  flexible: boolean
+): string {
+  if (flexible) {
+    return FLEXIBLE_SCHEDULING_BLOCK;
+  }
+
   if (presetId === "beauty") {
     return `### Salon-Schnellablauf (strikt)
 - **Nachname + Datum + Uhrzeit** genügen. Vorname, Telefonnummer und Dauer **niemals** erfragen.
@@ -341,47 +416,71 @@ export function buildAppointmentPrompt(
 ): string {
   const config = normalizeAppointmentConfig(configInput);
   const preset = getAppointmentPreset(config.industryPreset);
+  const flexible = isFlexibleScheduling(config);
   const enabledTypes = getEnabledAppointmentTypes(config);
-  const typeList =
-    enabledTypes.length > 0
+  const typeList = flexible
+    ? "freie Termine — Dauer wird vom Agenten geschätzt"
+    : enabledTypes.length > 0
       ? enabledTypes
           .map((type) => `${type.label} (${type.durationMinutes} Min.)`)
           .join(", ")
       : "keine Terminarten aktiviert";
 
-  const fastPath = buildIndustryFastPathBlock(config.industryPreset);
+  const fastPath = buildIndustryFastPathBlock(config.industryPreset, flexible);
   const fastPathSection = fastPath ? `${fastPath}\n` : "";
 
-  const businessHoursSection = businessHoursBlock
-    ? `\n## Geschäftszeiten\n${businessHoursBlock}\n`
-    : "";
+  const businessHoursSection =
+    !flexible && businessHoursBlock
+      ? `\n## Geschäftszeiten\n${businessHoursBlock}\n`
+      : flexible && businessHoursBlock
+        ? `\n## Bevorzugte Zeiten (optional)\n${businessHoursBlock}\n`
+        : "";
 
   let bookingBlock: string;
   if (config.allowBooking) {
-    bookingBlock = [
-      "## Termine vereinbaren",
-      `- Erlaubte Anrufer: ${config.allowedCallersDescription}`,
-      `- Erlaubte Terminarten: ${typeList}`,
-      businessHoursSection.trimEnd(),
-      fastPathSection.trimEnd(),
-      CUSTOMER_CONFIRMATION_PROMPT,
-      POST_CALL_PHONE_BOOKING_BLOCK,
-      "### Ablauf",
-      "1. **Nachname** und **Datum/Uhrzeit** erfassen — wenn der Kunde alles in einem Satz nennt, sofort nutzen.",
-      "2. Sofort «check_availability» mit appointmentDate (YYYY-MM-DD) und appointmentTime (HH:mm).",
-      "3. Ergebnis mitteilen — nie vorher «ich prüfe» sagen.",
-      "4. available=false → Alternativen nennen, neue Zeit, erneut prüfen.",
-      "5. available=true → Termin mündlich bestätigen und notieren, dann **sofort** end_call.",
-      "6. Nach dem Auflegen trägt das System den Termin automatisch in den Kalender ein.",
-      "7. Nach Zielerreichung (Termin notiert oder Stornierung): höflich bedanken und end_call.",
-      "",
-      "### Regeln",
-      "- Keine unnötigen Rückfragen. Ziel: Termin in unter 1 Minute buchen und auflegen.",
-      "- attendeeName = **Nachname** des Kunden (Vorname nicht nötig).",
-      "- Telefonnummer **nicht** erfragen — bei Anrufen wird sie automatisch aus der Anrufer-ID übernommen.",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    if (flexible) {
+      bookingBlock = [
+        "## Termine vereinbaren",
+        `- Erlaubte Anrufer: ${config.allowedCallersDescription}`,
+        `- Modus: ${typeList}`,
+        businessHoursSection.trimEnd(),
+        fastPathSection.trimEnd(),
+        FLEXIBLE_LIVE_BOOKING_BLOCK,
+        "### Ablauf",
+        "1. Anliegen verstehen und **Dauer schätzen**.",
+        "2. Name, Datum und Uhrzeit erfassen.",
+        "3. check_availability mit appointmentDate, appointmentTime und durationMinutes.",
+        "4. available=false → Alternativen nennen.",
+        "5. available=true → book_appointment aufrufen, dann kurz bestätigen.",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    } else {
+      bookingBlock = [
+        "## Termine vereinbaren",
+        `- Erlaubte Anrufer: ${config.allowedCallersDescription}`,
+        `- Erlaubte Terminarten: ${typeList}`,
+        businessHoursSection.trimEnd(),
+        fastPathSection.trimEnd(),
+        CUSTOMER_CONFIRMATION_PROMPT,
+        POST_CALL_PHONE_BOOKING_BLOCK,
+        "### Ablauf",
+        "1. **Nachname** und **Datum/Uhrzeit** erfassen — wenn der Kunde alles in einem Satz nennt, sofort nutzen.",
+        "2. Sofort «check_availability» mit appointmentDate (YYYY-MM-DD) und appointmentTime (HH:mm).",
+        "3. Ergebnis mitteilen — nie vorher «ich prüfe» sagen.",
+        "4. available=false → Alternativen nennen, neue Zeit, erneut prüfen.",
+        "5. available=true → Termin mündlich bestätigen und notieren, dann **sofort** end_call.",
+        "6. Nach dem Auflegen trägt das System den Termin automatisch in den Kalender ein.",
+        "7. Nach Zielerreichung (Termin notiert oder Stornierung): höflich bedanken und end_call.",
+        "",
+        "### Regeln",
+        "- Keine unnötigen Rückfragen. Ziel: Termin in unter 1 Minute buchen und auflegen.",
+        "- attendeeName = **Nachname** des Kunden (Vorname nicht nötig).",
+        "- Telefonnummer **nicht** erfragen — bei Anrufen wird sie automatisch aus der Anrufer-ID übernommen.",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
   } else {
     bookingBlock =
       "## Termine vereinbaren\n- Terminvereinbarung ist deaktiviert. Biete einen Rückruf an.";
@@ -401,8 +500,8 @@ export function buildAppointmentPrompt(
 
   return `
 
-# Terminvereinbarung (${preset.label})
-Du bist die Telefonassistenz für ${preset.label.toLowerCase()} und hilfst ${config.allowedCallersDescription} bei Terminanfragen.
+# Terminvereinbarung (${flexible ? "Privater Assistent" : preset.label})
+Du hilfst ${config.allowedCallersDescription} bei Terminanfragen.
 
 ${bookingBlock}${cancellationSection}
 - Wenn Terminvereinbarung nicht möglich ist, biete einen Rückruf durch das Team an.`;

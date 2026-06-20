@@ -14,12 +14,11 @@ import {
   type CalendarAgentPermissions,
 } from "@/lib/integrations/calendar-agent-permissions";
 import {
-  configFromPreset,
   DEFAULT_APPOINTMENT_CONFIG,
+  isFlexibleScheduling,
   normalizeAppointmentConfig,
   type AppointmentConfig,
 } from "@/lib/integrations/appointment-config";
-import { inferAssistantBranch } from "@/lib/assistant-branch";
 import type { StoredAgent } from "@/lib/onboarding-types";
 import {
   businessHoursFromSummaryStrings,
@@ -104,8 +103,7 @@ export function AgentIntegrationsSection({
     normalizeBusinessHours(agent.businessHours ?? DEFAULT_BUSINESS_HOURS)
   );
 
-  const assistantBranch = inferAssistantBranch(agent);
-  const isCoiffeur = assistantBranch === "coiffeur";
+  const flexibleScheduling = isFlexibleScheduling(appointmentConfig);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -188,45 +186,6 @@ export function AgentIntegrationsSection({
   }
 
   useEffect(() => {
-    if (
-      !isCoiffeur ||
-      connectedCalendars.length === 0 ||
-      agent.appointmentBookingEnabled
-    ) {
-      return;
-    }
-
-    const provider = connectedCalendars[0]?.provider ?? null;
-    void (async () => {
-      setSaving(true);
-      try {
-        const res = await fetch("/api/elevenlabs/agent/integrations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId: agent.id,
-            appointmentBookingEnabled: true,
-            appointmentConfig: configFromPreset("beauty"),
-            ...(provider ? { calendarProvider: provider } : {}),
-          }),
-        });
-        const data = await res.json();
-        if (res.ok && data.ok && data.agents) {
-          onAgentsChange?.(data.agents as StoredAgent[]);
-        }
-      } finally {
-        setSaving(false);
-      }
-    })();
-  }, [
-    agent.appointmentBookingEnabled,
-    agent.id,
-    connectedCalendars,
-    isCoiffeur,
-    onAgentsChange,
-  ]);
-
-  useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
@@ -271,20 +230,6 @@ export function AgentIntegrationsSection({
     saveTimer.current = setTimeout(() => {
       void persist({ appointmentConfig: nextConfig });
     }, 500);
-  }
-
-  if (!isCoiffeur) {
-    return (
-      <div className="rounded border border-[#E1E4EA] bg-[#FAFAFA] p-4">
-        <p className="text-[13px] font-medium text-[#0E121B]">
-          Keine Terminbuchung
-        </p>
-        <p className="mt-1 text-[12px] text-[#99A0AE]">
-          Für Terminvereinbarungen wählen Sie unter Inhalte die Branche
-          «Coiffeur Betrieb».
-        </p>
-      </div>
-    );
   }
 
   if (loading) {
@@ -397,11 +342,14 @@ export function AgentIntegrationsSection({
           ) : null}
 
           <p className="text-[12px] text-[#525866]">
-            Terminvereinbarung ist für Coiffeur Betrieb aktiv. Der Assistent kann
-            Termine auf Namen buchen und — je nach Einstellung — stornieren.
+            {flexibleScheduling
+              ? "Terminvereinbarung ist aktiv. Der Assistent plant freie Termine und schätzt die Dauer aus dem Anliegen."
+              : "Terminvereinbarung ist für Coiffeur Betrieb aktiv. Der Assistent kann Termine auf Namen buchen und — je nach Einstellung — stornieren."}
           </p>
 
-          {appointmentBookingEnabled ? (
+          {appointmentBookingEnabled ||
+          appointmentConfig.allowBooking ||
+          appointmentConfig.allowCancellation ? (
             <div className="space-y-3 rounded border border-[#E1E4EA] bg-[#FAFAFA] p-3">
               <div className="space-y-1.5">
                 <Label
@@ -491,28 +439,6 @@ export function AgentIntegrationsSection({
               </div>
 
               <PermissionToggleRow
-                label="Termine vereinbaren"
-                description="Neue Termine in den Kalender eintragen."
-                checked={appointmentConfig.allowBooking}
-                disabled={saving}
-                onCheckedChange={(checked) =>
-                  scheduleAppointmentConfigSave({ allowBooking: checked })
-                }
-                ariaLabel="Termine vereinbaren"
-              />
-
-              <PermissionToggleRow
-                label="Termine stornieren"
-                description="Bestehende Termine am bekannten Tag löschen."
-                checked={appointmentConfig.allowCancellation}
-                disabled={saving}
-                onCheckedChange={(checked) =>
-                  scheduleAppointmentConfigSave({ allowCancellation: checked })
-                }
-                ariaLabel="Termine stornieren"
-              />
-
-              <PermissionToggleRow
                 label="Name des Anrufers erforderlich"
                 description="Der Assistent fragt vor Buchung oder Storno nach dem Namen."
                 checked={appointmentConfig.requireCallerName}
@@ -538,39 +464,52 @@ export function AgentIntegrationsSection({
                 />
               ) : null}
 
-              <div className="space-y-2">
-                <p className="text-[12px] font-medium text-[#0E121B]">
-                  Erlaubte Terminarten
-                </p>
-                {appointmentConfig.appointmentTypes.map((type) => (
-                  <div
-                    key={type.id}
-                    className="flex items-center justify-between gap-3 rounded border border-[#E1E4EA] bg-white px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-[13px] text-[#0E121B]">{type.label}</p>
-                      <p className="text-[11px] text-[#99A0AE]">
-                        {type.durationMinutes} Minuten
-                      </p>
+              {flexibleScheduling ? (
+                <div className="rounded border border-[#E1E4EA] bg-white px-3 py-2.5">
+                  <p className="text-[12px] font-medium text-[#0E121B]">
+                    Flexible Terminplanung
+                  </p>
+                  <p className="mt-1 text-[11px] text-[#99A0AE]">
+                    Keine festen Terminarten — der Assistent schätzt die Dauer
+                    (z. B. Arzt 30 Min., Meeting 60 Min.) und trägt freie
+                    Termine in den Kalender ein.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[12px] font-medium text-[#0E121B]">
+                    Erlaubte Terminarten
+                  </p>
+                  {appointmentConfig.appointmentTypes.map((type) => (
+                    <div
+                      key={type.id}
+                      className="flex items-center justify-between gap-3 rounded border border-[#E1E4EA] bg-white px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[13px] text-[#0E121B]">{type.label}</p>
+                        <p className="text-[11px] text-[#99A0AE]">
+                          {type.durationMinutes} Minuten
+                        </p>
+                      </div>
+                      <Switch
+                        checked={type.enabled}
+                        disabled={saving}
+                        onCheckedChange={(checked) =>
+                          scheduleAppointmentConfigSave({
+                            appointmentTypes: appointmentConfig.appointmentTypes.map(
+                              (entry) =>
+                                entry.id === type.id
+                                  ? { ...entry, enabled: checked }
+                                  : entry
+                            ),
+                          })
+                        }
+                        aria-label={`${type.label} erlauben`}
+                      />
                     </div>
-                    <Switch
-                      checked={type.enabled}
-                      disabled={saving}
-                      onCheckedChange={(checked) =>
-                        scheduleAppointmentConfigSave({
-                          appointmentTypes: appointmentConfig.appointmentTypes.map(
-                            (entry) =>
-                              entry.id === type.id
-                                ? { ...entry, enabled: checked }
-                                : entry
-                          ),
-                        })
-                      }
-                      aria-label={`${type.label} erlauben`}
-                    />
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           ) : null}
 

@@ -240,13 +240,9 @@ export async function linkAgentToPhone(
   const phones = await listUserPhoneNumbers(userId);
   if (phones.length === 0) return;
 
-  let phone = userPhoneRecordId
+  const phone = userPhoneRecordId
     ? phones.find((p) => p.id === userPhoneRecordId)
     : undefined;
-
-  if (!phone && phones.length === 1) {
-    phone = phones[0];
-  }
 
   if (!phone?.elevenLabsPhoneNumberId) return;
 
@@ -256,6 +252,24 @@ export async function linkAgentToPhone(
     agentId,
     settings.agentName ?? "Linker Telefonagent"
   );
+}
+
+/** Unlinks a user phone record from any ElevenLabs agent. */
+export async function unlinkPhoneRecordFromElevenLabs(
+  userId: string,
+  userPhoneRecordId: string
+): Promise<void> {
+  const phones = await listUserPhoneNumbers(userId);
+  const phone = phones.find((p) => p.id === userPhoneRecordId);
+  if (!phone?.elevenLabsPhoneNumberId) return;
+
+  const { hasApiKey, getElevenLabsClient } = await import("@/lib/elevenlabs/client");
+  if (!hasApiKey()) return;
+
+  const client = getElevenLabsClient();
+  await client.conversationalAi.phoneNumbers.update(phone.elevenLabsPhoneNumberId, {
+    agentId: undefined,
+  });
 }
 
 /** Links the user's assigned phone number to their agent in ElevenLabs. */

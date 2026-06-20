@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, MessageSquare, Send } from "lucide-react";
+import { CalendarCheck, Loader2, MessageSquare, Send, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { landingBtnSecondary } from "@/components/landing/landing-buttons";
 import type { AgentChatDraft } from "@/lib/elevenlabs/agent-chat-types";
+import { greetingForAssistantName } from "@/lib/elevenlabs/assistant-names";
+import type { BookedAppointmentInfo } from "@/lib/text-assistant/types";
 import { cn } from "@/lib/utils";
 
 type ChatRole = "user" | "agent";
@@ -34,6 +37,27 @@ function nextId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function dayIsoFromStartIso(startIso: string): string {
+  const date = new Date(startIso);
+  if (Number.isNaN(date.getTime())) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatAppointmentWhen(startIso: string): string {
+  const date = new Date(startIso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("de-CH", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function AgentTestChat({
   agentId,
   agentName,
@@ -45,6 +69,8 @@ export function AgentTestChat({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [bookedAppointment, setBookedAppointment] =
+    useState<BookedAppointmentInfo | null>(null);
 
   const historyRef = useRef<TextChatTurn[]>([]);
   const draftRef = useRef(draft);
@@ -52,6 +78,9 @@ export function AgentTestChat({
   const pendingCloseRef = useRef(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const sessionIdRef = useRef<string>("");
+  const startedAtRef = useRef<string>("");
+  const bookedAppointmentRef = useRef<BookedAppointmentInfo | undefined>();
 
   const chatOpen = sessionState !== "idle";
   const displayName = agentName.trim() || "Assistent";
@@ -78,37 +107,84 @@ export function AgentTestChat({
     });
   }, [messages, agentTyping]);
 
-  const closeChat = useCallback(() => {
+  const persistChatSession = useCallback(
+    async (sessionMessages: ChatMessage[]) => {
+      if (sessionMessages.length === 0 || !sessionIdRef.current) return;
+
+      try {
+        await fetch("/api/text-assistant/chat/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: sessionIdRef.current,
+            agentId,
+            agentName: displayName,
+            startedAt: startedAtRef.current,
+            messages: sessionMessages.map((entry) => ({
+              role: entry.role,
+              content: entry.content,
+            })),
+            bookedAppointment: bookedAppointmentRef.current,
+          }),
+        });
+      } catch {
+        // Non-blocking — chat UX should still close cleanly.
+      }
+    },
+    [agentId, displayName]
+  );
+
+  const closeChat = useCallback(async () => {
     if (closeTimerRef.current) {
       clearTimeout(closeTimerRef.current);
       closeTimerRef.current = null;
     }
+
+    const sessionMessages = [...messages];
+    const appointment = bookedAppointmentRef.current;
+
     pendingCloseRef.current = false;
     historyRef.current = [];
+    sessionIdRef.current = "";
+    startedAtRef.current = "";
+
     setSessionState("idle");
     setConnectionError(null);
     setMessages([]);
     setInput("");
     setAgentTyping(false);
-  }, []);
+
+    if (sessionMessages.length > 0) {
+      await persistChatSession(sessionMessages);
+    }
+
+    if (appointment?.eventId) {
+      setBookedAppointment(appointment);
+    }
+    bookedAppointmentRef.current = undefined;
+  }, [messages, persistChatSession]);
 
   const scheduleCloseAfterAgentReply = useCallback(() => {
     if (!pendingCloseRef.current || closeTimerRef.current) return;
     closeTimerRef.current = setTimeout(() => {
       closeTimerRef.current = null;
-      closeChat();
+      void closeChat();
     }, 2000);
   }, [closeChat]);
 
   const connectChat = useCallback(async () => {
     if (disabled || sessionState === "connecting") return;
 
+    setBookedAppointment(null);
+    bookedAppointmentRef.current = undefined;
     setSessionState("connecting");
     setConnectionError(null);
     setMessages([]);
     setInput("");
     historyRef.current = [];
     pendingCloseRef.current = false;
+    sessionIdRef.current = crypto.randomUUID();
+    startedAtRef.current = new Date().toISOString();
 
     try {
       const res = await fetch("/api/text-assistant/chat", {
@@ -139,10 +215,24 @@ export function AgentTestChat({
         return;
       }
 
+      if (res.status === 403) {
+        setSessionState("idle");
+        const message =
+          data.error ??
+          "Richten Sie zuerst eine Telefonnummer ein, bevor Sie chatten.";
+        toast.error("Keine Telefonnummer", { description: message });
+        return;
+      }
+
       const greeting =
         data.greeting?.trim() ||
         draftRef.current.greeting?.trim() ||
-        `Guten Tag, Sie sprechen mit ${displayName}.`;
+        greetingForAssistantName(
+          displayName,
+          draftRef.current.language === "Schweizerdeutsch"
+            ? "Schweizerdeutsch"
+            : "Deutsch"
+        );
 
       if (!mountedRef.current) return;
 
@@ -189,6 +279,7 @@ export function AgentTestChat({
         reply?: string;
         history?: TextChatTurn[];
         goalCompleted?: boolean;
+        bookedAppointment?: BookedAppointmentInfo;
         error?: string;
       };
 
@@ -203,6 +294,10 @@ export function AgentTestChat({
         { role: "user", content: text },
         { role: "assistant", content: data.reply },
       ];
+
+      if (data.bookedAppointment?.eventId) {
+        bookedAppointmentRef.current = data.bookedAppointment;
+      }
 
       setMessages((prev) => [
         ...prev,
@@ -241,24 +336,62 @@ export function AgentTestChat({
   const canSend =
     sessionState === "connected" && input.trim().length > 0 && !agentTyping;
 
+  const calendarHref = bookedAppointment
+    ? `/kalender?event=${encodeURIComponent(bookedAppointment.eventId)}&day=${encodeURIComponent(dayIsoFromStartIso(bookedAppointment.startIso))}`
+    : "/kalender";
+
   return (
     <div className="mt-3">
       {!chatOpen ? (
-        <button
-          type="button"
-          onClick={openChat}
-          disabled={disabled}
-          className={cn(landingBtnSecondary, "w-full justify-center")}
-        >
-          <MessageSquare className="h-3.5 w-3.5 stroke-[1.75]" />
-          Chatte mit {displayName}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={openChat}
+            disabled={disabled}
+            className={cn(landingBtnSecondary, "w-full justify-center")}
+          >
+            <MessageSquare className="h-3.5 w-3.5 stroke-[1.75]" />
+            Chatte mit {displayName}
+          </button>
+
+          {bookedAppointment ? (
+            <div className="mt-2 rounded-md border border-[#C7D7FF] bg-[#F0F4FF] p-3">
+              <div className="flex items-start gap-2.5">
+                <CalendarCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#335cff]" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-medium text-[#0E121B]">
+                    Termin eingetragen
+                  </p>
+                  <p className="mt-0.5 text-[12px] text-[#525866]">
+                    {bookedAppointment.appointmentType
+                      ? `${bookedAppointment.appointmentType} · `
+                      : ""}
+                    {formatAppointmentWhen(bookedAppointment.startIso)}
+                  </p>
+                  <Link
+                    href={calendarHref}
+                    className="mt-2 inline-flex text-[12px] font-medium text-[#335cff] hover:underline"
+                  >
+                    Zum Termin im Kalender
+                  </Link>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBookedAppointment(null)}
+                  className="shrink-0 rounded p-0.5 text-[#99A0AE] hover:bg-white/60 hover:text-[#525866]"
+                  aria-label="Hinweis schliessen"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : (
         <div className="space-y-2">
           {connectionError && (
             <p className="text-[11px] text-[#b91c1c]">{connectionError}</p>
           )}
-
 
           <div
             ref={scrollRef}
@@ -347,7 +480,7 @@ export function AgentTestChat({
             )}
             <button
               type="button"
-              onClick={closeChat}
+              onClick={() => void closeChat()}
               className="text-[11px] text-[#99A0AE] hover:text-[#525866] hover:underline"
             >
               Schliessen

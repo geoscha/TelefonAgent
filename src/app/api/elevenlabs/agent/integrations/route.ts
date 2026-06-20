@@ -8,6 +8,7 @@ import {
 import {
   getAgentCalendarIntegration,
   patchStoredAgentCalendar,
+  resolveConnectedCalendarProvider,
 } from "@/lib/integrations/agent-calendar";
 import {
   normalizeCalendarAgentPermissions,
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await requireUserId();
+    const userId = await requireUserId();
     const settings = await getSettings();
     const agents = settings.agents ?? [];
     const existing = agents.find((agent) => agent.id === agentId);
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
     }
 
     const current = getAgentCalendarIntegration(settings, agentId);
-    const calendarProvider =
+    let calendarProvider =
       body.calendarProvider !== undefined
         ? body.calendarProvider
         : current.calendarProvider;
@@ -97,6 +98,14 @@ export async function POST(req: NextRequest) {
       body.appointmentBookingEnabled !== undefined
         ? body.appointmentBookingEnabled
         : current.appointmentBookingEnabled;
+
+    if (appointmentBookingEnabled && !calendarProvider) {
+      calendarProvider = await resolveConnectedCalendarProvider(
+        userId,
+        existing,
+        settings
+      );
+    }
     const calendarPermissions = normalizeCalendarAgentPermissions({
       ...current.calendarPermissions,
       ...body.calendarPermissions,

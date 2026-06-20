@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
@@ -283,6 +284,9 @@ async function deleteCalendarEventRequest(event: CalendarEvent): Promise<void> {
 }
 
 export function CalendarPageClient() {
+  const searchParams = useSearchParams();
+  const deepLinkHandledRef = useRef(false);
+  const deepLinkDayHandledRef = useRef(false);
   const [connected, setConnected] = useState<boolean | null>(null);
   const [accountLabel, setAccountLabel] = useState<string>();
   const [calendarProvider, setCalendarProvider] =
@@ -310,6 +314,28 @@ export function CalendarPageClient() {
     setNavToken((token) => token + 1);
     setFetchRange(computeFetchRange(date));
   }, []);
+
+  const deepLinkEventId = searchParams.get("event")?.trim() ?? "";
+  const deepLinkDay = searchParams.get("day")?.trim() ?? "";
+
+  useEffect(() => {
+    if (!deepLinkDay || !/^\d{4}-\d{2}-\d{2}$/.test(deepLinkDay)) return;
+    if (deepLinkDayHandledRef.current) return;
+    deepLinkDayHandledRef.current = true;
+    navigateTo(new Date(`${deepLinkDay}T12:00:00`));
+  }, [deepLinkDay, navigateTo]);
+
+  useEffect(() => {
+    if (!deepLinkEventId || deepLinkHandledRef.current || events.length === 0) {
+      return;
+    }
+
+    const match = events.find((event) => event.id === deepLinkEventId);
+    if (match) {
+      deepLinkHandledRef.current = true;
+      setSelectedEvent(match);
+    }
+  }, [deepLinkEventId, events]);
 
   const loadEvents = useCallback(
     async (options?: { silent?: boolean; screenCalls?: boolean; replace?: boolean }) => {

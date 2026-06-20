@@ -52,13 +52,6 @@ export const SETUP_DEMO_GUIDE: SetupDemoGuideStep[] = [
     textInput: true,
   },
   {
-    id: "agent_gender",
-    phase: "agent",
-    target: "setup-demo-agent-gender",
-    title: "Stimme wählen",
-    body: "Wählen Sie, ob der Agent mit männlicher oder weiblicher Stimme sprechen soll.",
-  },
-  {
     id: "agent_language",
     phase: "agent",
     target: "setup-demo-agent-language",
@@ -93,7 +86,7 @@ export const SETUP_DEMO_GUIDE: SetupDemoGuideStep[] = [
     phase: "agent",
     target: "setup-demo-agent-review-voice",
     title: "Stimme wählen",
-    body: "Wählen Sie die Stimme, mit der Ihr Agent Anrufer begrüsst.",
+    body: "Wählen Sie eine Stimme — weiblich oder männlich.",
   },
   {
     id: "agent_review_greeting",

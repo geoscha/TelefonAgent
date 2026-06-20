@@ -1,4 +1,7 @@
-import { configFromPreset } from "@/lib/integrations/appointment-config";
+import {
+  configForPrivateAssistant,
+  configFromPreset,
+} from "@/lib/integrations/appointment-config";
 import type { StoredAgent } from "@/lib/onboarding-types";
 
 export type AssistantBranchId = "private_assistant" | "coiffeur";
@@ -48,6 +51,19 @@ export function branchAppointmentPatch(branch: AssistantBranchId): Pick<
 
   return {
     appointmentBookingEnabled: false,
-    appointmentConfig: undefined,
+    appointmentConfig: configForPrivateAssistant(),
   };
+}
+
+/** True only when the client explicitly sent a branch change (not inferred on every autosave). */
+export function assistantBranchChanged(
+  nextBranch: unknown,
+  existing?: Pick<StoredAgent, "assistantBranch" | "appointmentBookingEnabled">
+): nextBranch is AssistantBranchId {
+  if (nextBranch === undefined) return false;
+  const normalizedNext = normalizeAssistantBranch(nextBranch);
+  const normalizedPrev = existing?.assistantBranch
+    ? normalizeAssistantBranch(existing.assistantBranch)
+    : inferAssistantBranch(existing ?? { appointmentBookingEnabled: false });
+  return normalizedNext !== normalizedPrev;
 }

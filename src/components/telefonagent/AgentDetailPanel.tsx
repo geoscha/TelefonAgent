@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Sparkles, Trash2, Volume2 } from "lucide-react";
+import { Loader2, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -10,7 +10,7 @@ import {
 } from "@/components/landing/landing-buttons";
 import type { AgentWizardDraft } from "@/components/telefonagent/AgentCreateWizard";
 import { AgentCapabilityLogos } from "@/components/telefonagent/AgentCapabilityLogos";
-import { AgentIntegrationsSection } from "@/components/telefonagent/AgentIntegrationsSection";
+import { AgentCapabilitiesSection } from "@/components/telefonagent/AgentCapabilitiesSection";
 import { AgentTestChat } from "@/components/telefonagent/AgentTestChat";
 import { AgentDetailSection } from "@/components/telefonagent/AgentDetailSection";
 import { VoiceSelect } from "@/components/telefonagent/VoiceSelect";
@@ -22,13 +22,16 @@ import {
 import { Switch } from "@/components/ui/switch";
 import {
   formatAgentUsageDuration,
-  formatGreetingPreviewCostLabel,
 } from "@/lib/billing/quota-display";
+import {
+  AGENT_LANGUAGE_OPTIONS,
+  normalizeAgentLanguage,
+  type AgentLanguageLabel,
+} from "@/lib/elevenlabs/agent-config";
 import {
   greetingForAssistantName,
   shouldAutoRenameAssistant,
 } from "@/lib/elevenlabs/assistant-names";
-import { applyEuComplianceGreeting } from "@/lib/elevenlabs/compliance";
 import {
   composeSystemPrompt,
   countInstructionWords,
@@ -44,7 +47,6 @@ import {
 } from "@/lib/assistant-branch";
 import { cn } from "@/lib/utils";
 import { useVoicePreview } from "@/lib/hooks/useVoicePreview";
-import { notifyTokenBalanceChanged } from "@/lib/hooks/useTokenBalance";
 
 interface VoiceOption {
   id: string;
@@ -76,7 +78,6 @@ interface AgentPhoneNumber {
 interface AgentDetailPanelProps {
   agent: StoredAgent;
   isActive: boolean;
-  linkerNumber?: string;
   customerNumber?: string;
   voices: VoiceOption[];
   voicesLoading: boolean;
@@ -84,8 +85,9 @@ interface AgentDetailPanelProps {
   saving?: boolean;
   saveError?: boolean;
   phoneNumbers?: AgentPhoneNumber[];
+  allAgents?: Pick<StoredAgent, "id" | "name" | "phoneNumberId">[];
   assigningPhone?: boolean;
-  onAssignPhone?: (phoneNumberId: string) => void;
+  onAssignPhone?: (phoneNumberId: string | null) => void;
   onDelete: () => void;
   onActivate?: () => void;
   onDeactivate?: () => void;
@@ -129,101 +131,21 @@ function ToggleRow({
 
 function resolvePrimaryAgentNumber(
   phoneNumbers: AgentPhoneNumber[],
-  agentPhoneNumberId?: string,
-  linkerNumber?: string
+  agentPhoneNumberId?: string
 ): string | null {
-  const assigned =
-    phoneNumbers.find((p) => p.id === agentPhoneNumberId) ??
-    phoneNumbers.find((p) => p.isPrimary) ??
-    phoneNumbers[0];
-
-  return assigned?.phoneNumber ?? linkerNumber?.trim() ?? null;
+  if (!agentPhoneNumberId) return null;
+  return phoneNumbers.find((p) => p.id === agentPhoneNumberId)?.phoneNumber ?? null;
 }
 
-function AgentReachability({
-  isActive,
-  linkerNumber,
-  customerNumber,
-  phoneNumbers,
-  agentPhoneNumberId,
-}: {
-  isActive: boolean;
-  linkerNumber?: string;
-  customerNumber?: string;
-  phoneNumbers: AgentPhoneNumber[];
-  agentPhoneNumberId?: string;
-}) {
-  if (!isActive) {
-    return (
-      <p className="text-[12px] text-[#99A0AE]">
-        Assistent ist inaktiv und nimmt keine Anrufe entgegen.
-      </p>
-    );
-  }
-
-  const assignedPhone =
-    phoneNumbers.find((p) => p.id === agentPhoneNumberId) ??
-    phoneNumbers.find((p) => p.isPrimary) ??
-    phoneNumbers[0];
-
-  const connectedSip = phoneNumbers.filter(
-    (p) =>
-      p.source === "sip_trunk" &&
-      (!agentPhoneNumberId || p.id === agentPhoneNumberId)
-  );
-
-  const lines: Array<{ label: string; number: string }> = [];
-
-  if (linkerNumber) {
-    lines.push({ label: "Linker-Nummer", number: linkerNumber });
-  }
-
-  for (const sip of connectedSip) {
-    if (!lines.some((line) => line.number === sip.phoneNumber)) {
-      lines.push({
-        label: sip.label?.trim() || "Verbundene Nummer",
-        number: sip.phoneNumber,
-      });
-    }
-  }
-
-  const forwardedFrom =
-    assignedPhone?.customerNumber?.trim() || customerNumber?.trim();
-  if (
-    forwardedFrom &&
-    assignedPhone?.forwardingStatus === "aktiv" &&
-    !lines.some((line) => line.number === forwardedFrom)
-  ) {
-    lines.push({ label: "Ihre Nummer", number: forwardedFrom });
-  }
-
-  if (lines.length === 0) {
-    return (
-      <p className="text-[12px] text-[#99A0AE]">
-        Noch keine Telefonnummer verbunden. Richten Sie eine Nummer unter
-        Telefonnummern ein.
-      </p>
-    );
-  }
-
-  return (
-    <div className="rounded border border-[#E1E4EA] bg-[#FAFAFA] px-3 py-2.5">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-[#99A0AE]">
-        Erreichbar unter
-      </p>
-      <ul className="mt-1.5 space-y-1">
-        {lines.map((line) => (
-          <li
-            key={`${line.label}-${line.number}`}
-            className="flex items-baseline justify-between gap-3 text-[13px]"
-          >
-            <span className="text-[#525866]">{line.label}</span>
-            <span className="font-mono text-[#0E121B]">{line.number}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+function availablePhonesForAgent(
+  phoneNumbers: AgentPhoneNumber[],
+  agents: Pick<StoredAgent, "id" | "phoneNumberId">[] | undefined,
+  currentAgentId: string
+): AgentPhoneNumber[] {
+  return phoneNumbers.filter((phone) => {
+    const owner = agents?.find((a) => a.phoneNumberId === phone.id);
+    return !owner || owner.id === currentAgentId;
+  });
 }
 
 function LabeledField({
@@ -244,14 +166,13 @@ function LabeledField({
 export function AgentDetailPanel({
   agent,
   isActive,
-  linkerNumber,
-  customerNumber,
   voices,
   voicesLoading,
   deleting,
   saving = false,
   saveError = false,
   phoneNumbers = [],
+  allAgents = [],
   assigningPhone = false,
   onAssignPhone,
   onDelete,
@@ -264,6 +185,9 @@ export function AgentDetailPanel({
   const [name, setName] = useState(agent.name);
   const [greeting, setGreeting] = useState(agent.greeting);
   const [voiceId, setVoiceId] = useState(agent.voiceId);
+  const [language, setLanguage] = useState<AgentLanguageLabel>(() =>
+    normalizeAgentLanguage(agent.language)
+  );
   const [systemPrompt, setSystemPrompt] = useState(agent.systemPrompt);
   const [euComplianceEnabled, setEuComplianceEnabled] = useState(
     Boolean(agent.euComplianceEnabled)
@@ -275,7 +199,6 @@ export function AgentDetailPanel({
   const [aiLoading, setAiLoading] = useState(false);
   const [usageSeconds, setUsageSeconds] = useState<number | null>(null);
   const [usageLoading, setUsageLoading] = useState(true);
-  const [greetingPreviewLoading, setGreetingPreviewLoading] = useState(false);
   const nameIsAutoRef = useRef(
     shouldAutoRenameAssistant(agent.name, agent.voiceName)
   );
@@ -297,6 +220,7 @@ export function AgentDetailPanel({
     setName(agent.name);
     setGreeting(agent.greeting);
     setVoiceId(agent.voiceId);
+    setLanguage(normalizeAgentLanguage(agent.language));
     setSystemPrompt(agent.systemPrompt);
     setEuComplianceEnabled(Boolean(agent.euComplianceEnabled));
     setWebsite(agent.website ?? "");
@@ -388,15 +312,14 @@ export function AgentDetailPanel({
     const patch: AgentDetailUpdate = {
       voiceId: nextVoiceId,
       voiceName: picked?.name,
-      language: picked?.language ?? agent.language,
+      language: picked?.language ?? language,
     };
 
     if (shouldAutoRenameAssistant(name, previous?.displayName)) {
       const nextName = displayName;
       const nextGreeting = greetingForAssistantName(
         nextName,
-        (picked?.language ?? agent.language) as "Deutsch" | "Schweizerdeutsch",
-        assistantBranchLabel(assistantBranch)
+        (picked?.language ?? language) as AgentLanguageLabel
       );
       setName(nextName);
       setGreeting(nextGreeting);
@@ -411,9 +334,24 @@ export function AgentDetailPanel({
       void previewVoice(
         picked.id,
         displayName,
-        picked.language ?? agent.language
+        picked.language ?? language
       );
     }
+  }
+
+  function handleLanguageChange(value: string) {
+    const nextLanguage = normalizeAgentLanguage(value);
+    setLanguage(nextLanguage);
+
+    const patch: AgentDetailUpdate = { language: nextLanguage };
+    const previousDefault = greetingForAssistantName(name, language);
+    const nextDefault = greetingForAssistantName(name, nextLanguage);
+    if (greeting.trim() === previousDefault.trim()) {
+      setGreeting(nextDefault);
+      patch.greeting = nextDefault;
+    }
+
+    scheduleSave(patch);
   }
 
   function handleSystemPromptChange(value: string) {
@@ -448,7 +386,6 @@ export function AgentDetailPanel({
         body: JSON.stringify({
           branch: assistantBranch,
           website: website.trim() || undefined,
-          gender: "female",
           language: agent.language,
           keepVoice: true,
         }),
@@ -504,7 +441,7 @@ export function AgentDetailPanel({
     scheduleSave({ euComplianceEnabled: enabled }, true);
   }
 
-  const canActivateAgent = phoneNumbers.length > 0;
+  const canActivateAgent = Boolean(agent.phoneNumberId?.trim());
 
   function handleActiveToggle(active: boolean) {
     if (activating) return;
@@ -512,7 +449,7 @@ export function AgentDetailPanel({
       if (!canActivateAgent) {
         toast.error("Keine Telefonnummer", {
           description:
-            "Richten Sie zuerst eine Nummer unter Telefonnummern ein, bevor Sie den Assistenten aktivieren.",
+            "Wählen Sie unter Konfiguration eine Telefonnummer aus, bevor Sie den Assistenten aktivieren.",
         });
         return;
       }
@@ -522,51 +459,16 @@ export function AgentDetailPanel({
     }
   }
 
-  async function handlePreviewGreeting() {
-    const text = greeting.trim();
-    if (!voiceId || !text) {
-      toast.error("Bitte Begrüssung und Stimme angeben.");
-      return;
-    }
-
-    const picked = voices.find((v) => v.id === voiceId);
-    const spokenGreeting = applyEuComplianceGreeting(text, euComplianceEnabled);
-
-    setGreetingPreviewLoading(true);
-    try {
-      const result = await previewVoice(
-        voiceId,
-        picked?.displayName ?? picked?.name ?? agent.voiceName ?? "Stimme",
-        picked?.language ?? agent.language,
-        spokenGreeting
-      );
-      if (result.ok) {
-        notifyTokenBalanceChanged();
-      } else if (result.insufficientTokens) {
-        toast.error("Nicht genügend Tokens", {
-          description:
-            result.error ??
-            `Die Begrüssungsvorschau kostet ${formatGreetingPreviewCostLabel()}.`,
-        });
-      } else {
-        toast.error("Begrüssung konnte nicht abgespielt werden.", {
-          description: result.error,
-        });
-      }
-    } finally {
-      setGreetingPreviewLoading(false);
-    }
-  }
-
-  const selectedPhoneId =
-    agent.phoneNumberId ??
-    (phoneNumbers.length === 1 ? phoneNumbers[0]?.id : "") ??
-    "";
+  const selectedPhoneId = agent.phoneNumberId ?? "";
+  const selectablePhones = availablePhonesForAgent(
+    phoneNumbers,
+    allAgents,
+    agent.id
+  );
 
   const primaryAgentNumber = resolvePrimaryAgentNumber(
     phoneNumbers,
-    selectedPhoneId || agent.phoneNumberId,
-    linkerNumber
+    selectedPhoneId || undefined
   );
 
   const voiceOptions =
@@ -647,9 +549,10 @@ export function AgentDetailPanel({
             </div>
           </div>
 
-          {!canActivateAgent && !isActive && (
+          {!canActivateAgent && (
             <p className="mt-2 text-[12px] text-[#99A0AE]">
-              Aktivierung erst möglich, wenn eine Telefonnummer hinterlegt ist.
+              Chat und Aktivierung sind erst möglich, wenn unter Konfiguration
+              eine Telefonnummer ausgewählt ist.
             </p>
           )}
 
@@ -665,31 +568,14 @@ export function AgentDetailPanel({
             />
           </div>
 
-          <button
-            type="button"
-            onClick={() => void handlePreviewGreeting()}
-            disabled={greetingPreviewLoading || !voiceId || !greeting.trim()}
-            className={cn(
-              landingBtnSecondary,
-              "mt-3 inline-flex w-full items-center justify-center gap-2"
-            )}
-          >
-            {greetingPreviewLoading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Volume2 className="h-3.5 w-3.5 stroke-[1.75]" />
-            )}
-            Begrüssung anhören · {formatGreetingPreviewCostLabel()}
-          </button>
-
           <AgentTestChat
             agentId={agent.id}
             agentName={name}
-            disabled={!agent.id}
+            disabled={!agent.id || !canActivateAgent}
             draft={{
               greeting,
               systemPrompt,
-              language: agent.language,
+              language,
               voiceId,
               euComplianceEnabled,
               appointmentBookingEnabled: agent.appointmentBookingEnabled,
@@ -706,25 +592,8 @@ export function AgentDetailPanel({
 
         <div key={agent.id} className="mt-4 flex-1 space-y-2">
           <AgentDetailSection
-            title="Erreichbarkeit"
-            subtitle={
-              isActive
-                ? "Weitere Leitungen und Weiterleitungen"
-                : "Details zur Telefonnummer"
-            }
-          >
-            <AgentReachability
-              isActive={isActive}
-              linkerNumber={linkerNumber}
-              customerNumber={customerNumber}
-              phoneNumbers={phoneNumbers}
-              agentPhoneNumberId={agent.phoneNumberId}
-            />
-          </AgentDetailSection>
-
-          <AgentDetailSection
             title="Konfiguration"
-            subtitle="Stimme, Nummer und Website"
+            subtitle="Stimme, Sprache und Nummer"
           >
             <LabeledField label="Stimme">
               <VoiceSelect
@@ -735,34 +604,91 @@ export function AgentDetailPanel({
               />
             </LabeledField>
 
+            <LabeledField label="Sprache">
+              <select
+                value={language}
+                onChange={(e) => handleLanguageChange(e.target.value)}
+                className={fieldClass}
+              >
+                {AGENT_LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </LabeledField>
+
             {phoneNumbers.length > 0 && (
               <LabeledField label="Telefonnummer">
-                {phoneNumbers.length === 1 ? (
-                  <p className={cn(fieldClass, "bg-[#FAFAFA] text-[#525866]")}>
-                    {phoneNumbers[0].phoneNumber}
-                    {phoneNumbers[0].label ? ` · ${phoneNumbers[0].label}` : ""}
-                  </p>
-                ) : (
+                <select
+                  value={selectedPhoneId}
+                  disabled={assigningPhone || !onAssignPhone}
+                  onChange={(e) => {
+                    onAssignPhone?.(e.target.value || null);
+                  }}
+                  className={fieldClass}
+                >
+                  <option value="">Keine Nummer</option>
+                  {selectablePhones.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.phoneNumber}
+                      {p.label ? ` · ${p.label}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </LabeledField>
+            )}
+          </AgentDetailSection>
+
+          <AgentDetailSection
+            title="Fähigkeiten"
+            subtitle="Was der Assistent für Anrufer tun darf"
+          >
+            <AgentCapabilitiesSection
+              agent={agent}
+              onAgentsChange={onAgentsChange}
+            />
+          </AgentDetailSection>
+
+          <AgentDetailSection
+            title="Charakter"
+            subtitle="Branche, Website, Begrüssung und Anweisungen"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1">
+                <LabeledField label="Branche">
                   <select
-                    value={selectedPhoneId}
-                    disabled={assigningPhone || !onAssignPhone}
-                    onChange={(e) => {
-                      const nextId = e.target.value;
-                      if (nextId) onAssignPhone?.(nextId);
-                    }}
+                    value={assistantBranch}
+                    onChange={(e) =>
+                      handleBranchChange(e.target.value as AssistantBranchId)
+                    }
                     className={fieldClass}
                   >
-                    <option value="">Telefonnummer wählen…</option>
-                    {phoneNumbers.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.phoneNumber}
-                        {p.label ? ` · ${p.label}` : ""}
+                    {ASSISTANT_BRANCH_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
+                </LabeledField>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleAiFill()}
+                disabled={aiLoading || saving}
+                className={cn(
+                  landingBtnPrimary,
+                  "inline-flex shrink-0 items-center gap-2 self-end sm:self-auto"
                 )}
-              </LabeledField>
-            )}
+              >
+                {aiLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {aiLoading ? "KI analysiert…" : "Mit KI ausfüllen"}
+              </button>
+            </div>
 
             <LabeledField label="Website">
               <input
@@ -773,43 +699,6 @@ export function AgentDetailPanel({
                 className={fieldClass}
               />
             </LabeledField>
-          </AgentDetailSection>
-
-          <AgentDetailSection
-            title="Inhalte"
-            subtitle="Branche, Begrüssung und Anweisungen"
-          >
-            <div className="grid gap-3 sm:grid-cols-2">
-              <LabeledField label="Branche">
-                <select
-                  value={assistantBranch}
-                  onChange={(e) =>
-                    handleBranchChange(e.target.value as AssistantBranchId)
-                  }
-                  className={fieldClass}
-                >
-                  {ASSISTANT_BRANCH_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </LabeledField>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void handleAiFill()}
-              disabled={aiLoading || saving}
-              className={cn(landingBtnPrimary, "inline-flex items-center gap-2")}
-            >
-              {aiLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              {aiLoading ? "KI analysiert…" : "Mit KI ausfüllen"}
-            </button>
 
             <LabeledField label="Begrüssung">
               <textarea
@@ -832,16 +721,6 @@ export function AgentDetailPanel({
                 {countInstructionWords(systemPrompt)} Wörter
               </p>
             </LabeledField>
-          </AgentDetailSection>
-
-          <AgentDetailSection
-            title="Integrationen"
-            subtitle="Kalender und weitere Anbindungen"
-          >
-            <AgentIntegrationsSection
-              agent={agent}
-              onAgentsChange={onAgentsChange}
-            />
           </AgentDetailSection>
 
           <AgentDetailSection title="Erweitert" subtitle="Compliance und Löschen">

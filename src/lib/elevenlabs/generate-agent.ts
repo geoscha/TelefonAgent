@@ -29,14 +29,17 @@ import {
 import type { AgentVoiceGender } from "@/lib/elevenlabs/pick-voice";
 import {
   greetingForAssistantName,
+  greetingForPrivateAssistantOwner,
   suggestAssistantName,
 } from "@/lib/elevenlabs/assistant-names";
 
 export interface GenerateAgentInput {
   branch: AssistantBranchId;
   website?: string;
-  gender: AgentVoiceGender;
+  gender?: AgentVoiceGender;
   language: AgentLanguageLabel;
+  /** Profilname des Nutzers — für Privaten Assistenten in Rolle und Begrüssung. */
+  ownerName?: string;
 }
 
 export interface GeneratedAgentDraft {
@@ -68,7 +71,20 @@ function defaultTypicalRequests(branch: AssistantBranchId): string {
   if (branch === "coiffeur") {
     return "- Termine für Haareschneiden und Behandlungen\n- Fragen zu Öffnungszeiten und Verfügbarkeit\n- Terminverschiebungen und Stornos";
   }
-  return "- Anrufe entgegennehmen und Anliegen aufnehmen\n- Rückrufwünsche notieren\n- Allgemeine Fragen beantworten";
+  return "- Termine vereinbaren und im Kalender eintragen\n- Anrufe entgegennehmen und Anliegen aufnehmen\n- Rückrufwünsche notieren\n- Allgemeine Fragen beantworten";
+}
+
+function resolveGeneratedGreeting(
+  input: GenerateAgentInput,
+  assistantName: string
+): string {
+  const language = normalizeAgentLanguage(input.language);
+  const branch = normalizeAssistantBranch(input.branch);
+  const ownerName = input.ownerName?.trim();
+  if (branch === "private_assistant" && ownerName) {
+    return greetingForPrivateAssistantOwner(ownerName, language);
+  }
+  return greetingForAssistantName(assistantName, language);
 }
 
 function buildFallbackSections(
@@ -79,6 +95,7 @@ function buildFallbackSections(
   const branch = normalizeAssistantBranch(input.branch);
   const industry = industryLabel(input);
   const parsed = parseSystemPrompt(buildSystemPrompt(agentName));
+  const ownerName = input.ownerName?.trim();
 
   const sonstigesParts: string[] = [];
   if (parsed.sonstiges.trim()) sonstigesParts.push(parsed.sonstiges.trim());
@@ -95,12 +112,20 @@ function buildFallbackSections(
     );
   } else {
     sonstigesParts.push(
+      "Termine flexibel planen — Dauer aus dem Anliegen schätzen (Arzt, Meeting, Mittagessen usw.)."
+    );
+    sonstigesParts.push(
       "Versprich keine verbindlichen Zusagen ohne Rückfrage beim Auftraggeber."
     );
   }
 
   return {
     ...parsed,
+    rolle:
+      branch === "private_assistant" && ownerName
+        ? parsed.rolle.trim() ||
+          `Du bist der virtuelle Telefonassistent von ${ownerName} und nimmst Anrufe für ${ownerName} entgegen.`
+        : parsed.rolle,
     typischeAnfragen: parsed.typischeAnfragen.trim() || defaultTypicalRequests(branch),
     branche: industry,
     ziel: "",
@@ -156,10 +181,9 @@ function fallbackDraft(
 ): GeneratedAgentDraft {
   const language = normalizeAgentLanguage(input.language);
   const branch = normalizeAssistantBranch(input.branch);
-  const industry = industryLabel(input);
-  const name = suggestAssistantName(input.gender);
+  const name = suggestAssistantName(input.gender ?? "female");
 
-  const greeting = greetingForAssistantName(name, language, industry);
+  const greeting = resolveGeneratedGreeting(input, name);
 
   return finalizeDraft(input, {
     name,
@@ -208,8 +232,24 @@ function sectionsFromAiResponse(
   return buildFallbackSections(input, fallbackName, websiteAnalyzed);
 }
 
-const AI_SYSTEM_PROMPT = (language: string, hasWebsite: boolean, branch: AssistantBranchId) =>
-  `Du konfigurierst KI-Telefonassistenten für Schweizer Kundinnen und Kunden.
+const AI_SYSTEM_PROMPT = (
+  language: string,
+  hasWebsite: boolean,
+  branch: AssistantBranchId,
+  ownerName?: string
+) => {
+  const owner = ownerName?.trim();
+  const privateOwnerRules =
+    branch === "private_assistant" && owner
+      ? `
+- Inhaber/in: ${owner}
+- Begrüssung (Vorgabe): "Guten Tag; Sie haben den virtuellen Assistenten von ${owner} erreicht." (Schweizerdeutsch: Grüezi; …)
+- rolle: Kurz beschreiben, dass du der virtuelle Assistent von ${owner} bist — Namen des Inhabers explizit nennen`
+      : branch === "private_assistant"
+        ? "\n- Privater Assistent: flexible Terminplanung — Dauer intelligent schätzen, Kalender nutzen"
+        : "";
+
+  return `Du konfigurierst KI-Telefonassistenten für Schweizer Kundinnen und Kunden.
 
 Branche: ${assistantBranchLabel(branch)}.
 Analysiere Branche${hasWebsite ? " und Website-Inhalt" : ""} und erstelle einen massgeschneiderten Telefonassistenten.
@@ -246,15 +286,21 @@ Regeln:
 - Nur das Nötigste — wenig Kontext, telefonisch umsetzbar${
     branch === "coiffeur"
       ? "\n- Coiffeur: Terminvereinbarung auf Namen ist zentral"
-      : "\n- Privater Assistent: keine Terminbuchung, Anliegen aufnehmen und weiterleiten"
+      : privateOwnerRules || "\n- Privater Assistent: flexible Terminplanung — Dauer intelligent schätzen, Kalender nutzen"
   }`;
+};
 
 export async function generateAgentDraft(
   input: GenerateAgentInput
 ): Promise<GeneratedAgentDraft> {
   const branch = normalizeAssistantBranch(input.branch);
   const language = normalizeAgentLanguage(input.language);
-  const genderLabel = input.gender === "male" ? "männlich" : "weiblich";
+  const genderLabel =
+    input.gender === "male"
+      ? "männlich"
+      : input.gender === "female"
+        ? "weiblich"
+        : null;
   const config = await getEnrichmentConfig();
 
   let websiteContext: { url: string; excerpt: string } | null = null;
@@ -269,13 +315,16 @@ export async function generateAgentDraft(
 
   const userBlock = [
     `Branche: ${industryLabel(input)}`,
+    input.ownerName?.trim()
+      ? `Inhaber/in (Profilname): ${input.ownerName.trim()}`
+      : null,
     input.website?.trim() ? `Website-URL: ${input.website.trim()}` : null,
     websiteContext
       ? `\n--- Kurzauszug von ${websiteContext.url} ---\n${websiteContext.excerpt.slice(0, 2500)}`
-      : input.website?.trim()
-        ? "\n(Hinweis: Website konnte nicht gelesen werden — nutze Branche und URL.)"
-        : null,
-    `Stimme: ${genderLabel}`,
+      :     input.website?.trim()
+      ? "\n(Hinweis: Website konnte nicht gelesen werden — nutze Branche und URL.)"
+      : null,
+    genderLabel ? `Stimme: ${genderLabel}` : null,
     `Sprache: ${language}`,
   ]
     .filter(Boolean)
@@ -295,7 +344,12 @@ export async function generateAgentDraft(
       messages: [
         {
           role: "system",
-          content: AI_SYSTEM_PROMPT(language, Boolean(websiteContext), branch),
+          content: AI_SYSTEM_PROMPT(
+            language,
+            Boolean(websiteContext),
+            branch,
+            input.ownerName
+          ),
         },
         { role: "user", content: userBlock },
       ],
@@ -326,11 +380,7 @@ export async function generateAgentDraft(
 
     return finalizeDraft(input, {
       name: fb.name,
-      greeting: greetingForAssistantName(
-        fb.name,
-        language,
-        industryLabel(input)
-      ),
+      greeting: resolveGeneratedGreeting(input, fb.name),
       sections,
       language,
       aiGenerated: true,

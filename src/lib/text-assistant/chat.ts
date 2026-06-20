@@ -7,6 +7,7 @@ import {
   type TextChannelKind,
 } from "@/lib/text-assistant/prompt";
 import { textAssistantTools } from "@/lib/text-assistant/tools";
+import type { BookedAppointmentInfo } from "@/lib/text-assistant/types";
 import type { StoredAgent } from "@/lib/onboarding-types";
 
 export type TextChatRole = "user" | "assistant";
@@ -51,6 +52,7 @@ export async function runTextAssistantTurn(input: {
   reply: string;
   history: TextChatTurn[];
   goalCompleted: boolean;
+  bookedAppointment?: BookedAppointmentInfo;
 }> {
   const config = await getEnrichmentConfig();
   if (!config.apiKey) {
@@ -74,6 +76,7 @@ export async function runTextAssistantTurn(input: {
   ];
 
   let goalCompleted = false;
+  let bookedAppointment: BookedAppointmentInfo | undefined;
   let reply = "";
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -135,6 +138,24 @@ export async function runTextAssistantTurn(input: {
 
         if (call.function.name === "book_appointment" && result.booked === true) {
           goalCompleted = true;
+          const eventId =
+            typeof result.eventId === "string" ? result.eventId : undefined;
+          const startIso =
+            typeof result.resolvedStartIso === "string"
+              ? result.resolvedStartIso
+              : undefined;
+          if (eventId && startIso) {
+            bookedAppointment = {
+              eventId,
+              startIso,
+              appointmentType:
+                typeof result.appointmentType === "string"
+                  ? result.appointmentType
+                  : undefined,
+              message:
+                typeof result.message === "string" ? result.message : undefined,
+            };
+          }
         }
         if (
           call.function.name === "cancel_appointment" &&
@@ -168,5 +189,5 @@ export async function runTextAssistantTurn(input: {
     { role: "assistant", content: reply },
   ];
 
-  return { reply, history: nextHistory, goalCompleted };
+  return { reply, history: nextHistory, goalCompleted, bookedAppointment };
 }

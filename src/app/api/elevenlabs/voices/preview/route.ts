@@ -16,6 +16,10 @@ import {
 } from "@/lib/elevenlabs/client";
 import { synthesizeElevenLabsSpeech } from "@/lib/elevenlabs/tts-synthesize";
 import { buildVoicePreviewPhrase } from "@/lib/elevenlabs/voice-preview";
+import {
+  PHONE_NUMBER_REQUIRED_MESSAGE,
+  userHasPhoneNumbers,
+} from "@/lib/phone/numbers";
 import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +60,13 @@ export async function POST(req: Request) {
     );
 
     if (customText) {
+      if (!(await userHasPhoneNumbers(userId))) {
+        return NextResponse.json(
+          { ok: false, error: PHONE_NUMBER_REQUIRED_MESSAGE },
+          { status: 403 }
+        );
+      }
+
       const balance = await getTokenBalanceAmount(userId);
       if (balance < GREETING_PREVIEW_COST_TOKENS) {
         return NextResponse.json(

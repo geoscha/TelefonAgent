@@ -17,7 +17,9 @@ import {
 import { getAgentCalendarIntegration, resolveConnectedCalendarProvider } from "@/lib/integrations/agent-calendar";
 import {
   normalizeAppointmentConfig,
+  resolveAppointmentDurationMinutes,
   resolveAppointmentType,
+  isFlexibleScheduling,
 } from "@/lib/integrations/appointment-config";
 import {
   isWithinBusinessHours,
@@ -190,15 +192,24 @@ export async function bookAppointmentForAgent(
     };
   }
 
-  const duration = Math.min(
-    Math.max(input.durationMinutes ?? appointmentType.durationMinutes, 5),
-    240
+  const duration = resolveAppointmentDurationMinutes(
+    appointmentConfig,
+    appointmentType,
+    input.durationMinutes
   );
   const end = new Date(start.getTime() + duration * 60_000);
   const attendeeName = input.attendeeName.trim();
-  const title = formatAppointmentTitle(appointmentType.label, attendeeName);
+  const eventLabel =
+    isFlexibleScheduling(appointmentConfig) && input.title?.trim()
+      ? input.title.trim()
+      : appointmentType.label;
+  const title = formatAppointmentTitle(eventLabel, attendeeName);
 
-  if (!isPostCall && !isWithinBusinessHours(start, end, businessHours)) {
+  if (
+    !isPostCall &&
+    !isFlexibleScheduling(appointmentConfig) &&
+    !isWithinBusinessHours(start, end, businessHours)
+  ) {
     return {
       ok: false,
       booked: false,
