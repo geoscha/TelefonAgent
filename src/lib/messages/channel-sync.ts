@@ -4,7 +4,6 @@ import { syncGmailInbox } from "@/lib/integrations/mail/gmail-sync";
 import { analyzePendingThreads } from "@/lib/messages/inquiry-service";
 import { listOpenThreadListItems } from "@/lib/messages/inquiry-store";
 import {
-  listMessagesForChannel,
   listThreadsForChannel,
 } from "@/lib/messages/store";
 import type { MessageInquiryListItem } from "@/lib/messages/inquiry-types";

@@ -150,6 +150,89 @@ Pflichtangaben müssen vollständig sein, bevor der Workflow abgeschlossen wird.
   sortOrder: 0,
 };
 
+export const DEFAULT_GENERAL_INQUIRY_WORKFLOW_INPUT: GovernanceWorkflowInput = {
+  slug: "allgemeine-auskunft",
+  name: "Allgemeine Auskunft (Wissensdatenbank)",
+  description:
+    "Beantwortung allgemeiner Fragen anhand der hinterlegten Wissensdatenbank — mündlich am Telefon oder als Nachrichtenentwurf.",
+  triggerIntent:
+    "Kunde stellt eine allgemeine Informationsfrage zu Öffnungszeiten, Leistungen, Kontakt, Abläufen, Nebenkosten, Hausordnung oder ähnlichen Themen, die sich aus der Wissensdatenbank beantworten lassen — kein Schadenfall und kein Terminwunsch.",
+  goals: [
+    "Frage präzise verstehen und einem Wissensbereich zuordnen",
+    "Antwort ausschliesslich aus der Wissensdatenbank (Website, FAQ, Betreiber-Infos) geben",
+    "Am Telefon: mündlich, kurz und verständlich erklären",
+    "Bei Nachrichten: vollständigen Antwortentwurf formulieren",
+    "Bei fehlender Information: ehrlich sagen und Rückruf oder Nachverfolgung anbieten",
+  ],
+  requiredSlots: [
+    {
+      key: "inquiry_topic",
+      label: "Thema der Anfrage",
+      description: "Worum genau es geht",
+    },
+    {
+      key: "answer_basis",
+      label: "Antwortgrundlage",
+      description: "Welche Wissensquelle genutzt wurde",
+    },
+  ],
+  optionalSlots: [
+    {
+      key: "follow_up_needed",
+      label: "Nachverfolgung nötig",
+      description: "Falls die Frage nicht vollständig beantwortet werden konnte",
+    },
+  ],
+  businessRules: `Nutze ausschliesslich Fakten aus der Wissensdatenbank (Betreiber-Website, Assistent-FAQ, hinterlegte Betreiber-Informationen).
+Keine Spekulation, keine erfundenen Öffnungszeiten, Preise oder Policies.
+Wenn die Wissensdatenbank die Frage nicht abdeckt: Anliegen aufnehmen und an einen Menschen weitergeben — nicht raten.
+Dieser Workflow gilt nur, wenn eindeutig keine Schadensmeldung und kein Terminwunsch vorliegt.
+Bei mehrteiligen Fragen: jeden Teil einzeln prüfen — beantworten, was klar in der Wissensdatenbank steht, Rest offen lassen.`,
+  voiceVariant: {
+    instructions:
+      "Beantworte die Frage direkt und mündlich in 1–3 Sätzen. Nutze die Wissensdatenbank implizit — sage nicht «laut Wissensdatenbank».",
+    slotCollection:
+      "Falls unklar, stelle eine gezielte Rückfrage zum Thema, nicht zu Pflichtfeldern.",
+    escalation:
+      "Wenn die Antwort nicht in der Wissensdatenbank steht oder rechtlich/heikel ist: Anliegen aufnehmen und an einen Menschen weiterleiten.",
+  },
+  messageVariant: {
+    instructions:
+      "Formuliere einen vollständigen, versandfertigen Antwortentwurf mit Anrede und Abschluss. Formuliere Fakten aus der Wissensdatenbank natürlich um, nicht wörtlich zitieren.",
+    slotCollection:
+      "Falls Informationen fehlen, liste offene Punkte am Ende des Entwurfs auf.",
+    escalation:
+      "Wenn die Wissensdatenbank keine Antwort liefert: Entwurf mit Bitte um Rückmeldung durch die Verwaltung und Hinweis, dass die Anfrage weitergeleitet wird.",
+  },
+  fallback:
+    "Bei Unsicherheit: ehrlich mitteilen, dass die Information nachgeprüft wird. Niemals etwas erfinden. Bei Wiederholungsfragen kurz bestätigen und ggf. Rückruf anbieten.",
+  outputSchema: [
+    { key: "inquiry_topic", label: "Thema", type: "text" },
+    { key: "answer_basis", label: "Antwortgrundlage", type: "text" },
+    { key: "fully_answered", label: "Vollständig beantwortet", type: "boolean" },
+    { key: "follow_up_needed", label: "Nachverfolgung", type: "boolean" },
+  ],
+  examples: [
+    {
+      channel: "voice",
+      dialogue:
+        "Kunde: «Wie sind Ihre Öffnungszeiten?»\nAgent: «Wir sind montags bis freitags von 8 bis 12 und 14 bis 17 Uhr erreichbar. Kann ich Ihnen sonst noch weiterhelfen?»",
+    },
+    {
+      channel: "message",
+      dialogue:
+        "Kunde: «Wo finde ich Informationen zur Nebenkostenabrechnung?»\nEntwurf: «Guten Tag, vielen Dank für Ihre Nachricht. Die Nebenkostenabrechnung erhalten Sie jährlich per Post und auf Wunsch zusätzlich per E-Mail. Detaillierte Informationen finden Sie auch auf unserer Website unter «Mieterservice». Bei konkreten Fragen zu Ihrer Abrechnung helfen wir Ihnen gerne persönlich weiter.»",
+    },
+  ],
+  enabledGlobally: true,
+  sortOrder: 1,
+};
+
+export const DEFAULT_GOVERNANCE_WORKFLOWS: GovernanceWorkflowInput[] = [
+  DEFAULT_DAMAGE_WORKFLOW_INPUT,
+  DEFAULT_GENERAL_INQUIRY_WORKFLOW_INPUT,
+];
+
 export function emptyWorkflowChannelVariant() {
   return { instructions: "", slotCollection: "", escalation: "" };
 }

@@ -1,8 +1,8 @@
 import "server-only";
 
 import {
-  DEFAULT_DAMAGE_WORKFLOW_INPUT,
   DEFAULT_GOVERNANCE_CONFIG,
+  DEFAULT_GOVERNANCE_WORKFLOWS,
   normalizeWorkflow,
 } from "@/lib/governance/defaults";
 import type {
@@ -93,15 +93,20 @@ async function ensureConfigRow() {
   }
 }
 
-async function ensureDefaultWorkflow() {
+async function ensureDefaultWorkflows() {
   const admin = createAdminClient();
-  const { count } = await admin
-    .from("agent_governance_workflows")
-    .select("id", { count: "exact", head: true });
 
-  if ((count ?? 0) > 0) return;
+  for (const workflow of DEFAULT_GOVERNANCE_WORKFLOWS) {
+    const { data } = await admin
+      .from("agent_governance_workflows")
+      .select("id")
+      .eq("slug", workflow.slug)
+      .maybeSingle();
 
-  await admin.from("agent_governance_workflows").insert(workflowToRow(DEFAULT_DAMAGE_WORKFLOW_INPUT));
+    if (!data) {
+      await admin.from("agent_governance_workflows").insert(workflowToRow(workflow));
+    }
+  }
 }
 
 export async function getGovernanceDraft(): Promise<{
@@ -109,7 +114,7 @@ export async function getGovernanceDraft(): Promise<{
   currentVersion: number;
 }> {
   await ensureConfigRow();
-  await ensureDefaultWorkflow();
+  await ensureDefaultWorkflows();
 
   const admin = createAdminClient();
   const { data, error } = await admin
@@ -153,7 +158,7 @@ export async function updateGovernanceDraft(
 }
 
 export async function listGovernanceWorkflows(): Promise<GovernanceWorkflow[]> {
-  await ensureDefaultWorkflow();
+  await ensureDefaultWorkflows();
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("agent_governance_workflows")
@@ -347,7 +352,9 @@ export async function rollbackGovernanceVersion(
   for (const workflow of snapshot.workflows) {
     const existing = await getGovernanceWorkflow(workflow.id);
     if (existing) {
-      const { id, createdAt, updatedAt, ...rest } = workflow;
+      const { id, createdAt: _createdAt, updatedAt: _updatedAt, ...rest } = workflow;
+      void _createdAt;
+      void _updatedAt;
       await updateGovernanceWorkflow(id, rest);
     }
   }
