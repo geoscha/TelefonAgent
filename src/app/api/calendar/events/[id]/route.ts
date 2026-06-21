@@ -6,10 +6,15 @@ import {
   resolveConnectedCalendarProvider,
 } from "@/lib/calendar";
 import {
+  markCalendarMirrorCancelled,
+  updateCalendarMirrorEvent,
+} from "@/lib/integrations/calendar-mirror/store";
+import {
   getCalendars,
   upsertCalendar,
   type CalendarProvider,
 } from "@/lib/store";
+import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -54,10 +59,19 @@ export async function PATCH(
       eventUrl?: string;
       startIso?: string;
       endIso?: string;
+      title?: string;
     };
 
     const startIso = body.startIso?.trim();
     const endIso = body.endIso?.trim();
+    const title =
+      typeof body.title === "string" ? body.title.trim() : undefined;
+    if (title !== undefined && title.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Titel darf nicht leer sein." },
+        { status: 400 }
+      );
+    }
     if (!startIso || !endIso) {
       return NextResponse.json(
         { ok: false, error: "Start- und Endzeit werden benötigt." },
@@ -88,9 +102,23 @@ export async function PATCH(
         eventUrl: body.eventUrl?.trim(),
         startIso,
         endIso,
+        title,
       },
       ctx
     );
+
+    // Keep the Supabase mirror consistent so the calendar view reflects the
+    // change immediately (the view reads from the mirror, not live).
+    try {
+      const userId = await requireUserId();
+      await updateCalendarMirrorEvent(userId, provider, eventId, {
+        title,
+        startIso,
+        endIso,
+      });
+    } catch (mirrorError) {
+      console.error("[calendar/events/:id PATCH] mirror update failed", mirrorError);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -147,6 +175,14 @@ export async function DELETE(
 
     const { ctx } = await buildCalendarContext(provider);
     await deleteCalendarEvent(provider, eventId, ctx, eventUrl);
+
+    // Drop it from the mirror too so the (mirror-backed) view stays correct.
+    try {
+      const userId = await requireUserId();
+      await markCalendarMirrorCancelled(userId, provider, eventId);
+    } catch (mirrorError) {
+      console.error("[calendar/events/:id DELETE] mirror update failed", mirrorError);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

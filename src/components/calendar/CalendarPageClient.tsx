@@ -254,7 +254,8 @@ async function createCalendarEventRequest(input: {
 async function patchCalendarEvent(
   event: CalendarEvent,
   startIso: string,
-  endIso: string
+  endIso: string,
+  title?: string
 ): Promise<void> {
   const res = await fetch(`/api/calendar/events/${encodeURIComponent(event.id)}`, {
     method: "PATCH",
@@ -263,11 +264,12 @@ async function patchCalendarEvent(
       eventUrl: event.eventUrl,
       startIso,
       endIso,
+      ...(title !== undefined ? { title } : {}),
     }),
   });
   const data = (await res.json()) as { ok?: boolean; error?: string };
   if (!res.ok || !data.ok) {
-    throw new Error(data.error ?? "Termin konnte nicht verschoben werden.");
+    throw new Error(data.error ?? "Termin konnte nicht gespeichert werden.");
   }
 }
 
@@ -387,11 +389,18 @@ export function CalendarPageClient() {
   );
 
   const handleReschedule = useCallback(
-    async (event: CalendarEvent, startIso: string, endIso: string) => {
+    async (
+      event: CalendarEvent,
+      startIso: string,
+      endIso: string,
+      title?: string
+    ) => {
       setMutating(true);
       setActionError(null);
+      const nextTitle = title?.trim() ? title.trim() : event.title;
       const optimistic: CalendarEvent = {
         ...event,
+        title: nextTitle,
         startIso,
         endIso,
         dayIso: eventDayIso(startIso),
@@ -400,7 +409,12 @@ export function CalendarPageClient() {
         prev.map((item) => (item.id === event.id ? optimistic : item))
       );
       try {
-        await patchCalendarEvent(event, startIso, endIso);
+        await patchCalendarEvent(
+          event,
+          startIso,
+          endIso,
+          nextTitle === event.title ? undefined : nextTitle
+        );
         setSelectedEvent(null);
         await loadEvents({ silent: true });
       } catch (err) {
@@ -408,7 +422,7 @@ export function CalendarPageClient() {
           prev.map((item) => (item.id === event.id ? event : item))
         );
         setActionError(
-          err instanceof Error ? err.message : "Termin konnte nicht verschoben werden."
+          err instanceof Error ? err.message : "Termin konnte nicht gespeichert werden."
         );
       } finally {
         setMutating(false);
@@ -645,7 +659,12 @@ function CalendarWeekGrid({
   refreshing: boolean;
   showInitialPlaceholder: boolean;
   onSelectEvent: (event: CalendarEvent) => void;
-  onReschedule: (event: CalendarEvent, startIso: string, endIso: string) => Promise<void>;
+  onReschedule: (
+    event: CalendarEvent,
+    startIso: string,
+    endIso: string,
+    title?: string
+  ) => Promise<void>;
   onVisibleStartChange: (date: Date) => void;
 }) {
   const layout = SCROLL_LAYOUT;
@@ -1185,23 +1204,30 @@ function EventDetailDialog({
   event: CalendarEvent | null;
   mutating: boolean;
   onClose: () => void;
-  onReschedule: (event: CalendarEvent, startIso: string, endIso: string) => Promise<void>;
+  onReschedule: (
+    event: CalendarEvent,
+    startIso: string,
+    endIso: string,
+    title?: string
+  ) => Promise<void>;
   onDelete: (event: CalendarEvent) => Promise<void>;
 }) {
+  const [title, setTitle] = useState("");
   const [startLocal, setStartLocal] = useState("");
   const [endLocal, setEndLocal] = useState("");
 
   useEffect(() => {
     if (!event) return;
+    setTitle(event.title);
     setStartLocal(isoToDatetimeLocal(event.startIso));
     setEndLocal(isoToDatetimeLocal(event.endIso));
   }, [event]);
 
-  const handleSaveMove = async () => {
+  const handleSave = async () => {
     if (!event) return;
     const startIso = datetimeLocalToIso(startLocal);
     const endIso = datetimeLocalToIso(endLocal);
-    await onReschedule(event, startIso, endIso);
+    await onReschedule(event, startIso, endIso, title);
   };
 
   return (
@@ -1237,7 +1263,18 @@ function EventDetailDialog({
                 <p className="text-[13px] text-[#99A0AE]">Dieser Termin wurde storniert.</p>
               ) : (
                 <div className="space-y-3 rounded-lg border border-[#E1E4EA] bg-[#FAFAFA] p-3">
-                  <p className="text-[12px] font-medium text-[#525866]">Termin verschieben</p>
+                  <p className="text-[12px] font-medium text-[#525866]">Termin bearbeiten</p>
+                  <label className="block space-y-1">
+                    <span className="text-[11px] text-[#99A0AE]">Titel</span>
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Titel des Termins"
+                      className="h-9 w-full rounded border border-[#E1E4EA] bg-white px-2 text-[13px] text-[#0E121B] placeholder:text-[#99A0AE]"
+                      disabled={mutating}
+                    />
+                  </label>
                   <label className="block space-y-1">
                     <span className="text-[11px] text-[#99A0AE]">Beginn</span>
                     <input
@@ -1261,10 +1298,10 @@ function EventDetailDialog({
                   <button
                     type="button"
                     className="inline-flex h-9 w-full items-center justify-center rounded bg-[#1e40af] text-[13px] text-white hover:bg-[#1e3a8a] disabled:opacity-60"
-                    onClick={() => void handleSaveMove()}
-                    disabled={mutating}
+                    onClick={() => void handleSave()}
+                    disabled={mutating || !title.trim()}
                   >
-                    {mutating ? "Speichern…" : "Verschieben"}
+                    {mutating ? "Speichern…" : "Speichern"}
                   </button>
                   <p className="text-[11px] text-[#99A0AE]">
                     Tipp: Termine können auch per Drag &amp; Drop im Kalender verschoben werden.

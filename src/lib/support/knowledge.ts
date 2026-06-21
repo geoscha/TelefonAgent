@@ -32,6 +32,12 @@ export const SUPPORT_NAV_PAGES: SupportNavPage[] = [
       "Schriftliche Konversationen (E-Mail, WhatsApp, Chat) des Assistenten.",
   },
   {
+    path: "/kunden",
+    label: "Kunden",
+    description:
+      "Mieter- und Kundenstammdaten aus verbundener Immobiliensoftware oder Excel, inkl. Termine.",
+  },
+  {
     path: "/telefonagent",
     label: "KI-Assistenten",
     description:

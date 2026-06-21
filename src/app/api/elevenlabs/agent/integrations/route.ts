@@ -47,6 +47,9 @@ interface Body {
   };
   escalationPhoneNumber?: string;
   medicalGuardrailsEnabled?: boolean;
+  customerAccessName?: boolean;
+  customerAccessPhone?: boolean;
+  customerAccessAddress?: boolean;
 }
 
 async function syncLiveAgentPrompt(
@@ -180,6 +183,15 @@ export async function POST(req: NextRequest) {
         : {}),
       ...(typeof body.medicalGuardrailsEnabled === "boolean"
         ? { medicalGuardrailsEnabled: body.medicalGuardrailsEnabled }
+        : {}),
+      ...(typeof body.customerAccessName === "boolean"
+        ? { customerAccessName: body.customerAccessName }
+        : {}),
+      ...(typeof body.customerAccessPhone === "boolean"
+        ? { customerAccessPhone: body.customerAccessPhone }
+        : {}),
+      ...(typeof body.customerAccessAddress === "boolean"
+        ? { customerAccessAddress: body.customerAccessAddress }
         : {}),
     };
 

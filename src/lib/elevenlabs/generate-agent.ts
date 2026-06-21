@@ -29,7 +29,6 @@ import {
 import type { AgentVoiceGender } from "@/lib/elevenlabs/pick-voice";
 import {
   greetingForAssistantName,
-  greetingForPrivateAssistantOwner,
   suggestAssistantName,
 } from "@/lib/elevenlabs/assistant-names";
 
@@ -67,11 +66,8 @@ function industryLabel(input: GenerateAgentInput): string {
   return assistantBranchLabel(normalizeAssistantBranch(input.branch));
 }
 
-function defaultTypicalRequests(branch: AssistantBranchId): string {
-  if (branch === "coiffeur") {
-    return "- Termine für Haareschneiden und Behandlungen\n- Fragen zu Öffnungszeiten und Verfügbarkeit\n- Terminverschiebungen und Stornos";
-  }
-  return "- Termine vereinbaren und im Kalender eintragen\n- Anrufe entgegennehmen und Anliegen aufnehmen\n- Rückrufwünsche notieren\n- Allgemeine Fragen beantworten";
+function defaultTypicalRequests(): string {
+  return "- Reparatur- und Schadensmeldungen aufnehmen\n- Termine für Schlüsselübergabe, Besichtigung oder Wohnungsabnahme vereinbaren\n- Nachrichten für die Verwaltung entgegennehmen\n- Fragen zu Miete, Nebenkosten und Liegenschaft weiterleiten";
 }
 
 function resolveGeneratedGreeting(
@@ -79,11 +75,6 @@ function resolveGeneratedGreeting(
   assistantName: string
 ): string {
   const language = normalizeAgentLanguage(input.language);
-  const branch = normalizeAssistantBranch(input.branch);
-  const ownerName = input.ownerName?.trim();
-  if (branch === "private_assistant" && ownerName) {
-    return greetingForPrivateAssistantOwner(ownerName, language);
-  }
   return greetingForAssistantName(assistantName, language);
 }
 
@@ -92,10 +83,8 @@ function buildFallbackSections(
   agentName: string,
   websiteAnalyzed: boolean
 ): PromptSections {
-  const branch = normalizeAssistantBranch(input.branch);
   const industry = industryLabel(input);
   const parsed = parseSystemPrompt(buildSystemPrompt(agentName));
-  const ownerName = input.ownerName?.trim();
 
   const sonstigesParts: string[] = [];
   if (parsed.sonstiges.trim()) sonstigesParts.push(parsed.sonstiges.trim());
@@ -103,30 +92,19 @@ function buildFallbackSections(
     sonstigesParts.push(
       websiteAnalyzed
         ? `Nutze Informationen von der Website ${input.website.trim()} in den Antworten.`
-        : `Website des Unternehmens: ${input.website.trim()}`
+        : `Website der Verwaltung: ${input.website.trim()}`
     );
   }
-  if (branch === "coiffeur") {
-    sonstigesParts.push(
-      "Termine nur auf Namen vereinbaren — Datum und Uhrzeit müssen klar bestätigt werden."
-    );
-  } else {
-    sonstigesParts.push(
-      "Termine flexibel planen — Dauer aus dem Anliegen schätzen (Arzt, Meeting, Mittagessen usw.)."
-    );
-    sonstigesParts.push(
-      "Versprich keine verbindlichen Zusagen ohne Rückfrage beim Auftraggeber."
-    );
-  }
+  sonstigesParts.push(
+    "Bei jedem Anliegen Liegenschaft/Adresse und Wohnung erfassen; Reparaturen mit kurzer Schadensbeschreibung aufnehmen."
+  );
+  sonstigesParts.push(
+    "Keine verbindlichen Zusagen zu Kosten oder Fristen — die Verwaltung meldet sich zurück."
+  );
 
   return {
     ...parsed,
-    rolle:
-      branch === "private_assistant" && ownerName
-        ? parsed.rolle.trim() ||
-          `Du bist der virtuelle Telefonassistent von ${ownerName} und nimmst Anrufe für ${ownerName} entgegen.`
-        : parsed.rolle,
-    typischeAnfragen: parsed.typischeAnfragen.trim() || defaultTypicalRequests(branch),
+    typischeAnfragen: parsed.typischeAnfragen.trim() || defaultTypicalRequests(),
     branche: industry,
     ziel: "",
     sonstiges: sonstigesParts.join("\n\n"),
@@ -180,7 +158,6 @@ function fallbackDraft(
   websiteContext: { url: string; excerpt: string } | null = null
 ): GeneratedAgentDraft {
   const language = normalizeAgentLanguage(input.language);
-  const branch = normalizeAssistantBranch(input.branch);
   const name = suggestAssistantName(input.gender ?? "female");
 
   const greeting = resolveGeneratedGreeting(input, name);
@@ -192,10 +169,7 @@ function fallbackDraft(
     language,
     aiGenerated: false,
     websiteAnalyzed,
-    businessHours:
-      branch === "coiffeur"
-        ? resolveBusinessHoursFromWebsite(websiteContext)
-        : undefined,
+    businessHours: resolveBusinessHoursFromWebsite(websiteContext),
   });
 }
 
@@ -235,24 +209,12 @@ function sectionsFromAiResponse(
 const AI_SYSTEM_PROMPT = (
   language: string,
   hasWebsite: boolean,
-  branch: AssistantBranchId,
-  ownerName?: string
+  branch: AssistantBranchId
 ) => {
-  const owner = ownerName?.trim();
-  const privateOwnerRules =
-    branch === "private_assistant" && owner
-      ? `
-- Inhaber/in: ${owner}
-- Begrüssung (Vorgabe): "Guten Tag; Sie haben den virtuellen Assistenten von ${owner} erreicht." (Schweizerdeutsch: Grüezi; …)
-- rolle: Kurz beschreiben, dass du der virtuelle Assistent von ${owner} bist — Namen des Inhabers explizit nennen`
-      : branch === "private_assistant"
-        ? "\n- Privater Assistent: flexible Terminplanung — Dauer intelligent schätzen, Kalender nutzen"
-        : "";
-
-  return `Du konfigurierst KI-Telefonassistenten für Schweizer Kundinnen und Kunden.
+  return `Du konfigurierst KI-Telefonassistenten für Schweizer Immobilienverwaltungen.
 
 Branche: ${assistantBranchLabel(branch)}.
-Analysiere Branche${hasWebsite ? " und Website-Inhalt" : ""} und erstelle einen massgeschneiderten Telefonassistenten.
+Analysiere die Verwaltung${hasWebsite ? " und den Website-Inhalt" : ""} und erstelle einen massgeschneiderten Telefonassistenten.
 
 Antworte NUR als JSON:
 {
@@ -271,23 +233,20 @@ Antworte NUR als JSON:
 }
 
 Fülle die sections knapp aus — insgesamt höchstens ${MAX_AGENT_INSTRUCTION_PARAGRAPHS} Absätze und ${MAX_AGENT_INSTRUCTION_WORDS} Wörter im fertigen Anweisungstext:
-- rolle: 1 kurzer Satz, wer der Assistent ist
-- leistungen: 2–3 Bulletpoints, was der Assistent darf
+- rolle: 1 kurzer Satz, dass der Assistent Anrufe für eine Immobilienverwaltung entgegennimmt
+- leistungen: 2–3 Bulletpoints (Reparatur-/Schadensmeldungen aufnehmen, Termine vereinbaren, Nachrichten für die Verwaltung)
 - typischeAnfragen: 2–3 häufige Anliegen${hasWebsite ? " (nur Wesentliches aus Website)" : ""}
-- gespraechsfuehrung: Ton, Rückfragen, keine verbindlichen Zusagen
-- eskalation: wann an Menschen übergeben
+- gespraechsfuehrung: Ton, Rückfragen (Liegenschaft/Adresse, Wohnung, Anliegen), keine verbindlichen Zusagen zu Kosten/Fristen
+- eskalation: bei Notfällen (Wasserschaden, Heizungsausfall, kein Strom) sofort weiterleiten/Rückruf zusichern
 - abschluss: kurz Verabschiedung
-- branche: 1 Satz Kontext zur gewählten Branche
+- branche: 1 Satz Kontext zur Immobilienverwaltung
 - sonstiges: nur wenn nötig, 1 kurzer Hinweis
 
 Regeln:
 - Sprache: ${language}
-- Keine Emojis, keine langen Texte, kein Marketing-Floskeln
-- Nur das Nötigste — wenig Kontext, telefonisch umsetzbar${
-    branch === "coiffeur"
-      ? "\n- Coiffeur: Terminvereinbarung auf Namen ist zentral"
-      : privateOwnerRules || "\n- Privater Assistent: flexible Terminplanung — Dauer intelligent schätzen, Kalender nutzen"
-  }`;
+- Keine Emojis, keine langen Texte, keine Marketing-Floskeln
+- Nur das Nötigste — wenig Kontext, telefonisch umsetzbar
+- Zentral: Liegenschaft/Adresse und Wohnung erfassen, Reparaturen mit kurzer Schadensbeschreibung, Termine für Schlüsselübergabe/Besichtigung/Abnahme`;
 };
 
 export async function generateAgentDraft(
@@ -344,12 +303,7 @@ export async function generateAgentDraft(
       messages: [
         {
           role: "system",
-          content: AI_SYSTEM_PROMPT(
-            language,
-            Boolean(websiteContext),
-            branch,
-            input.ownerName
-          ),
+          content: AI_SYSTEM_PROMPT(language, Boolean(websiteContext), branch),
         },
         { role: "user", content: userBlock },
       ],
@@ -385,10 +339,7 @@ export async function generateAgentDraft(
       language,
       aiGenerated: true,
       websiteAnalyzed,
-      businessHours:
-        branch === "coiffeur"
-          ? resolveBusinessHoursFromWebsite(websiteContext)
-          : undefined,
+      businessHours: resolveBusinessHoursFromWebsite(websiteContext),
     });
   } catch {
     return fallbackDraft(input, websiteAnalyzed, websiteContext);

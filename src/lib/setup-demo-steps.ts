@@ -28,19 +28,11 @@ export const SETUP_DEMO_GUIDE: SetupDemoGuideStep[] = [
     advanceOnClick: true,
   },
   {
-    id: "agent_branche",
-    phase: "agent",
-    target: "setup-demo-agent-branche",
-    title: "Branche angeben",
-    body: "Geben Sie Ihre Branche ein, z. B. Immobilienverwaltung oder Handwerk.",
-    textInput: true,
-  },
-  {
     id: "agent_website",
     phase: "agent",
     target: "setup-demo-agent-website",
-    title: "Website (optional)",
-    body: "Tragen Sie optional Ihre Website ein und klicken Sie auf Weiter — oder überspringen Sie den Schritt.",
+    title: "Website der Verwaltung (optional)",
+    body: "Tragen Sie optional die Website Ihrer Immobilienverwaltung ein und klicken Sie auf Weiter — oder überspringen Sie den Schritt.",
     textInputOptional: true,
   },
   {

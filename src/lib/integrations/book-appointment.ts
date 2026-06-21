@@ -15,6 +15,8 @@ import {
   findOverlappingEvents,
 } from "@/lib/calendar/slot-validation";
 import { getAgentCalendarIntegration, resolveConnectedCalendarProvider } from "@/lib/integrations/agent-calendar";
+import { getAgentDayEvents } from "@/lib/integrations/calendar-mirror/sync";
+import { upsertCalendarMirrorEvent } from "@/lib/integrations/calendar-mirror/store";
 import {
   normalizeAppointmentConfig,
   resolveAppointmentDurationMinutes,
@@ -227,11 +229,13 @@ export async function bookAppointmentForAgent(
   const dayIso = dayIsoFromStart(start.toISOString(), businessHours.timeZone);
 
   try {
-    const dayEvents = await listCalendarEventsOnDay(
+    const dayEvents = await getAgentDayEvents({
+      userId,
       provider,
+      ctx: calendarCtx,
       dayIso,
-      calendarCtx
-    );
+      timeZone: businessHours.timeZone,
+    });
 
     const duplicate = findDuplicateAgentBooking(
       dayEvents,
@@ -319,6 +323,22 @@ export async function bookAppointmentForAgent(
         message:
           "Termin wurde geschrieben, ist im Kalender aber noch nicht sichtbar — book_appointment erneut aufrufen.",
       };
+    }
+
+    // Keep the mirror consistent for the rest of the call without a re-pull.
+    try {
+      await upsertCalendarMirrorEvent(userId, provider, {
+        id: event.id,
+        title,
+        description: buildAgentBookedDescription(descriptionParts),
+        startIso: start.toISOString(),
+        endIso: end.toISOString(),
+        eventUrl: event.htmlLink,
+        cancelled: false,
+        agentCreated: true,
+      });
+    } catch (mirrorError) {
+      console.error("[book-appointment] mirror update failed", mirrorError);
     }
 
     const calendarNote =

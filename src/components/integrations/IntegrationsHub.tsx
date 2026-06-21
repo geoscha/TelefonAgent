@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { CalendarIntegrations } from "@/components/integrations/CalendarIntegrations";
 import { MailIntegrations } from "@/components/integrations/MailIntegrations";
+import { PropertySoftwareIntegrations } from "@/components/integrations/PropertySoftwareIntegrations";
+import { SmsIntegrations } from "@/components/integrations/SmsIntegrations";
 import { Input } from "@/components/ui/input";
 import { PROVIDER_META } from "@/lib/calendar/provider-meta";
 import { integrationSearchHasResults } from "@/lib/integrations/search";
 import { MAIL_PROVIDER_META } from "@/lib/integrations/mail/provider-meta";
+import { PROPERTY_SOFTWARE_PROVIDER_META } from "@/lib/integrations/property-software/provider-meta";
+import { SMS_PROVIDER_META } from "@/lib/integrations/sms/provider-meta";
+import {
+  sortIntegrationCards,
+  type IntegrationCardEntry,
+} from "@/lib/integrations/sort";
 import { userPanelClass } from "@/components/user/user-styles";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +27,21 @@ export function IntegrationsHub() {
   const router = useRouter();
   const handledQuery = useRef(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [calendarCards, setCalendarCards] = useState<IntegrationCardEntry[]>([]);
+  const [mailCards, setMailCards] = useState<IntegrationCardEntry[]>([]);
+  const [propertyCards, setPropertyCards] = useState<IntegrationCardEntry[]>([]);
+  const [smsCards, setSmsCards] = useState<IntegrationCardEntry[]>([]);
+
+  const sortedCards = useMemo(
+    () =>
+      sortIntegrationCards([
+        ...calendarCards,
+        ...mailCards,
+        ...propertyCards,
+        ...smsCards,
+      ]),
+    [calendarCards, mailCards, propertyCards, smsCards]
+  );
 
   const hasResults = useMemo(
     () => integrationSearchHasResults(searchQuery),
@@ -39,6 +62,20 @@ export function IntegrationsHub() {
         const provider = connected.replace("mail_", "") as keyof typeof MAIL_PROVIDER_META;
         const meta = MAIL_PROVIDER_META[provider];
         toast.success(meta ? `${meta.name} verbunden` : "E-Mail verbunden");
+      } else if (connected.startsWith("property_")) {
+        const providerId = connected.replace(
+          "property_",
+          ""
+        ) as keyof typeof PROPERTY_SOFTWARE_PROVIDER_META;
+        const meta = PROPERTY_SOFTWARE_PROVIDER_META[providerId];
+        toast.success(meta ? `${meta.name} verbunden` : "ERP verbunden");
+      } else if (connected.startsWith("sms_")) {
+        const providerId = connected.replace(
+          "sms_",
+          ""
+        ) as keyof typeof SMS_PROVIDER_META;
+        const meta = SMS_PROVIDER_META[providerId];
+        toast.success(meta ? `${meta.name} verbunden` : "SMS verbunden");
       } else {
         const meta = PROVIDER_META[connected as keyof typeof PROVIDER_META];
         toast.success(
@@ -90,8 +127,40 @@ export function IntegrationsHub() {
             </p>
           ) : (
             <>
-              <CalendarIntegrations layout="page" bare searchQuery={searchQuery} />
-              <MailIntegrations layout="page" bare searchQuery={searchQuery} />
+              <div className="space-y-3">
+                {sortedCards.map((entry) => (
+                  <Fragment key={entry.key}>{entry.node}</Fragment>
+                ))}
+              </div>
+
+              <CalendarIntegrations
+                layout="page"
+                bare
+                deferCardRender
+                registerCards={setCalendarCards}
+                searchQuery={searchQuery}
+              />
+              <MailIntegrations
+                layout="page"
+                bare
+                deferCardRender
+                registerCards={setMailCards}
+                searchQuery={searchQuery}
+              />
+              <PropertySoftwareIntegrations
+                layout="page"
+                bare
+                deferCardRender
+                registerCards={setPropertyCards}
+                searchQuery={searchQuery}
+              />
+              <SmsIntegrations
+                layout="page"
+                bare
+                deferCardRender
+                registerCards={setSmsCards}
+                searchQuery={searchQuery}
+              />
             </>
           )}
         </div>

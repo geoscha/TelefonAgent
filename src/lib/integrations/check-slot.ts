@@ -3,6 +3,7 @@ import "server-only";
 import { listCalendarEventsOnDay } from "@/lib/calendar";
 import { findOverlappingEvents } from "@/lib/calendar/slot-validation";
 import { getAgentCalendarIntegration, resolveConnectedCalendarProvider } from "@/lib/integrations/agent-calendar";
+import { getAgentDayEvents } from "@/lib/integrations/calendar-mirror/sync";
 import {
   normalizeAppointmentConfig,
   resolveAppointmentDurationMinutes,
@@ -247,11 +248,13 @@ export async function checkSlotForAgent(
   const dayIso = dayIsoFromStart(start.toISOString(), businessHours.timeZone);
 
   try {
-    const dayEvents = await listCalendarEventsOnDay(
+    const dayEvents = await getAgentDayEvents({
+      userId,
       provider,
+      ctx: calendarCtx,
       dayIso,
-      calendarCtx
-    );
+      timeZone: businessHours.timeZone,
+    });
     const conflicts = findOverlappingEvents(
       dayEvents,
       start.toISOString(),

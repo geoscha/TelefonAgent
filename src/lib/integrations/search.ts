@@ -1,4 +1,4 @@
-export type IntegrationSearchCategory = "calendar" | "mail";
+export type IntegrationSearchCategory = "calendar" | "mail" | "property" | "sms";
 
 export interface IntegrationSearchTarget {
   category: IntegrationSearchCategory;
@@ -27,6 +27,27 @@ const CATEGORY_SEARCH_TERMS: Record<IntegrationSearchCategory, string[]> = {
     "inbox",
     "nachricht",
   ],
+  property: [
+    "immobilien",
+    "immo",
+    "verwaltung",
+    "bewirtschaftung",
+    "liegenschaft",
+    "software",
+    "erp",
+  ],
+  sms: [
+    "sms",
+    "text",
+    "textnachricht",
+    "gateway",
+    "erinnerung",
+    "reminder",
+    "terminbestaetigung",
+    "terminbestätigung",
+    "alert",
+    "meldung",
+  ],
 };
 
 const ITEM_SEARCH_TERMS: Record<IntegrationSearchCategory, Record<string, string[]>> = {
@@ -39,6 +60,19 @@ const ITEM_SEARCH_TERMS: Record<IntegrationSearchCategory, Record<string, string
     gmail: ["gmail", "google", "workspace"],
     outlook: ["outlook", "microsoft", "office", "365", "hotmail", "live"],
     apple_mail: ["apple", "icloud", "ios", "mac"],
+  },
+  property: {
+    immotop2: ["immotop", "immotop2", "wuw", "ww"],
+    rimo_r5: ["rimo", "rimor5", "r5", "ww"],
+    garaio_rem: ["garaio", "rem", "garaio-rem"],
+    fairwalter: ["fairwalter", "fair", "walter"],
+    abacus: ["abacus", "deepbox", "abakus"],
+    excel: ["excel", "xlsx", "spreadsheet", "tabelle", "microsoft", "office", "onedrive"],
+  },
+  sms: {
+    twilio: ["twilio", "sms", "text"],
+    seven: ["seven", "seven.io", "sms77", "dach", "eu"],
+    aspsms: ["aspsms", "asp", "schweiz", "swiss", "ch"],
   },
 };
 
@@ -140,6 +174,60 @@ export function integrationSearchHasResults(query: string): boolean {
       category: "mail",
       id: "apple_mail",
       name: "Apple Mail",
+      description: "",
+    },
+    {
+      category: "property",
+      id: "immotop2",
+      name: "ImmoTop2",
+      description: "",
+    },
+    {
+      category: "property",
+      id: "rimo_r5",
+      name: "Rimo R5",
+      description: "",
+    },
+    {
+      category: "property",
+      id: "garaio_rem",
+      name: "GARAIO REM",
+      description: "",
+    },
+    {
+      category: "property",
+      id: "fairwalter",
+      name: "Fairwalter",
+      description: "",
+    },
+    {
+      category: "property",
+      id: "abacus",
+      name: "Abacus",
+      description: "",
+    },
+    {
+      category: "property",
+      id: "excel",
+      name: "Microsoft Excel",
+      description: "",
+    },
+    {
+      category: "sms",
+      id: "twilio",
+      name: "Twilio SMS",
+      description: "",
+    },
+    {
+      category: "sms",
+      id: "seven",
+      name: "Seven.io",
+      description: "",
+    },
+    {
+      category: "sms",
+      id: "aspsms",
+      name: "ASPSMS",
       description: "",
     },
   ];

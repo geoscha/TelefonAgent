@@ -26,7 +26,8 @@ export type AppointmentIndustryPresetId =
   | "allgemein"
   | "restaurant"
   | "garage"
-  | "beauty";
+  | "beauty"
+  | "immobilien";
 
 export interface AppointmentTypeConfig {
   id: string;
@@ -56,7 +57,7 @@ export interface AppointmentIndustryPreset {
   config: AppointmentConfig;
 }
 
-const LEGACY_PRESET_IDS = new Set(["hausarzt", "immobilien"]);
+const LEGACY_PRESET_IDS = new Set(["hausarzt"]);
 
 export function migrateIndustryPresetId(
   value: unknown
@@ -65,14 +66,15 @@ export function migrateIndustryPresetId(
     value === "allgemein" ||
     value === "restaurant" ||
     value === "garage" ||
-    value === "beauty"
+    value === "beauty" ||
+    value === "immobilien"
   ) {
     return value;
   }
   if (typeof value === "string" && LEGACY_PRESET_IDS.has(value)) {
     return "allgemein";
   }
-  return "allgemein";
+  return "immobilien";
 }
 
 export const APPOINTMENT_INDUSTRY_PRESETS: Record<
@@ -167,6 +169,47 @@ export const APPOINTMENT_INDUSTRY_PRESETS: Record<
         {
           id: "behandlung",
           label: "Behandlung",
+          durationMinutes: 60,
+          enabled: true,
+        },
+      ],
+    },
+  },
+  immobilien: {
+    id: "immobilien",
+    label: "Immobilienverwaltung",
+    description:
+      "Termine für Schlüsselübergaben, Reparaturen, Besichtigungen und Wohnungsabnahmen.",
+    config: {
+      industryPreset: "immobilien",
+      allowedCallersDescription:
+        "Mietende, Eigentümer, Handwerker und Interessenten",
+      allowBooking: true,
+      allowCancellation: true,
+      requireCallerName: true,
+      requireAppointmentDateForCancel: true,
+      appointmentTypes: [
+        {
+          id: "schluesseluebergabe",
+          label: "Schlüsselübergabe",
+          durationMinutes: 30,
+          enabled: true,
+        },
+        {
+          id: "reparatur",
+          label: "Reparatur- / Handwerkertermin",
+          durationMinutes: 60,
+          enabled: true,
+        },
+        {
+          id: "besichtigung",
+          label: "Wohnungsbesichtigung",
+          durationMinutes: 30,
+          enabled: true,
+        },
+        {
+          id: "abnahme",
+          label: "Wohnungsabnahme / -übergabe",
           durationMinutes: 60,
           enabled: true,
         },
@@ -354,6 +397,47 @@ export function resolveAppointmentType(
       "frisör",
       "friseur",
     ],
+    schluesseluebergabe: [
+      "schlüsselübergabe",
+      "schluesseluebergabe",
+      "schlüssel",
+      "schluessel",
+      "schlüsselrückgabe",
+      "übergabe",
+      "uebergabe",
+      "einzug",
+    ],
+    reparatur: [
+      "reparatur",
+      "handwerker",
+      "handwerkertermin",
+      "schaden",
+      "defekt",
+      "reparieren",
+      "instandsetzung",
+      "techniker",
+      "monteur",
+      "wartung",
+      "service",
+    ],
+    besichtigung: [
+      "besichtigung",
+      "wohnungsbesichtigung",
+      "besichtigen",
+      "anschauen",
+      "interessent",
+      "viewing",
+    ],
+    abnahme: [
+      "abnahme",
+      "wohnungsabnahme",
+      "wohnungsübergabe",
+      "wohnungsuebergabe",
+      "auszug",
+      "rückgabe",
+      "ruekgabe",
+      "übergabeprotokoll",
+    ],
   };
 
   const byLabel = enabled.find((type) => {
@@ -411,6 +495,16 @@ function buildIndustryFastPathBlock(
 - Hat der Kunde Nachname, Datum und Uhrzeit genannt und check_availability liefert available=true: **book_appointment** aufrufen (mit **notes** falls Wünsche genannt), mit Datum/Uhrzeit bestätigen und bedanken, dann **sofort** end_call.
 - Stelle nur die wirklich nötigen Rückfragen (fehlender Nachname, fehlendes Datum/Uhrzeit, oder Bestätigung eines relativen Datums) — eine nach der anderen, aber bleibe **nicht kommentarlos still**.
 - Keine Wiederholung der Dauer, keine «Passt 60 Minuten?»-Frage.`;
+  }
+
+  if (presetId === "immobilien") {
+    return `### Schnellablauf Immobilienverwaltung (strikt)
+- **Nachname + Terminart + Datum + Uhrzeit** genügen. Telefonnummer wird bei Anrufen automatisch übernommen.
+- Terminart aus dem Anliegen ableiten: «Schlüssel/Einzug» → schluesseluebergabe (30 Min), «Reparatur/Handwerker/Schaden» → reparatur (60 Min), «Besichtigung/anschauen» → besichtigung (30 Min), «Abnahme/Auszug/Übergabe» → abnahme (60 Min).
+- durationMinutes aus der Terminart übernehmen — **nicht** vom Anrufer erfragen.
+- **Liegenschaft/Adresse, Wohnung und das konkrete Anliegen** (z. B. «Wasserhahn tropft», «Storenmotor defekt») in **notes** bei book_appointment vermerken.
+- Bei available=true: **book_appointment** aufrufen, mit Datum/Uhrzeit bestätigen, bedanken, dann **sofort** end_call.
+- Nur die wirklich nötigen Rückfragen stellen (fehlender Nachname, Terminart, Datum/Uhrzeit, betroffene Liegenschaft) — eine nach der anderen, aber bleibe **nicht kommentarlos still**.`;
   }
 
   if (presetId === "restaurant" || presetId === "garage" || presetId === "allgemein") {

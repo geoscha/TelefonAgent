@@ -1151,7 +1151,8 @@ function replaceIcsInstantLine(
 function rescheduleAppleEventIcs(
   ics: string,
   startIso: string,
-  endIso: string
+  endIso: string,
+  title?: string
 ): string {
   const veventMatch = ics.match(/BEGIN:VEVENT([\s\S]*?)END:VEVENT/i);
   if (!veventMatch) {
@@ -1165,6 +1166,9 @@ function rescheduleAppleEventIcs(
   let updated = vevent;
   updated = replaceIcsInstantLine(updated, "DTSTART", startIso);
   updated = replaceIcsInstantLine(updated, "DTEND", endIso);
+  if (title !== undefined) {
+    updated = upsertIcsField(updated, "SUMMARY", title);
+  }
   updated = upsertIcsField(updated, "DTSTAMP", icsUtcDateTime(modifiedAt));
   updated = upsertIcsField(updated, "LAST-MODIFIED", icsUtcDateTime(modifiedAt));
   updated = upsertIcsField(updated, "SEQUENCE", String(sequence + 1));
@@ -1259,6 +1263,7 @@ export async function appleRescheduleEvent(
     eventUrl?: string;
     startIso: string;
     endIso: string;
+    title?: string;
   },
   ctx: CalendarContext
 ): Promise<void> {
@@ -1283,7 +1288,12 @@ export async function appleRescheduleEvent(
     input.eventUrl
   );
   const { ics, etag } = await fetchAppleEventResource(target, auth);
-  const updatedIcs = rescheduleAppleEventIcs(ics, input.startIso, input.endIso);
+  const updatedIcs = rescheduleAppleEventIcs(
+    ics,
+    input.startIso,
+    input.endIso,
+    input.title
+  );
 
   const putRes = await fetch(target, {
     method: "PUT",

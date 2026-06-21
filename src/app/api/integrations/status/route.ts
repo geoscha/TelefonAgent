@@ -10,22 +10,48 @@ import {
 } from "@/lib/integrations/mail/provider-meta";
 import { getMailConnections } from "@/lib/integrations/mail/store";
 import {
+  PROPERTY_SOFTWARE_PROVIDERS,
+  type PropertySoftwareProviderId,
+} from "@/lib/integrations/property-software/provider-meta";
+import {
+  getPropertySoftwareConnections,
+  toPublicPropertySoftwareStatus,
+} from "@/lib/integrations/property-software/store";
+import {
   listWhatsAppConnections,
   toPublicWhatsAppStatus,
 } from "@/lib/integrations/whatsapp/store";
+import {
+  SMS_PROVIDERS,
+  type SmsProviderId,
+} from "@/lib/integrations/sms/provider-meta";
+import {
+  getSmsConnections,
+  toPublicSmsStatus,
+} from "@/lib/integrations/sms/store";
+import { isCustomerSourceConfigured } from "@/lib/customers/source";
+import { isCustomerDataProvider } from "@/lib/customers/types";
 import { getCalendars, getSettings, type CalendarProvider } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const [calendarsMap, settings, mailMap, whatsappConnections] =
-      await Promise.all([
-        getCalendars(),
-        getSettings(),
-        getMailConnections(),
-        listWhatsAppConnections(),
-      ]);
+    const [
+      calendarsMap,
+      settings,
+      mailMap,
+      whatsappConnections,
+      propertySoftwareMap,
+      smsMap,
+    ] = await Promise.all([
+      getCalendars(),
+      getSettings(),
+      getMailConnections(),
+      listWhatsAppConnections(),
+      getPropertySoftwareConnections(),
+      getSmsConnections(),
+    ]);
 
     const calendars: PublicCalendarStatus[] = CALENDAR_PROVIDERS.map((provider) => {
       const conn = calendarsMap[provider as CalendarProvider];
@@ -52,11 +78,43 @@ export async function GET() {
       };
     });
 
+    const propertySoftware = PROPERTY_SOFTWARE_PROVIDERS.map((provider) => {
+      const conn = propertySoftwareMap[provider as PropertySoftwareProviderId];
+      return conn
+        ? toPublicPropertySoftwareStatus(conn)
+        : { provider, connected: false };
+    });
+
+    const sms = SMS_PROVIDERS.map((provider) => {
+      const conn = smsMap[provider as SmsProviderId];
+      return conn
+        ? toPublicSmsStatus(conn)
+        : { provider, connected: false };
+    });
+
+    const customerProvider =
+      settings.customerDataProvider &&
+      isCustomerDataProvider(settings.customerDataProvider)
+        ? settings.customerDataProvider
+        : null;
+    const customerSource = {
+      provider: customerProvider,
+      ready: customerProvider
+        ? isCustomerSourceConfigured(
+            customerProvider,
+            propertySoftwareMap[customerProvider]
+          )
+        : false,
+    };
+
     return NextResponse.json({
       ok: true,
       calendars,
       mail,
       whatsapp: whatsappConnections.map(toPublicWhatsAppStatus),
+      propertySoftware,
+      sms,
+      customerSource,
       appointment: {
         enabled: Boolean(settings.appointmentBookingEnabled),
         provider: settings.appointmentProvider ?? null,

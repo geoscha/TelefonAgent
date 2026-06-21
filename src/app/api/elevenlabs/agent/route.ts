@@ -79,8 +79,8 @@ async function persistAgentRecord(params: {
       ? normalizeAssistantBranch(body.assistantBranch)
       : inferAssistantBranch(existing ?? { appointmentBookingEnabled: false });
 
-  const appointmentPatch = branchAppointmentPatch(assistantBranch);
-  const branchChanged = assistantBranchChanged(body.assistantBranch, existing);
+  const appointmentPatch = branchAppointmentPatch();
+  const branchChanged = assistantBranchChanged();
 
   const euComplianceEnabled =
     typeof body.euComplianceEnabled === "boolean"
@@ -121,11 +121,7 @@ async function persistAgentRecord(params: {
         : existing?.medicalGuardrailsEnabled,
   };
 
-  if (
-    (assistantBranch === "coiffeur" || assistantBranch === "private_assistant") &&
-    !stored.calendarProvider &&
-    appointmentPatch.appointmentBookingEnabled
-  ) {
+  if (!stored.calendarProvider && appointmentPatch.appointmentBookingEnabled) {
     const calendars = await getCalendars();
     const connected = CALENDAR_PROVIDERS.map(
       (provider) => calendars[provider]
@@ -315,8 +311,8 @@ export async function POST(req: NextRequest) {
       body.assistantBranch !== undefined
         ? normalizeAssistantBranch(body.assistantBranch)
         : inferAssistantBranch(existing ?? { appointmentBookingEnabled: false });
-    const appointmentPatch = branchAppointmentPatch(assistantBranch);
-    const branchChanged = assistantBranchChanged(body.assistantBranch, existing);
+    const appointmentPatch = branchAppointmentPatch();
+    const branchChanged = assistantBranchChanged();
 
     const draftAgent: StoredAgent = {
       ...(existing ?? {

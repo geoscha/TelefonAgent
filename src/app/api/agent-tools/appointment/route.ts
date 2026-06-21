@@ -2,12 +2,16 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   cancelCalendarEvent,
-  listCalendarEventsOnDay,
 } from "@/lib/calendar";
 import {
   isAgentCreatedCalendarEvent,
 } from "@/lib/calendar/agent-labels";
 import { getAgentCalendarIntegration, resolveConnectedCalendarProvider } from "@/lib/integrations/agent-calendar";
+import {
+  getAgentDayEvents,
+  syncCalendarMirrorForUser,
+} from "@/lib/integrations/calendar-mirror/sync";
+import { markCalendarMirrorCancelled } from "@/lib/integrations/calendar-mirror/store";
 import { bookAppointmentForAgent } from "@/lib/integrations/book-appointment";
 import { checkSlotForAgent } from "@/lib/integrations/check-slot";
 import { parseAppointmentToolBody } from "@/lib/integrations/appointment-tool-body";
@@ -161,6 +165,18 @@ export async function POST(req: NextRequest) {
         },
       }
     : null;
+  const timeZone = normalizeBusinessHours(agent?.businessHours).timeZone;
+
+  // Warm the Supabase event mirror once per request (skipped if still fresh).
+  // All availability/lookup reads below then come from the mirror, never live.
+  if (ready && provider && calendarCtx) {
+    await syncCalendarMirrorForUser(userId, {
+      staleOnly: true,
+      context: { provider, ctx: calendarCtx },
+    }).catch((error) => {
+      console.error("[appointment-tool] mirror warm failed", error);
+    });
+  }
 
   if (body.action === "check_availability") {
     const enabledTypes = getEnabledAppointmentTypes(appointmentConfig);
@@ -302,11 +318,13 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const events = await listCalendarEventsOnDay(
+      const events = await getAgentDayEvents({
+        userId,
         provider,
-        body.appointmentDate,
-        calendarCtx
-      );
+        ctx: calendarCtx,
+        dayIso: body.appointmentDate,
+        timeZone,
+      });
       const matches = events.filter(
         (event) =>
           isActiveAgentAppointment(event) &&
@@ -392,11 +410,13 @@ export async function POST(req: NextRequest) {
       let eventUrl = body.eventUrl?.trim();
 
       if (!eventId && body.appointmentDate && body.attendeeName?.trim()) {
-        const events = await listCalendarEventsOnDay(
+        const events = await getAgentDayEvents({
+          userId,
           provider,
-          body.appointmentDate,
-          calendarCtx
-        );
+          ctx: calendarCtx,
+          dayIso: body.appointmentDate,
+          timeZone,
+        });
         const matches = events.filter(
           (event) =>
             isActiveAgentAppointment(event) &&
@@ -439,6 +459,11 @@ export async function POST(req: NextRequest) {
       }
 
       await cancelCalendarEvent(provider, eventId, calendarCtx, eventUrl);
+      // Reflect the cancellation in the mirror so the rest of the call is consistent.
+      await markCalendarMirrorCancelled(userId, provider, eventId).catch(
+        (mirrorError) =>
+          console.error("[appointment-tool] mirror cancel failed", mirrorError)
+      );
       return NextResponse.json({
         ok: true,
         cancelled: true,

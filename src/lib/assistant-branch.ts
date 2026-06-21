@@ -1,24 +1,23 @@
-import {
-  configForPrivateAssistant,
-  configFromPreset,
-} from "@/lib/integrations/appointment-config";
+import { configFromPreset } from "@/lib/integrations/appointment-config";
 import type { StoredAgent } from "@/lib/onboarding-types";
 
-export type AssistantBranchId = "private_assistant" | "coiffeur";
+/**
+ * The product now focuses on a single branch: property management
+ * (Immobilienverwaltung). The type is kept so existing call sites and stored
+ * agents stay compatible.
+ */
+export type AssistantBranchId = "immobilienverwalter";
+
+const DEFAULT_BRANCH: AssistantBranchId = "immobilienverwalter";
 
 export const ASSISTANT_BRANCH_OPTIONS: {
   id: AssistantBranchId;
   label: string;
-}[] = [
-  { id: "private_assistant", label: "Privater Assistent" },
-  { id: "coiffeur", label: "Coiffeur Betrieb" },
-];
+}[] = [{ id: DEFAULT_BRANCH, label: "Immobilienverwaltung" }];
 
 export function normalizeAssistantBranch(value: unknown): AssistantBranchId {
-  if (value === "coiffeur" || value === "private_assistant") {
-    return value;
-  }
-  return "private_assistant";
+  const match = ASSISTANT_BRANCH_OPTIONS.find((option) => option.id === value);
+  return match?.id ?? DEFAULT_BRANCH;
 }
 
 export function assistantBranchLabel(branch: AssistantBranchId): string {
@@ -31,39 +30,23 @@ export function assistantBranchLabel(branch: AssistantBranchId): string {
 export function inferAssistantBranch(
   agent: Pick<StoredAgent, "assistantBranch" | "appointmentBookingEnabled">
 ): AssistantBranchId {
-  if (agent.assistantBranch) {
-    return normalizeAssistantBranch(agent.assistantBranch);
-  }
-  if (agent.appointmentBookingEnabled) return "coiffeur";
-  return "private_assistant";
+  return normalizeAssistantBranch(agent.assistantBranch);
 }
 
-export function branchAppointmentPatch(branch: AssistantBranchId): Pick<
+export function branchAppointmentPatch(): Pick<
   StoredAgent,
   "appointmentBookingEnabled" | "appointmentConfig"
 > {
-  if (branch === "coiffeur") {
-    return {
-      appointmentBookingEnabled: true,
-      appointmentConfig: configFromPreset("beauty"),
-    };
-  }
-
   return {
-    appointmentBookingEnabled: false,
-    appointmentConfig: configForPrivateAssistant(),
+    appointmentBookingEnabled: true,
+    appointmentConfig: configFromPreset("immobilien"),
   };
 }
 
-/** True only when the client explicitly sent a branch change (not inferred on every autosave). */
-export function assistantBranchChanged(
-  nextBranch: unknown,
-  existing?: Pick<StoredAgent, "assistantBranch" | "appointmentBookingEnabled">
-): nextBranch is AssistantBranchId {
-  if (nextBranch === undefined) return false;
-  const normalizedNext = normalizeAssistantBranch(nextBranch);
-  const normalizedPrev = existing?.assistantBranch
-    ? normalizeAssistantBranch(existing.assistantBranch)
-    : inferAssistantBranch(existing ?? { appointmentBookingEnabled: false });
-  return normalizedNext !== normalizedPrev;
+/**
+ * With only one branch the branch never changes, so appointment settings are
+ * never reset on save — booking is controlled solely via the capabilities UI.
+ */
+export function assistantBranchChanged(): boolean {
+  return false;
 }

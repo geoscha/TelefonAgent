@@ -22,7 +22,7 @@ export interface StoredAgent {
   language: string;
   greeting: string;
   systemPrompt: string;
-  /** Branchenauswahl: Privater Assistent oder Coiffeur Betrieb. */
+  /** Branche des Assistenten — aktuell ausschliesslich Immobilienverwaltung. */
   assistantBranch?: AssistantBranchId;
   /** user_phone_numbers.id — which inbound number this agent handles. */
   phoneNumberId?: string;
@@ -44,4 +44,10 @@ export interface StoredAgent {
   medicalGuardrailsEnabled?: boolean;
   /** Öffnungszeiten für Terminbuchungen (aus Website oder manuell). */
   businessHours?: BusinessHoursSchedule;
+  /** Darf beim Anruf den Kundennamen aus der Kundendatenbank lesen. */
+  customerAccessName?: boolean;
+  /** Darf beim Anruf die Telefonnummer aus der Kundendatenbank lesen. */
+  customerAccessPhone?: boolean;
+  /** Darf beim Anruf die Adresse aus der Kundendatenbank lesen. */
+  customerAccessAddress?: boolean;
 }

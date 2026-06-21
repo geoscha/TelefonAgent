@@ -18,6 +18,9 @@ export const landingBtnPrimary =
 export const landingBtnGhost =
   "landing-caption landing-radius-sm inline-flex min-h-9 items-center gap-2 px-3 text-[#525866] transition-colors hover:bg-[#F5F7FA] hover:text-[#0E121B] disabled:opacity-50";
 
+/** Equal-width connect / disconnect actions on integration provider cards. */
+export const landingIntegrationCardBtn = "w-[6.5rem] justify-center";
+
 export const landingPanelClass =
   "landing-panel border border-[#E1E4EA] bg-white";
 

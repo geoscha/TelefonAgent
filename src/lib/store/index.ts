@@ -3,6 +3,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Call, SuggestedAction, TranscriptLine } from "@/lib/types";
+import type { CustomerDataProviderId } from "@/lib/customers/types";
+import { isCustomerDataProvider } from "@/lib/customers/types";
 import { deleteUserAccount } from "@/lib/account/delete-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient, requireUserId } from "@/lib/supabase/server";
@@ -66,6 +68,8 @@ export interface ElevenLabsSettings {
   agentSuspendedAt?: string;
   /** Call history snapshot preserved when the agent was suspended. */
   archivedCallStats?: Array<{ startedAt: string; durationSeconds: number }>;
+  /** Single active customer master-data source (Excel, ImmoTop2, …). */
+  customerDataProvider?: CustomerDataProviderId;
 }
 
 export interface CalendarConnection {
@@ -128,6 +132,11 @@ function rowToSettings(row: any): ElevenLabsSettings {
           durationSeconds: number;
         }>)
       : undefined,
+    customerDataProvider:
+      typeof row.customer_data_provider === "string" &&
+      isCustomerDataProvider(row.customer_data_provider)
+        ? row.customer_data_provider
+        : undefined,
   };
 }
 
@@ -158,6 +167,7 @@ function settingsPatchToRow(patch: Partial<ElevenLabsSettings>): Record<string, 
     agents: "agents",
     agentSuspendedAt: "agent_suspended_at",
     archivedCallStats: "archived_call_stats",
+    customerDataProvider: "customer_data_provider",
   };
   const row: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(patch)) {

@@ -4,12 +4,17 @@ import { IntegrationLogoTile } from "@/components/integrations/IntegrationLogoTi
 import { GoogleOAuthConnectDialog } from "@/components/integrations/GoogleOAuthConnectDialog";
 import { CALENDAR_LOGOS } from "@/lib/integrations/integration-logos";
 import { matchesIntegrationSearch } from "@/lib/integrations/search";
+import {
+  compareConnectedThenName,
+  type IntegrationCardEntry,
+} from "@/lib/integrations/sort";
 import { ArrowRight, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   landingBtnPrimary,
   landingBtnSecondary,
+  landingIntegrationCardBtn,
 } from "@/components/landing/landing-buttons";
 import {
   Dialog,
@@ -52,10 +57,14 @@ export function CalendarIntegrations({
   layout = "compact",
   bare = false,
   searchQuery = "",
+  registerCards,
+  deferCardRender = false,
 }: {
   layout?: "compact" | "page";
   bare?: boolean;
   searchQuery?: string;
+  registerCards?: (cards: IntegrationCardEntry[]) => void;
+  deferCardRender?: boolean;
 }) {
   const [statuses, setStatuses] = useState<CalStatus[] | null>(null);
   const [appleDialogOpen, setAppleDialogOpen] = useState(false);
@@ -113,16 +122,12 @@ export function CalendarIntegrations({
   const sortedStatuses = useMemo(() => {
     if (!statuses) return [];
 
-    return [...statuses].sort((a, b) => {
-      if (a.connected !== b.connected) {
-        return a.connected ? -1 : 1;
-      }
-
-      return PROVIDER_META[a.provider].name.localeCompare(
-        PROVIDER_META[b.provider].name,
-        "de"
-      );
-    });
+    return [...statuses].sort((a, b) =>
+      compareConnectedThenName(
+        { connected: a.connected, name: PROVIDER_META[a.provider].name },
+        { connected: b.connected, name: PROVIDER_META[b.provider].name }
+      )
+    );
   }, [statuses]);
 
   async function disconnect(provider: CalendarProviderId) {
@@ -180,32 +185,52 @@ export function CalendarIntegrations({
     }
   }
 
+  const filteredStatuses = useMemo(() => {
+    if (!statuses) return [];
+
+    return sortedStatuses.filter((status) => {
+      const meta = PROVIDER_META[status.provider];
+      return matchesIntegrationSearch(searchQuery, {
+        category: "calendar",
+        id: status.provider,
+        name: meta.name,
+        description: meta.description,
+        extra: status.accountLabel,
+      });
+    });
+  }, [sortedStatuses, searchQuery, statuses]);
+
+  const cardEntries = useMemo(
+    () =>
+      filteredStatuses.map((status) => ({
+        key: `calendar:${status.provider}`,
+        name: PROVIDER_META[status.provider].name,
+        connected: status.connected,
+        node: (
+          <ProviderCard
+            key={status.provider}
+            status={status}
+            isActive={status.provider === activeProvider}
+            busy={busyProvider === status.provider}
+            embedded={layout === "page"}
+            onConnect={() => requestConnect(status.provider)}
+            onDisconnect={() => void disconnect(status.provider)}
+          />
+        ),
+      })),
+    [filteredStatuses, activeProvider, busyProvider, layout]
+  );
+
+  useEffect(() => {
+    registerCards?.(cardEntries);
+  }, [cardEntries, registerCards]);
+
+  const cards = cardEntries.map((entry) => entry.node);
+  const showCardsInline = !deferCardRender;
+
   if (!statuses) {
     return <Skeleton className="h-48 w-full rounded" />;
   }
-
-  const filteredStatuses = sortedStatuses.filter((status) => {
-    const meta = PROVIDER_META[status.provider];
-    return matchesIntegrationSearch(searchQuery, {
-      category: "calendar",
-      id: status.provider,
-      name: meta.name,
-      description: meta.description,
-      extra: status.accountLabel,
-    });
-  });
-
-  const cards = filteredStatuses.map((status) => (
-    <ProviderCard
-      key={status.provider}
-      status={status}
-      isActive={status.provider === activeProvider}
-      busy={busyProvider === status.provider}
-      embedded={layout === "page"}
-      onConnect={() => requestConnect(status.provider)}
-      onDisconnect={() => void disconnect(status.provider)}
-    />
-  ));
 
   if (filteredStatuses.length === 0) {
     return (
@@ -240,13 +265,14 @@ export function CalendarIntegrations({
 
   return (
     <>
-      {bare ? (
-        cards
-      ) : (
-        <div className={cn("space-y-3", layout === "page" ? "w-full" : "max-w-md")}>
-          {cards}
-        </div>
-      )}
+      {showCardsInline &&
+        (bare ? (
+          cards
+        ) : (
+          <div className={cn("space-y-3", layout === "page" ? "w-full" : "max-w-md")}>
+            {cards}
+          </div>
+        ))}
 
       <SwitchCalendarDialog
         open={switchTarget !== null}
@@ -345,7 +371,7 @@ function ProviderCard({
             {status.connected ? (
               <button
                 type="button"
-                className={landingBtnSecondary}
+                className={cn(landingBtnSecondary, landingIntegrationCardBtn)}
                 onClick={onDisconnect}
                 disabled={busy}
               >
@@ -355,7 +381,7 @@ function ProviderCard({
             ) : (
               <button
                 type="button"
-                className={landingBtnPrimary}
+                className={cn(landingBtnPrimary, landingIntegrationCardBtn)}
                 onClick={onConnect}
                 disabled={unavailable || busy}
               >

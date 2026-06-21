@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { normalizeAssistantBranch } from "@/lib/assistant-branch";
 import {
   greetingForAssistantName,
-  greetingForPrivateAssistantOwner,
   suggestAssistantName,
 } from "@/lib/elevenlabs/assistant-names";
 import {
@@ -104,10 +103,7 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedName = displayName;
-    const resolvedGreeting =
-      branch === "private_assistant" && ownerName
-        ? greetingForPrivateAssistantOwner(ownerName, language)
-        : greetingForAssistantName(resolvedName, language);
+    const resolvedGreeting = greetingForAssistantName(resolvedName, language);
 
     return NextResponse.json({
       ok: true,

@@ -258,6 +258,7 @@ export async function microsoftRescheduleEvent(
     eventId: string;
     startIso: string;
     endIso: string;
+    title?: string;
   },
   ctx: CalendarContext
 ): Promise<void> {
@@ -273,6 +274,7 @@ export async function microsoftRescheduleEvent(
       body: JSON.stringify({
         start: { dateTime: input.startIso, timeZone: DEFAULT_TZ },
         end: { dateTime: input.endIso, timeZone: DEFAULT_TZ },
+        ...(input.title !== undefined ? { subject: input.title } : {}),
       }),
     }
   );

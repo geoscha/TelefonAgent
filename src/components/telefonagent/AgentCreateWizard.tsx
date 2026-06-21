@@ -20,10 +20,7 @@ import {
   greetingForAssistantName,
   shouldAutoRenameAssistant,
 } from "@/lib/elevenlabs/assistant-names";
-import {
-  ASSISTANT_BRANCH_OPTIONS,
-  type AssistantBranchId,
-} from "@/lib/assistant-branch";
+import type { AssistantBranchId } from "@/lib/assistant-branch";
 import { VoiceChoiceGroup } from "@/components/telefonagent/VoiceChoiceGroup";
 
 import type { BusinessHoursSchedule } from "@/lib/integrations/business-hours";
@@ -49,7 +46,6 @@ interface VoiceOption {
 }
 
 type Step =
-  | "branche"
   | "website"
   | "language"
   | "generating"
@@ -82,9 +78,8 @@ export function AgentCreateWizard({
     if (demoActive) demo?.goToSubStep(stepId);
   }
 
-  const [step, setStep] = useState<Step>("branche");
-  const [assistantBranch, setAssistantBranch] =
-    useState<AssistantBranchId>("private_assistant");
+  const [step, setStep] = useState<Step>("website");
+  const assistantBranch: AssistantBranchId = "immobilienverwalter";
   const [website, setWebsite] = useState("");
   const [language, setLanguage] = useState<"Deutsch" | "Schweizerdeutsch">(
     "Deutsch"
@@ -95,25 +90,13 @@ export function AgentCreateWizard({
   const nameIsAutoRef = useRef(true);
   const { previewVoice } = useVoicePreview();
 
-  function advanceAfterBranche() {
-    if (assistantBranch === "private_assistant") {
-      setWebsite("");
-      setStep("language");
-      demoGoTo("agent_language");
-      return;
-    }
-    setStep("website");
-    demoGoTo("agent_website");
-  }
-
   useEffect(() => {
-    if (demoActive) demo?.goToSubStep("agent_branche");
+    if (demoActive) demo?.goToSubStep("agent_website");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const titles: Record<Step, string> = {
-    branche: "Branche",
-    website: "Website",
+    website: "Website der Verwaltung",
     language: "Sprache",
     generating: "Assistent wird erstellt…",
     review_name: "Name",
@@ -132,8 +115,7 @@ export function AgentCreateWizard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           branch: assistantBranch,
-          website:
-            assistantBranch === "coiffeur" ? website.trim() || undefined : undefined,
+          website: website.trim() || undefined,
           language,
         }),
       });
@@ -218,9 +200,7 @@ export function AgentCreateWizard({
 
   function goBack() {
     const prev: Partial<Record<Step, Step>> = {
-      website: "branche",
-      language:
-        assistantBranch === "coiffeur" ? "website" : "branche",
+      language: "website",
       review_name: "language",
       review_voice: "review_name",
       review_greeting: "review_voice",
@@ -249,29 +229,6 @@ export function AgentCreateWizard({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-5 py-5 sm:px-6 sm:py-6">
-        {step === "branche" && (
-          <StepBody onSubmit={advanceAfterBranche}>
-            <FieldRow label="Branche">
-              <select
-                autoFocus
-                data-setup-demo="setup-demo-agent-branche"
-                value={assistantBranch}
-                onChange={(e) =>
-                  setAssistantBranch(e.target.value as AssistantBranchId)
-                }
-                className={fieldClass}
-              >
-                {ASSISTANT_BRANCH_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </FieldRow>
-            <StepFooter />
-          </StepBody>
-        )}
-
         {step === "website" && (
           <StepBody
             onSubmit={() => {
@@ -279,18 +236,18 @@ export function AgentCreateWizard({
               demoGoTo("agent_language");
             }}
           >
-            <FieldRow label="Website (optional)">
+            <FieldRow label="Website der Verwaltung (optional)">
               <input
                 autoFocus
                 data-setup-demo="setup-demo-agent-website"
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
+                placeholder="https://ihre-verwaltung.ch"
                 className={fieldClass}
               />
             </FieldRow>
             <StepFooter>
               <SecondaryStepActions
-                onBack={goBack}
                 secondaryLabel="Überspringen"
                 onSecondary={() => {
                   setWebsite("");

@@ -20,6 +20,51 @@ export const INTEGRATION_LOGOS = {
     width: 512,
     height: 512,
   },
+  immotop2: {
+    src: "/integrations/immotop2.png",
+    width: 512,
+    height: 512,
+  },
+  abacus: {
+    src: "/integrations/abacus.png",
+    width: 512,
+    height: 512,
+  },
+  fairwalter: {
+    src: "/integrations/fairwalter.png",
+    width: 512,
+    height: 512,
+  },
+  garaioRem: {
+    src: "/integrations/garaio-rem.png",
+    width: 512,
+    height: 512,
+  },
+  rimoR5: {
+    src: "/integrations/rimo-r5.png",
+    width: 512,
+    height: 512,
+  },
+  excel: {
+    src: "/integrations/excel.png",
+    width: 512,
+    height: 512,
+  },
+  twilioSms: {
+    src: "/integrations/twilio-sms.png",
+    width: 512,
+    height: 512,
+  },
+  sevenSms: {
+    src: "/integrations/seven-sms.png",
+    width: 512,
+    height: 512,
+  },
+  aspsms: {
+    src: "/integrations/aspsms.png",
+    width: 512,
+    height: 512,
+  },
 } as const;
 
 export const CALENDAR_LOGOS = {
@@ -56,4 +101,10 @@ export const LANDING_INTEGRATION_MARQUEE: IntegrationLogoAsset[] = [
   { ...INTEGRATION_LOGOS.outlook, label: "Outlook Mail" },
   { ...INTEGRATION_LOGOS.appleMail, label: "Apple Mail" },
   { ...INTEGRATION_LOGOS.whatsapp, label: "WhatsApp" },
+  { ...INTEGRATION_LOGOS.immotop2, label: "ImmoTop2" },
+  { ...INTEGRATION_LOGOS.rimoR5, label: "Rimo R5" },
+  { ...INTEGRATION_LOGOS.garaioRem, label: "GARAIO REM" },
+  { ...INTEGRATION_LOGOS.fairwalter, label: "Fairwalter" },
+  { ...INTEGRATION_LOGOS.abacus, label: "Abacus" },
+  { ...INTEGRATION_LOGOS.excel, label: "Microsoft Excel" },
 ];

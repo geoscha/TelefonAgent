@@ -41,7 +41,6 @@ import {
 } from "@/lib/elevenlabs/prompt-sections";
 import type { StoredAgent } from "@/lib/onboarding-types";
 import {
-  ASSISTANT_BRANCH_OPTIONS,
   assistantBranchLabel,
   inferAssistantBranch,
   type AssistantBranchId,
@@ -200,9 +199,7 @@ export function AgentDetailPanel({
   const [escalationPhone, setEscalationPhone] = useState(
     agent.escalationPhoneNumber ?? ""
   );
-  const [assistantBranch, setAssistantBranch] = useState<AssistantBranchId>(() =>
-    inferAssistantBranch(agent)
-  );
+  const assistantBranch: AssistantBranchId = inferAssistantBranch(agent);
   const [aiLoading, setAiLoading] = useState(false);
   const [usageSeconds, setUsageSeconds] = useState<number | null>(null);
   const [usageLoading, setUsageLoading] = useState(true);
@@ -233,7 +230,6 @@ export function AgentDetailPanel({
     setEuComplianceEnabled(Boolean(agent.euComplianceEnabled));
     setWebsite(agent.website ?? "");
     setEscalationPhone(agent.escalationPhoneNumber ?? "");
-    setAssistantBranch(inferAssistantBranch(agent));
     nameIsAutoRef.current = shouldAutoRenameAssistant(
       agent.name,
       voices.find((voice) => voice.id === agent.voiceId)?.displayName ??
@@ -291,16 +287,6 @@ export function AgentDetailPanel({
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, []);
-
-  function patchSystemPrompt(
-    patch: Partial<ReturnType<typeof parseSystemPrompt>>
-  ) {
-    const parsed = parseSystemPrompt(systemPrompt);
-    const next = composeSystemPrompt({ ...parsed, ...patch });
-    setSystemPrompt(next);
-    scheduleSave({ systemPrompt: next });
-    return next;
-  }
 
   function handleNameChange(value: string) {
     setName(value);
@@ -377,19 +363,6 @@ export function AgentDetailPanel({
   function handleEscalationPhoneChange(value: string) {
     setEscalationPhone(value);
     scheduleSave({ escalationPhoneNumber: value });
-  }
-
-  function handleBranchChange(branch: AssistantBranchId) {
-    setAssistantBranch(branch);
-    const label = assistantBranchLabel(branch);
-    const nextPrompt = patchSystemPrompt({ branche: label, ziel: "" });
-    scheduleSave(
-      {
-        assistantBranch: branch,
-        systemPrompt: nextPrompt,
-      },
-      true
-    );
   }
 
   async function handleAiFill() {
@@ -703,24 +676,14 @@ export function AgentDetailPanel({
 
           <AgentDetailSection
             title="Charakter"
-            subtitle="Branche, Website, Begrüssung und Anweisungen"
+            subtitle="Website, Begrüssung und Anweisungen"
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="min-w-0 flex-1">
                 <LabeledField label="Branche">
-                  <select
-                    value={assistantBranch}
-                    onChange={(e) =>
-                      handleBranchChange(e.target.value as AssistantBranchId)
-                    }
-                    className={fieldClass}
-                  >
-                    {ASSISTANT_BRANCH_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className={cn(fieldClass, "flex items-center text-[#525866]")}>
+                    {assistantBranchLabel(assistantBranch)}
+                  </div>
                 </LabeledField>
               </div>
               <button

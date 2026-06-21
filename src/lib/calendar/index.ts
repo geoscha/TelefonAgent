@@ -129,6 +129,7 @@ export async function rescheduleCalendarEvent(
     eventUrl?: string;
     startIso: string;
     endIso: string;
+    title?: string;
   },
   ctx: CalendarContext
 ): Promise<void> {

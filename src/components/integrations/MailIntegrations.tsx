@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   landingBtnPrimary,
   landingBtnSecondary,
+  landingIntegrationCardBtn,
 } from "@/components/landing/landing-buttons";
 import {
   Dialog,
@@ -32,6 +33,10 @@ import {
   type MailProviderId,
 } from "@/lib/integrations/mail/provider-meta";
 import { matchesIntegrationSearch } from "@/lib/integrations/search";
+import {
+  compareConnectedThenName,
+  type IntegrationCardEntry,
+} from "@/lib/integrations/sort";
 import { cn } from "@/lib/utils";
 
 interface MailStatus {
@@ -61,10 +66,14 @@ export function MailIntegrations({
   layout = "compact",
   bare = false,
   searchQuery = "",
+  registerCards,
+  deferCardRender = false,
 }: {
   layout?: "compact" | "page";
   bare?: boolean;
   searchQuery?: string;
+  registerCards?: (cards: IntegrationCardEntry[]) => void;
+  deferCardRender?: boolean;
 }) {
   const [statuses, setStatuses] = useState<MailStatus[] | null>(null);
   const [appleDialogOpen, setAppleDialogOpen] = useState(false);
@@ -118,15 +127,12 @@ export function MailIntegrations({
   const sortedStatuses = useMemo(() => {
     if (!statuses) return [];
 
-    return [...statuses].sort((a, b) => {
-      if (a.connected !== b.connected) {
-        return a.connected ? -1 : 1;
-      }
-      return MAIL_PROVIDER_META[a.provider].name.localeCompare(
-        MAIL_PROVIDER_META[b.provider].name,
-        "de"
-      );
-    });
+    return [...statuses].sort((a, b) =>
+      compareConnectedThenName(
+        { connected: a.connected, name: MAIL_PROVIDER_META[a.provider].name },
+        { connected: b.connected, name: MAIL_PROVIDER_META[b.provider].name }
+      )
+    );
   }, [statuses]);
 
   async function disconnect(provider: MailProviderId) {
@@ -184,32 +190,52 @@ export function MailIntegrations({
     }
   }
 
+  const filteredStatuses = useMemo(() => {
+    if (!statuses) return [];
+
+    return sortedStatuses.filter((status) => {
+      const meta = MAIL_PROVIDER_META[status.provider];
+      return matchesIntegrationSearch(searchQuery, {
+        category: "mail",
+        id: status.provider,
+        name: meta.name,
+        description: meta.description,
+        extra: status.accountLabel,
+      });
+    });
+  }, [sortedStatuses, searchQuery, statuses]);
+
+  const cardEntries = useMemo(
+    () =>
+      filteredStatuses.map((status) => ({
+        key: `mail:${status.provider}`,
+        name: MAIL_PROVIDER_META[status.provider].name,
+        connected: status.connected,
+        node: (
+          <ProviderCard
+            key={status.provider}
+            status={status}
+            isActive={status.provider === activeProvider}
+            busy={busyProvider === status.provider}
+            embedded={layout === "page"}
+            onConnect={() => requestConnect(status.provider)}
+            onDisconnect={() => void disconnect(status.provider)}
+          />
+        ),
+      })),
+    [filteredStatuses, activeProvider, busyProvider, layout]
+  );
+
+  useEffect(() => {
+    registerCards?.(cardEntries);
+  }, [cardEntries, registerCards]);
+
+  const cards = cardEntries.map((entry) => entry.node);
+  const showCardsInline = !deferCardRender;
+
   if (!statuses) {
     return <Skeleton className="h-48 w-full rounded" />;
   }
-
-  const filteredStatuses = sortedStatuses.filter((status) => {
-    const meta = MAIL_PROVIDER_META[status.provider];
-    return matchesIntegrationSearch(searchQuery, {
-      category: "mail",
-      id: status.provider,
-      name: meta.name,
-      description: meta.description,
-      extra: status.accountLabel,
-    });
-  });
-
-  const cards = filteredStatuses.map((status) => (
-    <ProviderCard
-      key={status.provider}
-      status={status}
-      isActive={status.provider === activeProvider}
-      busy={busyProvider === status.provider}
-      embedded={layout === "page"}
-      onConnect={() => requestConnect(status.provider)}
-      onDisconnect={() => void disconnect(status.provider)}
-    />
-  ));
 
   if (filteredStatuses.length === 0) {
     return (
@@ -244,13 +270,14 @@ export function MailIntegrations({
 
   return (
     <>
-      {bare ? (
-        cards
-      ) : (
-        <div className={cn("space-y-3", layout === "page" ? "w-full" : "max-w-md")}>
-          {cards}
-        </div>
-      )}
+      {showCardsInline &&
+        (bare ? (
+          cards
+        ) : (
+          <div className={cn("space-y-3", layout === "page" ? "w-full" : "max-w-md")}>
+            {cards}
+          </div>
+        ))}
 
       <SwitchMailDialog
         open={switchTarget !== null}
@@ -347,7 +374,7 @@ function ProviderCard({
             {status.connected ? (
               <button
                 type="button"
-                className={landingBtnSecondary}
+                className={cn(landingBtnSecondary, landingIntegrationCardBtn)}
                 onClick={onDisconnect}
                 disabled={busy}
               >
@@ -357,7 +384,7 @@ function ProviderCard({
             ) : (
               <button
                 type="button"
-                className={landingBtnPrimary}
+                className={cn(landingBtnPrimary, landingIntegrationCardBtn)}
                 onClick={onConnect}
                 disabled={unavailable || busy}
               >

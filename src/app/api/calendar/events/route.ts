@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { screenAllStoredCalls } from "@/lib/calls/call-screening";
 import {
   createCalendarEvent,
-  listCalendarEventsInRange,
   resolveConnectedCalendarProvider,
   type ListedCalendarEvent,
 } from "@/lib/calendar";
@@ -13,10 +12,13 @@ import {
   weekRangeIso,
   startOfWeekMonday,
 } from "@/lib/calendar/week-view";
+import { getMirroredRangeEvents } from "@/lib/integrations/calendar-mirror/sync";
+import { upsertCalendarMirrorEvent } from "@/lib/integrations/calendar-mirror/store";
 import {
   getCalendars,
   upsertCalendar,
 } from "@/lib/store";
+import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -104,19 +106,14 @@ export async function GET(req: NextRequest) {
 
     const bounds = zurichRangeBounds(range.from, range.to);
 
-    const calendarCtx = {
-      connection,
-      save: async (patch: Parameters<typeof upsertCalendar>[1]) => {
-        await upsertCalendar(provider, patch);
-      },
-    };
+    const userId = await requireUserId();
 
-    const events = await listCalendarEventsInRange(
-      provider,
-      bounds.startIso,
-      bounds.endIso,
-      calendarCtx
-    );
+    // Served from the Supabase mirror (refreshed lazily), not a live API call.
+    const events = await getMirroredRangeEvents({
+      userId,
+      rangeStartIso: bounds.startIso,
+      rangeEndIso: bounds.endIso,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -212,16 +209,34 @@ export async function POST(req: NextRequest) {
       },
     };
 
+    const description = body.description?.trim() || "In Linker Kalender erstellt.";
     const created = await createCalendarEvent(
       provider,
       {
         title,
         startIso,
         endIso,
-        description: body.description?.trim() || "In Linker Kalender erstellt.",
+        description,
       },
       calendarCtx
     );
+
+    // Keep the mirror in sync so the calendar view updates without a live pull.
+    try {
+      const userId = await requireUserId();
+      await upsertCalendarMirrorEvent(userId, provider, {
+        id: created.id,
+        title,
+        description,
+        startIso,
+        endIso,
+        eventUrl: created.htmlLink,
+        cancelled: false,
+        agentCreated: false,
+      });
+    } catch (mirrorError) {
+      console.error("[calendar/events POST] mirror update failed", mirrorError);
+    }
 
     return NextResponse.json({ ok: true, id: created.id });
   } catch (error) {
