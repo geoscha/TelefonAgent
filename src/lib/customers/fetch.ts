@@ -14,7 +14,7 @@ import {
   buildWwLookupMaps,
   asRecordArray,
 } from "@/lib/customers/normalize";
-import { getCustomerRecords } from "@/lib/customers/store";
+import { getCustomerRecords, getCraftsmanRecords } from "@/lib/customers/store";
 import {
   getCustomerSourceContext,
   isCustomerSourceConfigured,
@@ -29,10 +29,7 @@ import type {
 import { excelLoadCustomerRows } from "@/lib/integrations/property-software/excel";
 import { fairwalterListCustomers } from "@/lib/integrations/property-software/fairwalter";
 import { garaioRemListCustomers } from "@/lib/integrations/property-software/garaio-rem";
-import {
-  PROPERTY_SOFTWARE_PROVIDER_META,
-  type PropertySoftwareProviderId,
-} from "@/lib/integrations/property-software/provider-meta";
+import { PROPERTY_SOFTWARE_PROVIDER_META } from "@/lib/integrations/property-software/provider-meta";
 import {
   type PropertySoftwareConnection,
 } from "@/lib/integrations/property-software/store";
@@ -241,6 +238,7 @@ export async function fetchCustomersWithAppointments(): Promise<{
     connected: boolean;
   }>;
   customers: CustomerWithAppointments[];
+  craftsmen: CustomerWithAppointments[];
   lastSyncedAt?: string;
   errors: string[];
 }> {
@@ -262,6 +260,7 @@ export async function fetchCustomersWithAppointments(): Promise<{
   const customers = dedupeCustomers(
     await getCustomerRecords(activeProvider)
   );
+  const craftsmen = dedupeCustomers(await getCraftsmanRecords(activeProvider));
 
   const lastSyncedAt = activeProvider
     ? connections[activeProvider]?.lastSyncedAt
@@ -276,6 +275,7 @@ export async function fetchCustomersWithAppointments(): Promise<{
     calendarConnected,
     providers,
     customers: attachAppointments(customers, events),
+    craftsmen: attachAppointments(craftsmen, events),
     lastSyncedAt: lastSyncedAt ?? undefined,
     errors,
   };

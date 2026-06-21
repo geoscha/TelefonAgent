@@ -30,7 +30,17 @@ export function isCustomerSourceConfigured(
 ): boolean {
   if (!connection?.connected) return false;
   if (provider === "excel") return Boolean(connection.workbookId);
+  if (provider === "upload") return Boolean(connection.fileRef);
+  if (provider === "gsheet") return Boolean(connection.gsheetUrl);
   return true;
+}
+
+/**
+ * Upload and Google Sheet are always selectable in the picker (no OAuth);
+ * they become "connected" once a file is uploaded / a sheet is linked.
+ */
+export function isSelfServeSource(provider: CustomerDataProviderId): boolean {
+  return provider === "upload" || provider === "gsheet";
 }
 
 export async function getCustomerSourceContext(): Promise<{
@@ -66,7 +76,8 @@ export function listCustomerSourceProviders(
     const connection = connections[id];
     return {
       id,
-      connected: Boolean(connection?.connected),
+      // Upload / Google Sheet need no prior OAuth connection to be offered.
+      connected: isSelfServeSource(id) || Boolean(connection?.connected),
       configured: isCustomerSourceConfigured(id, connection),
     };
   });

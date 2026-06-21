@@ -11,7 +11,9 @@ export type PropertySoftwareProviderId =
   | "fairwalter"
   | "garaio_rem"
   | "rimo_r5"
-  | "excel";
+  | "excel"
+  | "upload"
+  | "gsheet";
 
 export interface PropertySoftwareFieldDef {
   id: "baseUrl" | "username" | "password" | "apiKey" | "tenantId";
@@ -210,6 +212,29 @@ export const PROPERTY_SOFTWARE_PROVIDER_META: Record<
     authType: "oauth_microsoft",
     connectHint:
       "Verbindung über Ihr Microsoft-Konto (OneDrive / SharePoint). Linker liest Excel-Dateien (.xlsx) für Stammdaten.",
+    liveValidated: true,
+    fields: [],
+  },
+  // Configured from the Kunden tab (not the integrations hub), hence not part
+  // of PROPERTY_SOFTWARE_PROVIDERS. Meta exists so name lookups work.
+  upload: {
+    id: "upload",
+    name: "Datei-Upload (.xlsx/.csv)",
+    description:
+      "Direkter Upload einer Excel- oder CSV-Datei mit Mieter-/Kundendaten.",
+    authType: "api_key",
+    connectHint: "Laden Sie eine .xlsx- oder .csv-Datei hoch.",
+    liveValidated: true,
+    fields: [],
+  },
+  gsheet: {
+    id: "gsheet",
+    name: "Google Sheet",
+    description:
+      "Verlinktes Google Sheet (Freigabe «Jeder mit dem Link») mit Mieter-/Kundendaten.",
+    authType: "api_key",
+    connectHint:
+      "Geben Sie die Freigabe-URL des Google Sheets an (Lesezugriff «Jeder mit dem Link»).",
     liveValidated: true,
     fields: [],
   },

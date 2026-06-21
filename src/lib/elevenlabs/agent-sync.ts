@@ -12,7 +12,11 @@ import {
 } from "@/lib/elevenlabs/agent-config";
 import { ensureAppointmentToolIds } from "@/lib/elevenlabs/appointment-tool-sync";
 import { applyEuComplianceGreeting, applyEuCompliancePrompt } from "@/lib/elevenlabs/compliance";
-import { buildAppointmentBlock } from "@/lib/elevenlabs/prompt";
+import {
+  buildAppointmentBlock,
+  buildCustomerAccessBlock,
+  hasAnyCustomerAccess,
+} from "@/lib/elevenlabs/prompt";
 import { normalizeAppointmentConfig } from "@/lib/integrations/appointment-config";
 import {
   resolveAgentEscalationPhone,
@@ -20,6 +24,10 @@ import {
 } from "@/lib/phone/escalation-target";
 import { listUserPhoneNumbers } from "@/lib/phone/numbers";
 import type { StoredAgent } from "@/lib/onboarding-types";
+import { getGovernancePromptBlock } from "@/lib/governance/runtime";
+import { buildAgentKnowledgeBaseLocators } from "@/lib/elevenlabs/knowledge-base";
+import { getCraftsmenKnowledgeForUser } from "@/lib/customers/craftsmen-kb";
+import { getWebsiteIntegrationForUser } from "@/lib/integrations/website/store";
 import { getSettingsForUser, getUserIdByAgentId } from "@/lib/store";
 
 function buildEscalationBlock(phoneNumber: string): string {
@@ -39,7 +47,8 @@ function buildEscalationBlock(phoneNumber: string): string {
 
 export function buildLiveAgentSystemPrompt(
   agent: StoredAgent,
-  escalationPhone?: string
+  escalationPhone?: string,
+  governanceBlock?: string
 ): string {
   let prompt = applyEuCompliancePrompt(
     agent.systemPrompt,
@@ -53,11 +62,23 @@ export function buildLiveAgentSystemPrompt(
     );
   }
 
+  prompt += buildCustomerAccessBlock(agent);
+
   if (escalationPhone) {
     prompt += buildEscalationBlock(escalationPhone);
   }
 
+  if (governanceBlock?.trim()) {
+    prompt += `\n\n${governanceBlock.trim()}`;
+  }
+
   return prompt;
+}
+
+export async function loadGovernanceVoiceBlock(
+  userId?: string
+): Promise<string> {
+  return getGovernancePromptBlock("voice", userId);
 }
 
 function buildBuiltInTools(
@@ -76,7 +97,9 @@ function buildBuiltInTools(
 export function buildLiveAgentConversationConfig(
   agent: StoredAgent,
   toolIds: string[] = [],
-  escalationPhone?: string
+  escalationPhone?: string,
+  governanceBlock?: string,
+  knowledgeBase?: unknown
 ) {
   return buildConversationConfig({
     greeting: applyEuComplianceGreeting(
@@ -84,10 +107,15 @@ export function buildLiveAgentConversationConfig(
       Boolean(agent.euComplianceEnabled)
     ),
     language: agent.language ?? "Deutsch",
-    systemPrompt: buildLiveAgentSystemPrompt(agent, escalationPhone),
+    systemPrompt: buildLiveAgentSystemPrompt(
+      agent,
+      escalationPhone,
+      governanceBlock
+    ),
     voiceId: agent.voiceId,
     builtInTools: buildBuiltInTools(agent, { escalationPhone }),
     toolIds,
+    knowledgeBase,
     maxTokens: agent.appointmentBookingEnabled
       ? ELEVENLABS_APPOINTMENT_MAX_TOKENS
       : undefined,
@@ -98,7 +126,9 @@ export function buildLiveAgentConversationConfig(
 export function buildLiveAgentChatConversationConfig(
   agent: StoredAgent,
   toolIds: string[] = [],
-  escalationPhone?: string
+  escalationPhone?: string,
+  governanceBlock?: string,
+  knowledgeBase?: unknown
 ) {
   return buildConversationConfig({
     greeting: applyEuComplianceGreeting(
@@ -106,10 +136,15 @@ export function buildLiveAgentChatConversationConfig(
       Boolean(agent.euComplianceEnabled)
     ),
     language: agent.language ?? "Deutsch",
-    systemPrompt: buildLiveAgentSystemPrompt(agent, escalationPhone),
+    systemPrompt: buildLiveAgentSystemPrompt(
+      agent,
+      escalationPhone,
+      governanceBlock
+    ),
     voiceId: agent.voiceId,
     builtInTools: buildBuiltInTools(agent, { chatMode: true, escalationPhone }),
     toolIds,
+    knowledgeBase,
     chatMode: true,
     maxTokens: ELEVENLABS_CHAT_MAX_TOKENS,
     turnTimeoutSeconds: ELEVENLABS_CHAT_TURN_TIMEOUT_SECONDS,
@@ -153,23 +188,63 @@ export async function syncAgentConversationConfig(
     chatMode?: boolean;
     siteUrl?: string;
     escalationContext?: AgentEscalationContext;
+    userId?: string;
   }
 ): Promise<void> {
   const appointmentConfig = normalizeAppointmentConfig(agent.appointmentConfig);
-  const toolIds = agent.appointmentBookingEnabled
-    ? await ensureAppointmentToolIds(client, appointmentConfig, {
-        siteUrl: options?.siteUrl,
-      })
-    : [];
+  const wantsCustomerAccess = hasAnyCustomerAccess(agent);
+  const toolIds =
+    agent.appointmentBookingEnabled || wantsCustomerAccess
+      ? await ensureAppointmentToolIds(client, appointmentConfig, {
+          siteUrl: options?.siteUrl,
+          includeAppointment: Boolean(agent.appointmentBookingEnabled),
+          customerAccess: wantsCustomerAccess,
+        })
+      : [];
 
   const escalationPhone = await resolveEscalationPhoneForAgent(
     agent,
     options?.escalationContext
   );
 
+  const userId =
+    options?.userId ??
+    (await getUserIdByAgentId(agent.id)) ??
+    undefined;
+  const governanceBlock = await loadGovernanceVoiceBlock(userId);
+  const websiteIntegration = userId
+    ? await getWebsiteIntegrationForUser(userId)
+    : null;
+  const craftsmenKnowledge = userId
+    ? await getCraftsmenKnowledgeForUser(userId)
+    : { text: null, docId: null, docName: null };
+  const knowledgeBase = buildAgentKnowledgeBaseLocators(
+    agent,
+    websiteIntegration,
+    undefined,
+    craftsmenKnowledge.docId
+      ? {
+          id: craftsmenKnowledge.docId,
+          name: craftsmenKnowledge.docName ?? "Handwerker-Stamm",
+        }
+      : null
+  );
+
   const conversationConfig = options?.chatMode
-    ? buildLiveAgentChatConversationConfig(agent, toolIds, escalationPhone)
-    : buildLiveAgentConversationConfig(agent, toolIds, escalationPhone);
+    ? buildLiveAgentChatConversationConfig(
+        agent,
+        toolIds,
+        escalationPhone,
+        governanceBlock,
+        knowledgeBase
+      )
+    : buildLiveAgentConversationConfig(
+        agent,
+        toolIds,
+        escalationPhone,
+        governanceBlock,
+        knowledgeBase
+      );
 
   await client.conversationalAi.agents.update(agent.id, {
     name: agent.name,

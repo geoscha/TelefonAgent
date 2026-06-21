@@ -40,6 +40,7 @@ export async function runTextAssistantAppointmentTool(
       typeof args.appointmentTime === "string" ? args.appointmentTime : undefined,
     eventId: typeof args.eventId === "string" ? args.eventId : undefined,
     eventUrl: typeof args.eventUrl === "string" ? args.eventUrl : undefined,
+    query: typeof args.query === "string" ? args.query : undefined,
   };
 
   const secret = process.env.AGENT_TOOL_SECRET?.trim();

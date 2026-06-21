@@ -29,6 +29,10 @@ import {
   getSmsConnections,
   toPublicSmsStatus,
 } from "@/lib/integrations/sms/store";
+import {
+  getWebsiteIntegration,
+  toPublicWebsiteStatus,
+} from "@/lib/integrations/website/store";
 import { isCustomerSourceConfigured } from "@/lib/customers/source";
 import { isCustomerDataProvider } from "@/lib/customers/types";
 import { getCalendars, getSettings, type CalendarProvider } from "@/lib/store";
@@ -44,6 +48,7 @@ export async function GET() {
       whatsappConnections,
       propertySoftwareMap,
       smsMap,
+      websiteIntegration,
     ] = await Promise.all([
       getCalendars(),
       getSettings(),
@@ -51,6 +56,7 @@ export async function GET() {
       listWhatsAppConnections(),
       getPropertySoftwareConnections(),
       getSmsConnections(),
+      getWebsiteIntegration(),
     ]);
 
     const calendars: PublicCalendarStatus[] = CALENDAR_PROVIDERS.map((provider) => {
@@ -114,6 +120,9 @@ export async function GET() {
       whatsapp: whatsappConnections.map(toPublicWhatsAppStatus),
       propertySoftware,
       sms,
+      website: websiteIntegration
+        ? toPublicWebsiteStatus(websiteIntegration)
+        : { connected: false },
       customerSource,
       appointment: {
         enabled: Boolean(settings.appointmentBookingEnabled),

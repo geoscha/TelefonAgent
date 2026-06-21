@@ -607,9 +607,20 @@ export function buildAppointmentPrompt(
 - Storniere mit «cancel_appointment». Bestätige freundlich und beende mit «end_call».`
     : "";
 
-  const cancellationSection = cancellationBlock
-    ? `\n${cancellationBlock}`
-    : "";
+  const rescheduleBlock =
+    config.allowBooking && config.allowCancellation
+      ? `## Termine verschieben
+- Frage nach dem **Namen**, dem **bisherigen Termintag** und dem **neuen Wunschtermin**.
+- Bestehenden Termin mit «find_appointments» finden.
+- Neuen Slot mit «check_availability» prüfen; ist er frei, mit «book_appointment» neu eintragen.
+- Anschliessend den alten Termin mit «cancel_appointment» absagen.
+- Den neuen Termin mit Datum und Uhrzeit bestätigen.`
+      : "";
+
+  const cancellationSection = [cancellationBlock, rescheduleBlock]
+    .filter(Boolean)
+    .map((block) => `\n${block}`)
+    .join("");
 
   return `
 

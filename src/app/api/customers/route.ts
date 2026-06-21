@@ -7,11 +7,22 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    // Refresh the Supabase mirror in the background if it has gone stale.
-    // Reads themselves always come from the mirror, never live.
-    await syncActiveCustomerSource({ staleOnly: true });
-
-    const result = await fetchCustomersWithAppointments();
+    // Read straight from the Supabase mirror so the tab loads instantly —
+    // never go live to Excel/property software here. The hourly/app-open
+    // background sync (useBackgroundSync → POST /api/customers/sync) keeps the
+    // mirror fresh. Only when nothing has ever been synced do we populate once
+    // so the first visit isn't empty.
+    let result = await fetchCustomersWithAppointments();
+    if (
+      result.sourceReady &&
+      !result.lastSyncedAt &&
+      result.customers.length === 0
+    ) {
+      await syncActiveCustomerSource({ force: true }).catch((error) => {
+        console.error("[customers] initial sync failed", error);
+      });
+      result = await fetchCustomersWithAppointments();
+    }
 
     return NextResponse.json({
       ok: true,
@@ -19,6 +30,7 @@ export async function GET() {
       calendarConnected: result.calendarConnected,
       providers: result.providers,
       customers: result.customers,
+      craftsmen: result.craftsmen,
       lastSyncedAt: result.lastSyncedAt,
       activeProvider: result.activeProvider,
       sourceReady: result.sourceReady,

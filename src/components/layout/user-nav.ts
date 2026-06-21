@@ -19,7 +19,7 @@ export type UserNavItem = {
 export const USER_NAV_ITEMS: UserNavItem[] = [
   { href: "/anrufe", label: "Anrufe", icon: PhoneCall },
   { href: "/nachrichten", label: "Nachrichten", icon: MessageSquare },
-  { href: "/kunden", label: "Kunden", icon: Users },
+  { href: "/kunden", label: "Daten", icon: Users },
   { href: "/telefonagent", label: "KI-Assistenten", icon: Bot },
   { href: "/phones", label: "Telefonnummern", icon: Phone },
   { href: "/kalender", label: "Kalender", icon: CalendarDays },

@@ -1,25 +1,34 @@
 import "server-only";
 
-import { inferColumnMapping, EMPTY_COLUMN_MAPPING } from "@/lib/customers/ai-mapping";
+import { inferColumnMapping } from "@/lib/customers/ai-mapping";
 import { fetchProviderCustomers } from "@/lib/customers/fetch";
-import { applyColumnMapping } from "@/lib/customers/normalize";
+import {
+  buildMappingReport,
+  missingMappedHeaders,
+  resolveColumnMapping,
+} from "@/lib/customers/normalize";
 import { getActiveCustomerDataProvider } from "@/lib/customers/source";
+import { loadCraftsmanRecordsFromSpreadsheets } from "@/lib/customers/craftsman-discovery";
+import { syncCraftsmenKnowledgeBase } from "@/lib/customers/craftsmen-kb";
 import { replaceCustomerRecords } from "@/lib/customers/store";
 import type {
   CustomerDataProviderId,
   CustomerRecord,
   SpreadsheetColumnMapping,
 } from "@/lib/customers/types";
-import { excelLoadCustomerRows } from "@/lib/integrations/property-software/excel";
 import { PROPERTY_SOFTWARE_PROVIDER_META } from "@/lib/integrations/property-software/provider-meta";
 import {
   getPropertySoftwareConnections,
   upsertPropertySoftwareConnection,
   type PropertySoftwareConnection,
 } from "@/lib/integrations/property-software/store";
+import {
+  isSpreadsheetSource,
+  loadSpreadsheetRows,
+} from "@/lib/customers/source-loader";
 
-/** Re-sync providers whose mirror is older than this. */
-const STALE_MS = 6 * 60 * 60 * 1000;
+/** Re-sync the active customer source whose mirror is older than this (1h). */
+const STALE_MS = 60 * 60 * 1000;
 
 export interface CustomerSyncResult {
   provider: CustomerDataProviderId;
@@ -28,43 +37,93 @@ export interface CustomerSyncResult {
   error?: string;
 }
 
+/** Error thrown when the stored mapping no longer matches the source headers. */
+export class MappingMismatchError extends Error {}
+
 function hasUsableMapping(
   mapping?: SpreadsheetColumnMapping | null
 ): boolean {
   if (!mapping) return false;
-  return Object.values(mapping).some((index) => index >= 0);
+  return Object.values(mapping).some(
+    (value) => typeof value === "string" && value.trim().length > 0
+  );
 }
 
 /**
- * Load Excel rows, resolve (and persist) the AI column mapping, and turn the
- * sheet into normalized customer records. The mapping is inferred once and
- * cached on the connection so re-syncs are cheap and deterministic.
+ * Load + normalize a spreadsheet source (Excel/Upload/Google Sheet) using the
+ * stored, header-name column mapping. STOPS (throws MappingMismatchError) when
+ * the mapping's columns are gone, so a renamed/deleted header never silently
+ * wipes the existing mirror.
  */
-async function loadExcelCustomers(
+async function loadSpreadsheetCustomers(
+  provider: CustomerDataProviderId,
   connection: PropertySoftwareConnection
 ): Promise<CustomerRecord[]> {
-  const rows = await excelLoadCustomerRows(connection);
-  if (rows.length < 2) return [];
-
-  let mapping = connection.columnMapping;
-  if (!hasUsableMapping(mapping)) {
-    mapping = await inferColumnMapping(rows[0], rows.slice(1, 11));
-    await upsertPropertySoftwareConnection("excel", {
-      columnMapping: mapping,
-    });
+  const rows = await loadSpreadsheetRows(provider, connection);
+  if (rows.length < 2) {
+    throw new MappingMismatchError(
+      "Keine Datenzeilen in der Quelle gefunden — Sync gestoppt (Daten bleiben unverändert)."
+    );
   }
 
-  return applyColumnMapping("excel", rows, mapping ?? EMPTY_COLUMN_MAPPING);
+  const headers = rows[0] ?? [];
+
+  // First sync (or no confirmed mapping yet): infer once and persist by name.
+  let mapping = resolveColumnMapping(connection.columnMapping, headers);
+  if (!hasUsableMapping(mapping)) {
+    const inferred = await inferColumnMapping(headers, rows.slice(1, 11));
+    mapping = inferred.mapping;
+    await upsertPropertySoftwareConnection(provider, { columnMapping: mapping });
+  }
+
+  // Mapping validation: if mapped headers no longer exist, abort without wiping.
+  const missing = missingMappedHeaders(mapping, headers);
+  const nameHeaderGone =
+    Boolean(mapping.name) &&
+    missing.some((header) => header.toLowerCase() === mapping.name.toLowerCase());
+  if (nameHeaderGone || (missing.length > 0 && missing.length >= countMapped(mapping))) {
+    throw new MappingMismatchError(
+      `Spalten in der Quelle wurden umbenannt oder entfernt (${missing.join(
+        ", "
+      )}). Sync gestoppt — bitte Zuordnung im Kunden-Tab prüfen.`
+    );
+  }
+
+  return buildMappingReport(provider, rows, mapping).records;
+}
+
+async function loadSpreadsheetCraftsmen(
+  provider: CustomerDataProviderId,
+  connection: PropertySoftwareConnection
+): Promise<CustomerRecord[]> {
+  if (!isSpreadsheetSource(provider)) return [];
+  return loadCraftsmanRecordsFromSpreadsheets(provider, connection);
+}
+
+function countMapped(mapping: SpreadsheetColumnMapping): number {
+  return Object.values(mapping).filter(
+    (value) => typeof value === "string" && value.trim().length > 0
+  ).length;
 }
 
 async function loadProviderCustomers(
   provider: CustomerDataProviderId,
   connection: PropertySoftwareConnection
 ): Promise<CustomerRecord[]> {
-  if (provider === "excel") {
-    return loadExcelCustomers(connection);
+  if (isSpreadsheetSource(provider)) {
+    return loadSpreadsheetCustomers(provider, connection);
   }
   return fetchProviderCustomers(provider, connection);
+}
+
+function sourceReady(
+  provider: CustomerDataProviderId,
+  connection: PropertySoftwareConnection
+): boolean {
+  if (provider === "excel") return Boolean(connection.workbookId);
+  if (provider === "upload") return Boolean(connection.fileRef);
+  if (provider === "gsheet") return Boolean(connection.gsheetUrl);
+  return true;
 }
 
 /**
@@ -82,13 +141,9 @@ export async function syncActiveCustomerSource(options?: {
   const connection = connections[activeProvider];
   if (!connection?.connected) return null;
 
-  if (activeProvider === "excel" && !connection.workbookId) return null;
+  if (!sourceReady(activeProvider, connection)) return null;
 
-  if (
-    options?.staleOnly &&
-    !options.force &&
-    connection.lastSyncedAt
-  ) {
+  if (options?.staleOnly && !options.force && connection.lastSyncedAt) {
     const age = Date.now() - new Date(connection.lastSyncedAt).getTime();
     if (Number.isFinite(age) && age < STALE_MS) return null;
   }
@@ -96,17 +151,34 @@ export async function syncActiveCustomerSource(options?: {
   const name = PROPERTY_SOFTWARE_PROVIDER_META[activeProvider].name;
 
   try {
-    const records = await loadProviderCustomers(activeProvider, connection);
-    const count = await replaceCustomerRecords(activeProvider, records);
+    const customerRecords = await loadProviderCustomers(activeProvider, connection);
+    let craftsmanRecords: CustomerRecord[] = [];
+    if (isSpreadsheetSource(activeProvider)) {
+      craftsmanRecords = await loadSpreadsheetCraftsmen(activeProvider, connection);
+    }
+    const count = await replaceCustomerRecords(activeProvider, [
+      ...customerRecords.map((record) => ({ ...record, recordType: "customer" as const })),
+      ...craftsmanRecords,
+    ]);
+    await syncCraftsmenKnowledgeBase({
+      provider: activeProvider,
+      records: craftsmanRecords,
+      connection,
+    });
     await upsertPropertySoftwareConnection(activeProvider, {
       lastSyncedAt: new Date().toISOString(),
+      syncStatus: "ok",
+      syncError: null,
     });
     return { provider: activeProvider, name, records: count };
   } catch (error) {
     const message =
-      error instanceof Error
-        ? error.message
-        : "Synchronisierung fehlgeschlagen.";
+      error instanceof Error ? error.message : "Synchronisierung fehlgeschlagen.";
+    // Record the error but DO NOT touch the existing mirror (no partial wipe).
+    await upsertPropertySoftwareConnection(activeProvider, {
+      syncStatus: "error",
+      syncError: message,
+    });
     return { provider: activeProvider, name, records: 0, error: message };
   }
 }

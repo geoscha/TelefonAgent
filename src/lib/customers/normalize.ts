@@ -1,8 +1,101 @@
 import type {
   CustomerDataProviderId,
   CustomerRecord,
+  MappingPreviewStats,
   SpreadsheetColumnMapping,
 } from "@/lib/customers/types";
+import { toE164 } from "@/lib/phone/normalize";
+
+export const MAPPING_FIELD_KEYS: Array<keyof SpreadsheetColumnMapping> = [
+  "name",
+  "firstName",
+  "phone",
+  "email",
+  "street",
+  "zip",
+  "city",
+  "address",
+  "propertyLabel",
+  "unit",
+  "rentalStart",
+  "rentalEnd",
+  "rentalInfo",
+  "trade",
+];
+
+export const EMPTY_COLUMN_MAPPING: SpreadsheetColumnMapping = {
+  name: "",
+  firstName: "",
+  phone: "",
+  email: "",
+  street: "",
+  zip: "",
+  city: "",
+  address: "",
+  propertyLabel: "",
+  unit: "",
+  rentalStart: "",
+  rentalEnd: "",
+  rentalInfo: "",
+  trade: "",
+};
+
+function headerKey(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function buildHeaderIndex(headers: string[]): Map<string, number> {
+  const map = new Map<string, number>();
+  headers.forEach((header, index) => {
+    const key = headerKey(header);
+    if (key && !map.has(key)) map.set(key, index);
+  });
+  return map;
+}
+
+/**
+ * Normalize a stored/suggested mapping to HEADER-NAME form. Accepts the legacy
+ * numeric (column-index) format and converts it via the current header row, so
+ * existing tenants keep working after the index→name migration.
+ */
+export function resolveColumnMapping(
+  mapping:
+    | Partial<Record<keyof SpreadsheetColumnMapping, unknown>>
+    | null
+    | undefined,
+  headers: string[]
+): SpreadsheetColumnMapping {
+  const out: SpreadsheetColumnMapping = { ...EMPTY_COLUMN_MAPPING };
+  if (!mapping) return out;
+  for (const field of MAPPING_FIELD_KEYS) {
+    const value = (mapping as Record<string, unknown>)[field];
+    if (typeof value === "string") {
+      out[field] = value.trim();
+    } else if (
+      typeof value === "number" &&
+      Number.isInteger(value) &&
+      value >= 0 &&
+      value < headers.length
+    ) {
+      out[field] = String(headers[value] ?? "").trim();
+    }
+  }
+  return out;
+}
+
+/** Mapped header names that are missing from the current header row. */
+export function missingMappedHeaders(
+  mapping: SpreadsheetColumnMapping,
+  headers: string[]
+): string[] {
+  const present = new Set(headers.map(headerKey));
+  const missing = new Set<string>();
+  for (const field of MAPPING_FIELD_KEYS) {
+    const header = mapping[field]?.trim();
+    if (header && !present.has(header.toLowerCase())) missing.add(header);
+  }
+  return Array.from(missing);
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -47,6 +140,62 @@ function pickString(
 function joinParts(...parts: Array<string | undefined>): string | undefined {
   const value = parts.filter(Boolean).join(" ").trim();
   return value || undefined;
+}
+
+function formatDmy(date: Date): string {
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  return `${dd}.${mm}.${date.getUTCFullYear()}`;
+}
+
+/**
+ * Normalize a spreadsheet date cell to DD.MM.YYYY. Handles Excel serial
+ * numbers (days since 1899-12-30, e.g. "44423") and ISO date strings;
+ * anything else is returned unchanged.
+ */
+export function formatSpreadsheetDate(
+  value: string | undefined
+): string | undefined {
+  if (!value) return value;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  // Excel serial date — plausible range 1970-01-01 (25569) .. 2100-12-31.
+  if (/^\d{4,5}(\.\d+)?$/.test(trimmed)) {
+    const serial = Number(trimmed);
+    if (serial >= 25569 && serial <= 73415) {
+      const ms = Math.round((serial - 25569) * 86_400_000);
+      const date = new Date(ms);
+      if (!Number.isNaN(date.getTime())) return formatDmy(date);
+    }
+  }
+
+  // ISO-like date string (YYYY-MM-DD...).
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    const date = new Date(trimmed);
+    if (!Number.isNaN(date.getTime())) return formatDmy(date);
+  }
+
+  return trimmed;
+}
+
+/**
+ * Join address parts, dropping empty and duplicate segments. Guards against
+ * mappings where several columns (street/zip/city) point at the same cell,
+ * which would otherwise repeat the full address multiple times.
+ */
+function joinAddressParts(...parts: Array<string | undefined>): string | undefined {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const raw of parts) {
+    const part = raw?.trim();
+    if (!part) continue;
+    const key = part.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(part);
+  }
+  return unique.length ? unique.join(" ") : undefined;
 }
 
 function buildAddress(row: Record<string, unknown>): string | undefined {
@@ -274,9 +423,10 @@ export function normalizeSpreadsheetCustomers(
     const name = joinParts(firstName, lastName) ?? lastName;
     if (!name) continue;
 
-    const address = joinParts(
+    const address = joinAddressParts(
       cell(streetCol),
-      joinParts(cell(zipCol), cell(cityCol))
+      cell(zipCol),
+      cell(cityCol)
     );
 
     customers.push({
@@ -294,42 +444,86 @@ export function normalizeSpreadsheetCustomers(
 }
 
 /**
- * Apply a (AI- or heuristic-derived) column mapping to spreadsheet rows.
- * Limited to the fields used on the customer page: name, address, phone,
- * email, property label and rental-duration info.
+ * Apply a column mapping (by HEADER NAME) to spreadsheet rows and report
+ * per-row problems. Row 0 must be the header row. Phone numbers are normalized
+ * to strict E.164; non-normalizable numbers keep the row but flag the phone.
  */
-export function applyColumnMapping(
+export function buildMappingReport(
   provider: CustomerDataProviderId,
   rows: string[][],
-  mapping: SpreadsheetColumnMapping
-): CustomerRecord[] {
-  if (rows.length < 2) return [];
+  mapping: SpreadsheetColumnMapping,
+  recordType: CustomerRecord["recordType"] = "customer"
+): { records: CustomerRecord[]; stats: MappingPreviewStats } {
+  const emptyStats: MappingPreviewStats = {
+    totalRows: 0,
+    validRows: 0,
+    normalizablePhones: 0,
+    unmatchedPhones: 0,
+    problems: [],
+  };
+  if (rows.length < 2) {
+    return { records: [], stats: emptyStats };
+  }
 
-  const customers: CustomerRecord[] = [];
+  const headers = rows[0] ?? [];
+  const headerIndex = buildHeaderIndex(headers);
 
-  const cellAt = (row: string[], index: number): string | undefined => {
+  const indexOf = (header: string): number => {
+    const key = header?.trim().toLowerCase();
+    if (!key) return -1;
+    return headerIndex.get(key) ?? -1;
+  };
+
+  const cellAt = (row: string[], header: string): string | undefined => {
+    const index = indexOf(header);
     if (index < 0) return undefined;
     const text = String(row[index] ?? "").trim();
     return text || undefined;
   };
 
+  const records: CustomerRecord[] = [];
+  const problems: MappingPreviewStats["problems"] = [];
+  let validRows = 0;
+  let normalizablePhones = 0;
+  let unmatchedPhones = 0;
+
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i] ?? [];
+    const rowNumber = i + 1; // 1-based incl. header → matches spreadsheet rows
+
+    // Skip fully empty rows silently.
+    if (row.every((cell) => String(cell ?? "").trim() === "")) continue;
 
     const lastName = cellAt(row, mapping.name);
     const firstName = cellAt(row, mapping.firstName);
     const name = joinParts(firstName, lastName) ?? lastName ?? firstName;
-    if (!name) continue;
+    if (!name) {
+      problems.push({ rowNumber, reason: "Kein Name erkennbar — Zeile übersprungen." });
+      continue;
+    }
+
+    const phoneRaw = cellAt(row, mapping.phone);
+    const phoneNormalized = phoneRaw ? toE164(phoneRaw) ?? undefined : undefined;
+    const phoneUnmatched = Boolean(phoneRaw) && !phoneNormalized;
+    if (phoneNormalized) normalizablePhones += 1;
+    if (phoneUnmatched) {
+      unmatchedPhones += 1;
+      problems.push({
+        rowNumber,
+        reason: `Telefon nicht normalisierbar: «${phoneRaw}» (Zeile wird trotzdem gespeichert).`,
+      });
+    }
 
     const address =
       cellAt(row, mapping.address) ??
-      joinParts(
+      joinAddressParts(
         cellAt(row, mapping.street),
-        joinParts(cellAt(row, mapping.zip), cellAt(row, mapping.city))
+        cellAt(row, mapping.zip),
+        cellAt(row, mapping.city)
       );
 
-    const rentalStart = cellAt(row, mapping.rentalStart);
-    const rentalEnd = cellAt(row, mapping.rentalEnd);
+    const rentalStart = formatSpreadsheetDate(cellAt(row, mapping.rentalStart));
+    const rentalEnd = formatSpreadsheetDate(cellAt(row, mapping.rentalEnd));
     const rentalInfo =
       cellAt(row, mapping.rentalInfo) ??
       (rentalStart || rentalEnd
@@ -338,22 +532,61 @@ export function applyColumnMapping(
             .join(" ")
         : undefined);
 
-    customers.push({
-      id: `${provider}:row-${i}`,
+    const raw: Record<string, unknown> = {};
+    headers.forEach((header, index) => {
+      const key = String(header ?? "").trim();
+      if (key) raw[key] = row[index] ?? "";
+    });
+
+    const typePrefix = recordType === "craftsman" ? "craftsman" : "customer";
+    const trade =
+      cellAt(row, mapping.trade) ??
+      (recordType === "craftsman" ? cellAt(row, mapping.propertyLabel) : undefined);
+
+    validRows += 1;
+    records.push({
+      id: `${provider}:${typePrefix}:${i}`,
       provider,
-      externalId: String(i),
+      recordType,
+      externalId: `${typePrefix}:${i}`,
       name,
-      phone: cellAt(row, mapping.phone),
+      phone: phoneRaw,
+      phoneNormalized,
+      phoneUnmatched,
       email: cellAt(row, mapping.email),
       address,
       propertyLabel: cellAt(row, mapping.propertyLabel),
+      unit: cellAt(row, mapping.unit),
+      trade: trade || undefined,
       rentalStart,
       rentalEnd,
       rentalInfo: rentalInfo || undefined,
+      raw,
     });
   }
 
-  return customers;
+  return {
+    records,
+    stats: {
+      totalRows: rows.length - 1,
+      validRows,
+      normalizablePhones,
+      unmatchedPhones,
+      problems: problems.slice(0, 50),
+    },
+  };
+}
+
+/**
+ * Apply a column mapping to spreadsheet rows (records only). See
+ * {@link buildMappingReport} for the variant that also returns problem stats.
+ */
+export function applyColumnMapping(
+  provider: CustomerDataProviderId,
+  rows: string[][],
+  mapping: SpreadsheetColumnMapping
+): CustomerRecord[] {
+  return buildMappingReport(provider, rows, mapping).records;
 }
 
 export function dedupeCustomers(customers: CustomerRecord[]): CustomerRecord[] {
@@ -362,6 +595,7 @@ export function dedupeCustomers(customers: CustomerRecord[]): CustomerRecord[] {
 
   for (const customer of customers) {
     const key = [
+      customer.recordType ?? "customer",
       customer.provider,
       customer.name.toLowerCase(),
       customer.phone ?? "",

@@ -33,6 +33,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "framer-motion": "^12.40.0",
+    "libphonenumber-js": "^1.13.7",
     "lucide-react": "^1.18.0",
     "next": "14.2.35",
     "react": "^18",
@@ -40,7 +41,8 @@
     "server-only": "^0.0.1",
     "sonner": "^2.0.7",
     "stripe": "^22.2.1",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20",

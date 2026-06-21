@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { StoredAgent } from "@/lib/onboarding-types";
+import { hasAnyCustomerAccess } from "@/lib/elevenlabs/prompt";
 import {
   getEnabledAppointmentTypes,
   isFlexibleScheduling,
@@ -8,7 +9,9 @@ import {
 } from "@/lib/integrations/appointment-config";
 
 export function textAssistantTools(agent: StoredAgent) {
-  if (!agent.appointmentBookingEnabled) return [];
+  const customerAccess = hasAnyCustomerAccess(agent);
+
+  if (!agent.appointmentBookingEnabled && !customerAccess) return [];
 
   const config = normalizeAppointmentConfig(agent.appointmentConfig);
   const flexible = isFlexibleScheduling(config);
@@ -25,11 +28,13 @@ export function textAssistantTools(agent: StoredAgent) {
     };
   }> = [];
 
+  const appointmentsEnabled = Boolean(agent.appointmentBookingEnabled);
+
   const durationDescription = flexible
     ? "Geschätzte Dauer in Minuten (5–240) — aus dem Anliegen ableiten, z. B. Arzt 30, Meeting 60, Mittagessen 90"
     : "Dauer in Minuten — aus Terminart oder Kundenangabe";
 
-  if (config.allowBooking) {
+  if (appointmentsEnabled && config.allowBooking) {
     tools.push({
       type: "function",
       function: {
@@ -117,7 +122,24 @@ export function textAssistantTools(agent: StoredAgent) {
     });
   }
 
-  if (config.allowCancellation) {
+  if (appointmentsEnabled && config.allowCancellation) {
+    tools.push({
+      type: "function",
+      function: {
+        name: "find_appointments",
+        description:
+          "Sucht bestehende Termine einer Person an einem Tag (z. B. vor Stornierung oder Verschiebung).",
+        parameters: {
+          type: "object",
+          properties: {
+            attendeeName: { type: "string", description: "Name der Person" },
+            appointmentDate: { type: "string", description: "Tag YYYY-MM-DD" },
+          },
+          required: ["attendeeName", "appointmentDate"],
+        },
+      },
+    });
+
     tools.push({
       type: "function",
       function: {
@@ -132,6 +154,27 @@ export function textAssistantTools(agent: StoredAgent) {
             eventId: { type: "string" },
           },
           required: ["attendeeName"],
+        },
+      },
+    });
+  }
+
+  if (customerAccess) {
+    tools.push({
+      type: "function",
+      function: {
+        name: "lookup_customer",
+        description:
+          "Sucht eine Person in der Kundendatenbank der Verwaltung (Mieter/Eigentümer) per Name. Liefert nur die freigegebenen Felder zurück.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "Name der gesuchten Person (Nachname genügt)",
+            },
+          },
+          required: ["query"],
         },
       },
     });

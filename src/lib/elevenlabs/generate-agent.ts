@@ -233,10 +233,10 @@ Antworte NUR als JSON:
 }
 
 Fülle die sections knapp aus — insgesamt höchstens ${MAX_AGENT_INSTRUCTION_PARAGRAPHS} Absätze und ${MAX_AGENT_INSTRUCTION_WORDS} Wörter im fertigen Anweisungstext:
-- rolle: 1 kurzer Satz, dass der Assistent Anrufe für eine Immobilienverwaltung entgegennimmt
-- leistungen: 2–3 Bulletpoints (Reparatur-/Schadensmeldungen aufnehmen, Termine vereinbaren, Nachrichten für die Verwaltung)
+- rolle: 1 kurzer Satz, dass der Assistent wie das Sekretariat/der Empfang einer Immobilienverwaltung eingehende Anrufe und Anliegen von Mietern, Eigentümern, Handwerkern und Interessenten höflich entgegennimmt
+- leistungen: 2–3 Bulletpoints (Termine vereinbaren, verschieben und stornieren — Schlüsselübergabe, Handwerker/Reparatur, Besichtigung, Abnahme; Reparatur-/Schadensmeldungen aufnehmen; Nachrichten für die Verwaltung)
 - typischeAnfragen: 2–3 häufige Anliegen${hasWebsite ? " (nur Wesentliches aus Website)" : ""}
-- gespraechsfuehrung: Ton, Rückfragen (Liegenschaft/Adresse, Wohnung, Anliegen), keine verbindlichen Zusagen zu Kosten/Fristen
+- gespraechsfuehrung: höflicher Sekretariats-Ton (Sie-Form), gezielte Rückfragen (Name, Liegenschaft/Adresse, Wohnung, Anliegen), keine verbindlichen Zusagen zu Kosten/Fristen
 - eskalation: bei Notfällen (Wasserschaden, Heizungsausfall, kein Strom) sofort weiterleiten/Rückruf zusichern
 - abschluss: kurz Verabschiedung
 - branche: 1 Satz Kontext zur Immobilienverwaltung

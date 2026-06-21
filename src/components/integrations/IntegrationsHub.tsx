@@ -9,12 +9,14 @@ import { CalendarIntegrations } from "@/components/integrations/CalendarIntegrat
 import { MailIntegrations } from "@/components/integrations/MailIntegrations";
 import { PropertySoftwareIntegrations } from "@/components/integrations/PropertySoftwareIntegrations";
 import { SmsIntegrations } from "@/components/integrations/SmsIntegrations";
+import { WebsiteIntegrations } from "@/components/integrations/WebsiteIntegrations";
 import { Input } from "@/components/ui/input";
 import { PROVIDER_META } from "@/lib/calendar/provider-meta";
 import { integrationSearchHasResults } from "@/lib/integrations/search";
 import { MAIL_PROVIDER_META } from "@/lib/integrations/mail/provider-meta";
 import { PROPERTY_SOFTWARE_PROVIDER_META } from "@/lib/integrations/property-software/provider-meta";
 import { SMS_PROVIDER_META } from "@/lib/integrations/sms/provider-meta";
+import { WEBSITE_INTEGRATION_META } from "@/lib/integrations/website/provider-meta";
 import {
   sortIntegrationCards,
   type IntegrationCardEntry,
@@ -31,6 +33,7 @@ export function IntegrationsHub() {
   const [mailCards, setMailCards] = useState<IntegrationCardEntry[]>([]);
   const [propertyCards, setPropertyCards] = useState<IntegrationCardEntry[]>([]);
   const [smsCards, setSmsCards] = useState<IntegrationCardEntry[]>([]);
+  const [websiteCards, setWebsiteCards] = useState<IntegrationCardEntry[]>([]);
 
   const sortedCards = useMemo(
     () =>
@@ -39,8 +42,9 @@ export function IntegrationsHub() {
         ...mailCards,
         ...propertyCards,
         ...smsCards,
+        ...websiteCards,
       ]),
-    [calendarCards, mailCards, propertyCards, smsCards]
+    [calendarCards, mailCards, propertyCards, smsCards, websiteCards]
   );
 
   const hasResults = useMemo(
@@ -76,6 +80,8 @@ export function IntegrationsHub() {
         ) as keyof typeof SMS_PROVIDER_META;
         const meta = SMS_PROVIDER_META[providerId];
         toast.success(meta ? `${meta.name} verbunden` : "SMS verbunden");
+      } else if (connected === "website") {
+        toast.success(`${WEBSITE_INTEGRATION_META.name} verbunden`);
       } else {
         const meta = PROVIDER_META[connected as keyof typeof PROVIDER_META];
         toast.success(
@@ -159,6 +165,13 @@ export function IntegrationsHub() {
                 bare
                 deferCardRender
                 registerCards={setSmsCards}
+                searchQuery={searchQuery}
+              />
+              <WebsiteIntegrations
+                layout="page"
+                bare
+                deferCardRender
+                registerCards={setWebsiteCards}
                 searchQuery={searchQuery}
               />
             </>

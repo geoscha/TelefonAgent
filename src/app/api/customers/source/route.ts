@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { EMPTY_COLUMN_MAPPING } from "@/lib/customers/normalize";
 import {
   getCustomerSourceContext,
   listCustomerSourceProviders,
@@ -11,8 +12,7 @@ import type {
   CustomerDataProviderId,
   SpreadsheetColumnMapping,
 } from "@/lib/customers/types";
-import { isCustomerDataProvider } from "@/lib/customers/types";
-import { EMPTY_COLUMN_MAPPING } from "@/lib/customers/ai-mapping";
+import { isCustomerDataProvider, isSpreadsheetProvider } from "@/lib/customers/types";
 import {
   excelListWorkbooks,
   excelListWorksheets,
@@ -36,28 +36,61 @@ export async function GET(req: NextRequest) {
       excelConnection?.workbookId ??
       undefined;
 
-    const excel =
-      excelConnection?.connected
-        ? {
-            accountLabel: excelConnection.accountLabel ?? null,
-            selected: {
-              workbookId: excelConnection.workbookId ?? null,
-              workbookName: excelConnection.workbookName ?? null,
-              worksheetId: excelConnection.worksheetId ?? null,
-              worksheetName: excelConnection.worksheetName ?? null,
-            },
-            workbooks: await excelListWorkbooks(excelConnection),
-            worksheets: workbookId
+    const includeExcelFiles =
+      req.nextUrl.searchParams.get("includeExcelFiles") === "1";
+
+    const excel = excelConnection?.connected
+      ? {
+          accountLabel: excelConnection.accountLabel ?? null,
+          selected: {
+            workbookId: excelConnection.workbookId ?? null,
+            workbookName: excelConnection.workbookName ?? null,
+            worksheetId: excelConnection.worksheetId ?? null,
+            worksheetName: excelConnection.worksheetName ?? null,
+          },
+          columnMapping: excelConnection.columnMapping ?? null,
+          workbooks: includeExcelFiles
+            ? await excelListWorkbooks(excelConnection)
+            : [],
+          worksheets:
+            includeExcelFiles && workbookId
               ? await excelListWorksheets(excelConnection, workbookId)
               : [],
-          }
-        : null;
+        }
+      : null;
+
+    const uploadConnection = connections.upload;
+    const upload = uploadConnection?.fileRef
+      ? {
+          fileName: uploadConnection.fileName ?? null,
+          worksheetId: uploadConnection.worksheetId ?? null,
+          columnMapping: uploadConnection.columnMapping ?? null,
+        }
+      : null;
+
+    const gsheetConnection = connections.gsheet;
+    const gsheet = gsheetConnection?.gsheetUrl
+      ? {
+          url: gsheetConnection.gsheetUrl,
+          columnMapping: gsheetConnection.columnMapping ?? null,
+        }
+      : null;
+
+    const activeStatus = activeProvider
+      ? {
+          syncStatus: connections[activeProvider]?.syncStatus ?? null,
+          syncError: connections[activeProvider]?.syncError ?? null,
+        }
+      : null;
 
     return NextResponse.json({
       ok: true,
       activeProvider: activeProvider ?? null,
       providers,
       excel,
+      upload,
+      gsheet,
+      activeStatus,
     });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {
@@ -66,13 +99,16 @@ export async function GET(req: NextRequest) {
         { status: 401 }
       );
     }
-
     const message =
       error instanceof Error
         ? error.message
         : "Kundendatenquelle konnte nicht geladen werden.";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
+}
+
+function mappingHasName(mapping: SpreadsheetColumnMapping): boolean {
+  return Boolean(mapping.name && mapping.name.trim());
 }
 
 export async function POST(req: Request) {
@@ -83,7 +119,12 @@ export async function POST(req: Request) {
       workbookName?: string;
       worksheetId?: string;
       worksheetName?: string;
+      sheetId?: string;
+      sheetName?: string;
       columnMapping?: Partial<SpreadsheetColumnMapping>;
+      craftsmanWorksheetId?: string | null;
+      craftsmanWorksheetName?: string | null;
+      craftsmanColumnMapping?: Partial<SpreadsheetColumnMapping>;
     };
 
     if (!body.provider || !isCustomerDataProvider(body.provider)) {
@@ -107,46 +148,97 @@ export async function POST(req: Request) {
       );
     }
 
-    if (provider === "excel") {
-      if (!body.workbookId?.trim()) {
-        return NextResponse.json(
-          { ok: false, error: "Bitte eine Excel-Datei auswählen." },
-          { status: 400 }
-        );
-      }
-
-      // A confirmed column mapping is required so we know which columns hold
-      // name, phone, address etc. — the user reviews/approves it in the UI.
+    if (isSpreadsheetProvider(provider)) {
+      // Confirmed, header-name column mapping (name column required).
       const mapping: SpreadsheetColumnMapping = {
         ...EMPTY_COLUMN_MAPPING,
         ...(body.columnMapping ?? {}),
       };
-      const hasMapping = Object.values(mapping).some((index) => index >= 0);
-      if (!hasMapping) {
+      if (!mappingHasName(mapping)) {
         return NextResponse.json(
-          {
-            ok: false,
-            error: "Bitte ordnen Sie mindestens eine Spalte zu (z. B. Name).",
-          },
+          { ok: false, error: "Bitte ordnen Sie mindestens die Namens-Spalte zu." },
           { status: 400 }
         );
       }
 
-      await upsertPropertySoftwareConnection("excel", {
-        workbookId: body.workbookId.trim(),
-        workbookName: body.workbookName?.trim() || undefined,
-        worksheetId: body.worksheetId?.trim() || undefined,
-        worksheetName: body.worksheetName?.trim() || undefined,
-        columnMapping: mapping,
-        lastSyncedAt: null,
-      });
+      const craftsmanMapping: SpreadsheetColumnMapping | undefined =
+        body.craftsmanColumnMapping && mappingHasName({
+          ...EMPTY_COLUMN_MAPPING,
+          ...body.craftsmanColumnMapping,
+        })
+          ? { ...EMPTY_COLUMN_MAPPING, ...body.craftsmanColumnMapping }
+          : undefined;
+
+      const craftsmanPatch = {
+        craftsmanWorksheetId:
+          body.craftsmanWorksheetId === null
+            ? null
+            : body.craftsmanWorksheetId?.trim() || null,
+        craftsmanWorksheetName: body.craftsmanWorksheetName?.trim() || null,
+        craftsmanColumnMapping: craftsmanMapping ?? null,
+      };
+
+      if (provider === "excel") {
+        if (!body.workbookId?.trim()) {
+          return NextResponse.json(
+            { ok: false, error: "Bitte eine Excel-Datei auswählen." },
+            { status: 400 }
+          );
+        }
+        await upsertPropertySoftwareConnection("excel", {
+          workbookId: body.workbookId.trim(),
+          workbookName: body.workbookName?.trim() || undefined,
+          worksheetId: body.worksheetId?.trim() || undefined,
+          worksheetName: body.worksheetName?.trim() || undefined,
+          columnMapping: mapping,
+          ...craftsmanPatch,
+          lastSyncedAt: null,
+          syncStatus: null,
+          syncError: null,
+        });
+      } else if (provider === "upload") {
+        if (!connection.fileRef) {
+          return NextResponse.json(
+            { ok: false, error: "Bitte zuerst eine Datei hochladen." },
+            { status: 400 }
+          );
+        }
+        await upsertPropertySoftwareConnection("upload", {
+          worksheetId: body.sheetId?.trim() || undefined,
+          worksheetName: body.sheetName?.trim() || undefined,
+          columnMapping: mapping,
+          ...craftsmanPatch,
+          lastSyncedAt: null,
+          syncStatus: null,
+          syncError: null,
+        });
+      } else if (provider === "gsheet") {
+        if (!connection.gsheetUrl) {
+          return NextResponse.json(
+            { ok: false, error: "Bitte zuerst ein Google Sheet verlinken." },
+            { status: 400 }
+          );
+        }
+        await upsertPropertySoftwareConnection("gsheet", {
+          columnMapping: mapping,
+          ...craftsmanPatch,
+          lastSyncedAt: null,
+          syncStatus: null,
+          syncError: null,
+        });
+      }
     }
 
     await setActiveCustomerDataProvider(provider);
     await clearCustomerRecordsExcept(provider);
-    await syncActiveCustomerSource({ force: true });
+    const result = await syncActiveCustomerSource({ force: true });
 
-    return NextResponse.json({ ok: true, activeProvider: provider });
+    return NextResponse.json({
+      ok: true,
+      activeProvider: provider,
+      synced: result?.records ?? 0,
+      error: result?.error ?? null,
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {
       return NextResponse.json(
@@ -154,7 +246,6 @@ export async function POST(req: Request) {
         { status: 401 }
       );
     }
-
     const message =
       error instanceof Error
         ? error.message

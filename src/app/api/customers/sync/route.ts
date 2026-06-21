@@ -1,14 +1,32 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import { syncActiveCustomerSource } from "@/lib/customers/sync";
 
 export const dynamic = "force-dynamic";
 
-/** Force a full re-sync of the active customer database. */
-export async function POST() {
+/**
+ * Re-sync the active customer database. Pass `{ staleOnly: true }` for the
+ * automatic hourly/app-open refresh (only re-pulls when the mirror is older
+ * than the TTL); the default forces a full re-sync (manual "sync now").
+ */
+export async function POST(req: NextRequest) {
   try {
-    const result = await syncActiveCustomerSource({ force: true });
+    let staleOnly = false;
+    try {
+      const body = (await req.json()) as { staleOnly?: boolean };
+      staleOnly = Boolean(body?.staleOnly);
+    } catch {
+      staleOnly = false;
+    }
+
+    const result = await syncActiveCustomerSource(
+      staleOnly ? { staleOnly: true } : { force: true }
+    );
     if (!result) {
+      // staleOnly: mirror still fresh (or no source) — nothing to do.
+      if (staleOnly) {
+        return NextResponse.json({ ok: true, skipped: true });
+      }
       return NextResponse.json(
         {
           ok: false,

@@ -1,84 +1,135 @@
 import "server-only";
 
 import { getEnrichmentConfig } from "@/lib/admin/enrichment-config";
-import type { SpreadsheetColumnMapping } from "@/lib/customers/types";
+import {
+  EMPTY_COLUMN_MAPPING,
+  MAPPING_FIELD_KEYS,
+} from "@/lib/customers/normalize";
+import type {
+  ColumnMappingConfidence,
+  SpreadsheetColumnMapping,
+} from "@/lib/customers/types";
 
-export const EMPTY_COLUMN_MAPPING: SpreadsheetColumnMapping = {
-  name: -1,
-  firstName: -1,
-  phone: -1,
-  email: -1,
-  street: -1,
-  zip: -1,
-  city: -1,
-  address: -1,
-  propertyLabel: -1,
-  rentalStart: -1,
-  rentalEnd: -1,
-  rentalInfo: -1,
+export { EMPTY_COLUMN_MAPPING };
+
+export interface InferredMapping {
+  mapping: SpreadsheetColumnMapping;
+  confidence: ColumnMappingConfidence;
+}
+
+const FIELD_DESCRIPTIONS: Record<keyof SpreadsheetColumnMapping, string> = {
+  name: "Nachname oder vollständiger Name (Pflichtfeld)",
+  firstName: "Vorname (nur falls separate Spalte)",
+  phone: "Telefon-/Handynummer (Pflichtfeld)",
+  email: "E-Mail-Adresse",
+  street: "Strasse + Hausnummer",
+  zip: "Postleitzahl",
+  city: "Ort",
+  address: "vollständige Adresse in EINER Spalte (statt street/zip/city)",
+  propertyLabel: "Liegenschaft / Objekt (property)",
+  unit: "Wohnung / Mietobjekt / Einheit (unit)",
+  rentalStart: "Mietbeginn / Einzug",
+  rentalEnd: "Mietende / Auszug",
+  rentalInfo: "sonstige Vertrags-/Mietdauer-Info (contract_info)",
+  trade: "Gewerk / Fachbereich / Branche (Handwerker)",
 };
 
-const MAPPING_FIELDS = Object.keys(EMPTY_COLUMN_MAPPING) as Array<
-  keyof SpreadsheetColumnMapping
->;
-
-function clampIndex(value: unknown, columnCount: number): number {
-  const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isInteger(n) || n < 0 || n >= columnCount) return -1;
-  return n;
-}
-
-function sanitizeMapping(
-  raw: Record<string, unknown>,
-  columnCount: number
-): SpreadsheetColumnMapping {
-  const mapping = { ...EMPTY_COLUMN_MAPPING };
-  for (const field of MAPPING_FIELDS) {
-    mapping[field] = clampIndex(raw[field], columnCount);
-  }
-  return mapping;
-}
-
 function hasAnyField(mapping: SpreadsheetColumnMapping): boolean {
-  return MAPPING_FIELDS.some((field) => mapping[field] >= 0);
+  return MAPPING_FIELD_KEYS.some((field) => mapping[field].trim().length > 0);
+}
+
+function matchHeader(headers: string[], keywords: string[]): string {
+  const idx = headers.findIndex((header) => {
+    const lower = String(header ?? "").trim().toLowerCase();
+    return keywords.some((keyword) => lower.includes(keyword.toLowerCase()));
+  });
+  return idx >= 0 ? String(headers[idx] ?? "").trim() : "";
 }
 
 /** Heuristic fallback when no LLM is configured or the call fails. */
 export function heuristicColumnMapping(
   headers: string[]
-): SpreadsheetColumnMapping {
-  const normalized = headers.map((h) => String(h ?? "").trim().toLowerCase());
-  const find = (...names: string[]) =>
-    normalized.findIndex((header) =>
-      names.some((name) => header.includes(name.toLowerCase()))
-    );
-
-  return {
-    name: find("name", "kunde", "mieter", "nachname"),
-    firstName: find("vorname", "firstname", "first name"),
-    phone: find("telefon", "tel", "phone", "handy", "mobile", "natel"),
-    email: find("email", "mail", "e-mail"),
-    street: find("strasse", "straße", "adresse", "address", "street"),
-    zip: find("plz", "zip", "postleitzahl", "postal"),
-    city: find("ort", "city", "stadt", "wohnort"),
-    address: find("adresse komplett", "volladresse", "full address"),
-    propertyLabel: find("liegenschaft", "objekt", "wohnung", "property", "unit", "mietobjekt"),
-    rentalStart: find("mietbeginn", "einzug", "vertragsbeginn", "start", "von", "beginn"),
-    rentalEnd: find("mietende", "auszug", "vertragsende", "ende", "bis", "kündigung"),
-    rentalInfo: find("mietdauer", "vertrag", "befristung", "dauer"),
+): InferredMapping {
+  const mapping: SpreadsheetColumnMapping = {
+    name: matchHeader(headers, ["nachname", "name", "kunde", "mieter"]),
+    firstName: matchHeader(headers, ["vorname", "firstname", "first name"]),
+    phone: matchHeader(headers, ["telefon", "tel", "phone", "handy", "mobile", "natel"]),
+    email: matchHeader(headers, ["email", "mail", "e-mail"]),
+    street: matchHeader(headers, ["strasse", "straße", "street"]),
+    zip: matchHeader(headers, ["plz", "zip", "postleitzahl", "postal"]),
+    city: matchHeader(headers, ["ort", "city", "stadt", "wohnort"]),
+    address: matchHeader(headers, ["adresse", "volladresse", "full address", "anschrift"]),
+    propertyLabel: matchHeader(headers, ["liegenschaft", "objekt", "property", "haus"]),
+    unit: matchHeader(headers, ["wohnung", "unit", "mietobjekt", "einheit", "whg"]),
+    rentalStart: matchHeader(headers, ["mietbeginn", "einzug", "vertragsbeginn", "beginn"]),
+    rentalEnd: matchHeader(headers, ["mietende", "auszug", "vertragsende", "kündigung"]),
+    rentalInfo: matchHeader(headers, ["mietdauer", "vertrag", "befristung", "dauer"]),
+    trade: matchHeader(headers, [
+      "gewerk",
+      "fachbereich",
+      "branche",
+      "trade",
+      "kategorie",
+      "bereich",
+    ]),
   };
+
+  const confidence: ColumnMappingConfidence = {};
+  for (const field of MAPPING_FIELD_KEYS) {
+    if (mapping[field]) confidence[field] = 0.5; // heuristic = medium confidence
+  }
+
+  return { mapping, confidence };
+}
+
+function sanitizeAiMapping(
+  raw: Record<string, unknown>,
+  headers: string[]
+): InferredMapping {
+  const headerByLower = new Map(
+    headers.map((header) => [String(header ?? "").trim().toLowerCase(), String(header ?? "").trim()])
+  );
+  const mapping: SpreadsheetColumnMapping = { ...EMPTY_COLUMN_MAPPING };
+  const confidence: ColumnMappingConfidence = {};
+
+  for (const field of MAPPING_FIELD_KEYS) {
+    const entry = raw[field];
+    let columnName = "";
+    let conf = 0;
+
+    if (typeof entry === "string") {
+      columnName = entry;
+    } else if (entry && typeof entry === "object") {
+      const obj = entry as Record<string, unknown>;
+      if (typeof obj.column === "string") columnName = obj.column;
+      else if (typeof obj.header === "string") columnName = obj.header;
+      if (typeof obj.confidence === "number") conf = obj.confidence;
+    }
+
+    const trimmed = columnName.trim();
+    if (!trimmed || trimmed.toLowerCase() === "ignore") continue;
+    const resolved = headerByLower.get(trimmed.toLowerCase());
+    if (!resolved) continue; // hallucinated header → drop
+
+    mapping[field] = resolved;
+    confidence[field] = Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : 0.7;
+  }
+
+  return { mapping, confidence };
 }
 
 /**
- * Use the configured LLM to map spreadsheet columns to customer fields.
- * Falls back to heuristic header matching if no API key or on error.
+ * Use the configured LLM to map spreadsheet columns to customer fields by
+ * HEADER NAME, with a per-field confidence. Falls back to heuristic header
+ * matching when no API key is set or the call fails.
  */
 export async function inferColumnMapping(
   headers: string[],
   sampleRows: string[][]
-): Promise<SpreadsheetColumnMapping> {
-  const columnCount = headers.length;
-  if (columnCount === 0) return EMPTY_COLUMN_MAPPING;
+): Promise<InferredMapping> {
+  if (headers.length === 0) {
+    return { mapping: { ...EMPTY_COLUMN_MAPPING }, confidence: {} };
+  }
 
   const fallback = heuristicColumnMapping(headers);
 
@@ -90,33 +141,32 @@ export async function inferColumnMapping(
   }
   if (!config.apiKey) return fallback;
 
-  const columnsPreview = headers.map((header, index) => {
+  const columnsPreview = headers.map((header) => {
     const samples = sampleRows
       .slice(0, 5)
-      .map((row) => String(row[index] ?? "").trim())
+      .map((row) => {
+        const index = headers.indexOf(header);
+        return String(row[index] ?? "").trim();
+      })
       .filter(Boolean)
       .slice(0, 3);
-    return `${index}: "${header}"${samples.length ? ` — Beispiele: ${samples.join(" | ")}` : ""}`;
+    return `"${header}"${samples.length ? ` — Beispiele: ${samples.join(" | ")}` : ""}`;
   });
 
-  const system = `Du ordnest Spalten einer Mieter-/Kundenliste den passenden Feldern zu.
-Antworte AUSSCHLIESSLICH mit JSON. Für jedes Feld gibst du den 0-basierten Spaltenindex an, oder -1 wenn nicht vorhanden.
-Felder:
-- name: Nachname oder vollständiger Name
-- firstName: Vorname (falls separat)
-- phone: Telefon-/Handynummer
-- email: E-Mail
-- street: Strasse + Hausnummer
-- zip: Postleitzahl
-- city: Ort
-- address: vollständige Adresse (falls in einer einzigen Spalte)
-- propertyLabel: Liegenschaft/Objekt/Wohnung
-- rentalStart: Mietbeginn/Einzug
-- rentalEnd: Mietende/Auszug
-- rentalInfo: sonstige Mietdauer-/Vertragsinfo
-Wähle pro Feld höchstens eine Spalte. Verwende street/zip/city ODER address, nicht beides.`;
+  const fieldList = MAPPING_FIELD_KEYS.map(
+    (field) => `- ${field}: ${FIELD_DESCRIPTIONS[field]}`
+  ).join("\n");
 
-  const user = `Spalten:\n${columnsPreview.join("\n")}\n\nGib das Mapping als JSON-Objekt zurück.`;
+  const system = `Du ordnest die Spalten einer Mieter-/Kundenliste den Zielfeldern zu.
+Antworte AUSSCHLIESSLICH mit gültigem JSON, KEIN Fliesstext.
+Für jedes Zielfeld gibst du ein Objekt { "column": <exakter Spaltenname aus der Liste oder "ignore">, "confidence": <0..1> } zurück.
+Verwende NUR Spaltennamen exakt wie angegeben. Wenn kein passender existiert: "column": "ignore".
+Zielfelder:
+${fieldList}
+Wähle pro Feld höchstens eine Spalte. Nutze street/zip/city ODER address, nicht beides.
+confidence: 1.0 = sicher, <0.6 = unsicher.`;
+
+  const user = `Spalten (Name + Beispielwerte):\n${columnsPreview.join("\n")}\n\nGib das Mapping als JSON-Objekt zurück, Schlüssel = Zielfeld.`;
 
   try {
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
@@ -145,9 +195,9 @@ Wähle pro Feld höchstens eine Spalte. Verwende street/zip/city ODER address, n
     if (!content) return fallback;
 
     const parsed = JSON.parse(content) as Record<string, unknown>;
-    const mapping = sanitizeMapping(parsed, columnCount);
+    const result = sanitizeAiMapping(parsed, headers);
 
-    return hasAnyField(mapping) ? mapping : fallback;
+    return hasAnyField(result.mapping) ? result : fallback;
   } catch {
     return fallback;
   }

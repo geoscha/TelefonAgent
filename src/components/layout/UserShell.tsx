@@ -12,6 +12,7 @@ import { SetupDemoProvider } from "@/components/onboarding/SetupDemoProvider";
 import { SetupDemoWelcomeModal } from "@/components/onboarding/SetupDemoWelcomeModal";
 import { useBackgroundSync } from "@/lib/hooks/useBackgroundSync";
 import { useTokenBalance } from "@/lib/hooks/useTokenBalance";
+import { prefetchCoreTabs } from "@/lib/client/tab-prefetch";
 import { landingNavBtnPrimary, landingNavBtnSecondary } from "@/components/landing/landing-buttons";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,10 @@ export function UserShell({ children }: { children: React.ReactNode }) {
       void refreshTokenBalance(true);
     },
   });
+
+  useEffect(() => {
+    prefetchCoreTabs();
+  }, []);
 
   return (
     <SetupDemoProvider>

@@ -7,6 +7,7 @@ import {
   ClipboardList,
   LogOut,
   Phone,
+  Scale,
   Settings,
   Users,
   Wallet,
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/admin/numbers", label: "Nummern", icon: Phone },
   { href: "/admin/finances", label: "Finanzen", icon: Wallet },
   { href: "/admin/customers", label: "Kunden", icon: Users },
+  { href: "/admin/governance", label: "Agent Governance", icon: Scale },
   { href: "/admin/settings", label: "Einstellungen", icon: Settings },
 ] as const;
 

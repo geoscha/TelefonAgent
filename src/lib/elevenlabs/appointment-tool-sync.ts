@@ -182,20 +182,50 @@ function buildCancelAppointmentTool(siteUrl?: string): WebhookToolConfig {
   };
 }
 
+function buildLookupCustomerTool(siteUrl?: string): WebhookToolConfig {
+  return {
+    type: "webhook",
+    name: "lookup_customer",
+    description:
+      "Identifiziert die anrufende Person in der Kundendatenbank der Verwaltung (Mieter/Eigentümer) — per Telefonnummer (automatisch) oder per Name. Liefert nur die freigegebenen Felder zurück.",
+    responseTimeoutSecs: 30,
+    apiSchema: buildApiSchema({
+      type: "object",
+      required: ["action", "agentId"],
+      properties: {
+        ...baseBody("lookup_customer"),
+        attendeePhone: callerIdField(),
+        query: textField("Optional — Name der gesuchten Person (Nachname genügt)"),
+      },
+    }, siteUrl),
+  };
+}
+
 function buildToolConfigs(
   appointmentConfig?: AppointmentConfig,
-  siteUrl?: string
+  siteUrl?: string,
+  options?: { includeAppointment?: boolean; customerAccess?: boolean }
 ): WebhookToolConfig[] {
-  const tools = [
-    buildCheckAvailabilityTool(siteUrl),
-    buildBookAppointmentTool(siteUrl),
-  ];
-  if (appointmentConfig?.allowCancellation) {
+  const includeAppointment = options?.includeAppointment ?? true;
+  const tools: WebhookToolConfig[] = [];
+
+  if (includeAppointment) {
     tools.push(
-      buildFindAppointmentsTool(siteUrl),
-      buildCancelAppointmentTool(siteUrl)
+      buildCheckAvailabilityTool(siteUrl),
+      buildBookAppointmentTool(siteUrl)
     );
+    if (appointmentConfig?.allowCancellation) {
+      tools.push(
+        buildFindAppointmentsTool(siteUrl),
+        buildCancelAppointmentTool(siteUrl)
+      );
+    }
   }
+
+  if (options?.customerAccess) {
+    tools.push(buildLookupCustomerTool(siteUrl));
+  }
+
   return tools;
 }
 
@@ -212,9 +242,16 @@ async function listWorkspaceWebhookTools(client: ElevenLabsClient) {
 export async function ensureAppointmentToolIds(
   client: ElevenLabsClient,
   appointmentConfig?: AppointmentConfig,
-  options?: { siteUrl?: string }
+  options?: {
+    siteUrl?: string;
+    includeAppointment?: boolean;
+    customerAccess?: boolean;
+  }
 ): Promise<string[]> {
-  const desired = buildToolConfigs(appointmentConfig, options?.siteUrl);
+  const desired = buildToolConfigs(appointmentConfig, options?.siteUrl, {
+    includeAppointment: options?.includeAppointment,
+    customerAccess: options?.customerAccess,
+  });
   const existing = await listWorkspaceWebhookTools(client);
   const byName = new Map(
     existing

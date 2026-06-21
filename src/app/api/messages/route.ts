@@ -37,15 +37,25 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    let payload = await listThreadsForChannel({ channelType, channelRef });
+
     if (channelType === "gmail") {
-      try {
-        await syncGmailInbox();
-      } catch (error) {
-        console.error("[messages] gmail sync:", error);
+      if (payload.threads.length === 0) {
+        // Nothing mirrored yet — fetch once so the first visit isn't empty.
+        try {
+          await syncGmailInbox();
+          payload = await listThreadsForChannel({ channelType, channelRef });
+        } catch (error) {
+          console.error("[messages] gmail initial sync:", error);
+        }
+      } else {
+        // Serve the last sync instantly; refresh Gmail in the background.
+        void syncGmailInbox().catch((error) =>
+          console.error("[messages] gmail background sync:", error)
+        );
       }
     }
 
-    const payload = await listThreadsForChannel({ channelType, channelRef });
     return NextResponse.json({ ok: true, ...payload });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {

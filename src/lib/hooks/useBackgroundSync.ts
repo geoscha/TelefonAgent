@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 
+import { prefetchCustomersFeed } from "@/lib/client/tab-prefetch";
 import { sessionThrottle } from "@/lib/client/stale-cache";
 
 /** Runs billing + call sync in the background (throttled per session). */
@@ -37,6 +38,30 @@ export function useBackgroundSync(options?: {
 
     void Promise.all(tasks);
   }, [syncCalls, onCallsSynced, onBillingSynced]);
+
+  // Keep the customer-database mirror fresh: refresh when Linker is opened and
+  // then hourly while it stays open. The server only re-pulls from the source
+  // when the mirror is older than its TTL (1h), so this stays cheap.
+  useEffect(() => {
+    const refreshCustomers = () => {
+      fetch("/api/customers/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ staleOnly: true }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.ok && !data.skipped) {
+            void prefetchCustomersFeed();
+          }
+        })
+        .catch(() => {});
+    };
+
+    refreshCustomers();
+    const timer = window.setInterval(refreshCustomers, 60 * 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 }
 
 /** Triggers ElevenLabs call sync and optional callback (no throttle). */

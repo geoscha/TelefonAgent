@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { landingBtnPrimary } from "@/components/landing/landing-buttons";
+import { CACHE_KEYS, readCached, writeStaleCache } from "@/lib/client/stale-cache";
 import {
   Dialog,
   DialogContent,
@@ -285,16 +286,28 @@ async function deleteCalendarEventRequest(event: CalendarEvent): Promise<void> {
   }
 }
 
+function readCalendarCache(from: string, to: string): EventsResponse | null {
+  return readCached<EventsResponse>(CACHE_KEYS.calendarEvents(from, to));
+}
+
 export function CalendarPageClient() {
   const searchParams = useSearchParams();
   const deepLinkHandledRef = useRef(false);
   const deepLinkDayHandledRef = useRef(false);
-  const [connected, setConnected] = useState<boolean | null>(null);
-  const [accountLabel, setAccountLabel] = useState<string>();
+  const initialRange = computeFetchRange(startOfToday());
+  const initialCache = readCalendarCache(initialRange.from, initialRange.to);
+  const [connected, setConnected] = useState<boolean | null>(() =>
+    initialCache?.connected !== undefined ? Boolean(initialCache.connected) : null
+  );
+  const [accountLabel, setAccountLabel] = useState<string | undefined>(
+    () => initialCache?.accountLabel
+  );
   const [calendarProvider, setCalendarProvider] =
-    useState<CalendarProviderId | null>(null);
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+    useState<CalendarProviderId | null>(() => initialCache?.provider ?? null);
+  const [events, setEvents] = useState<CalendarEvent[]>(
+    () => initialCache?.events ?? []
+  );
+  const [loading, setLoading] = useState(() => !initialCache);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -344,9 +357,26 @@ export function CalendarPageClient() {
       const silent = options?.silent ?? false;
       const screenCalls = options?.screenCalls ?? false;
       const replace = options?.replace ?? false;
-      if (!silent && connected === null) setLoading(true);
-      else setRefreshing(true);
+      const cacheKey = CACHE_KEYS.calendarEvents(fetchRange.from, fetchRange.to);
+      const cached = readCached<EventsResponse>(cacheKey);
+      const hasVisibleData = events.length > 0 || Boolean(cached?.events?.length);
+
+      if (!silent && !hasVisibleData && connected === null) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
       setError(null);
+
+      if (cached && !replace) {
+        setConnected(Boolean(cached.connected));
+        setAccountLabel(cached.accountLabel);
+        setCalendarProvider(cached.provider ?? null);
+        if (!silent || events.length === 0) {
+          setEvents(cached.events ?? []);
+        }
+        setLoading(false);
+      }
 
       try {
         const screenQuery = screenCalls ? "&screenCalls=1" : "";
@@ -359,6 +389,7 @@ export function CalendarPageClient() {
           throw new Error(data.error ?? "Kalender konnte nicht geladen werden.");
         }
 
+        writeStaleCache(cacheKey, data);
         setConnected(Boolean(data.connected));
         setAccountLabel(data.accountLabel);
         setCalendarProvider(data.provider ?? null);
@@ -375,7 +406,7 @@ export function CalendarPageClient() {
           return incoming;
         });
       } catch (err) {
-        if (!silent) {
+        if (!silent && !hasVisibleData) {
           setError(
             err instanceof Error ? err.message : "Kalender konnte nicht geladen werden."
           );
@@ -385,7 +416,7 @@ export function CalendarPageClient() {
         setRefreshing(false);
       }
     },
-    [connected, fetchRange.from, fetchRange.to]
+    [connected, events.length, fetchRange.from, fetchRange.to]
   );
 
   const handleReschedule = useCallback(
@@ -480,8 +511,17 @@ export function CalendarPageClient() {
   const rangeInitialized = useRef(false);
 
   useEffect(() => {
+    const cached = readCalendarCache(fetchRange.from, fetchRange.to);
+    if (cached) {
+      setConnected(Boolean(cached.connected));
+      setAccountLabel(cached.accountLabel);
+      setCalendarProvider(cached.provider ?? null);
+      setEvents(cached.events ?? []);
+      setLoading(false);
+    }
+
     void loadEvents({
-      silent: rangeInitialized.current,
+      silent: rangeInitialized.current || Boolean(cached),
       screenCalls: !rangeInitialized.current,
     });
     rangeInitialized.current = true;
@@ -494,7 +534,7 @@ export function CalendarPageClient() {
     return () => window.clearInterval(timer);
   }, [loadEvents]);
 
-  if (loading && connected === null) {
+  if (loading && connected === null && events.length === 0) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center text-[#525866]">
         <Loader2 className="h-6 w-6 animate-spin" aria-label="Laden" />

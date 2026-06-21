@@ -3,14 +3,14 @@ import "server-only";
 const FETCH_TIMEOUT_MS = 12_000;
 const MAX_CHARS = 12_000;
 
-function normalizeUrl(raw: string): string {
+export function normalizeWebsiteUrl(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return "";
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return `https://${trimmed}`;
 }
 
-function stripHtml(html: string): string {
+export function stripHtmlToText(html: string): string {
   const withoutScripts = html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
@@ -49,7 +49,7 @@ function extractMetaDescription(html: string): string | null {
 export async function fetchWebsiteContext(
   website: string
 ): Promise<{ url: string; excerpt: string } | null> {
-  const url = normalizeUrl(website);
+  const url = normalizeWebsiteUrl(website);
   if (!url) return null;
 
   try {
@@ -77,7 +77,7 @@ export async function fetchWebsiteContext(
     const html = await res.text();
     const title = extractTitle(html);
     const description = extractMetaDescription(html);
-    const body = stripHtml(html);
+    const body = stripHtmlToText(html);
 
     const parts = [
       title ? `Seitentitel: ${title}` : null,

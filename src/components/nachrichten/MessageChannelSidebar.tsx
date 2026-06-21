@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 
 import { landingPanelClass } from "@/components/landing/landing-buttons";
 import { INTEGRATION_LOGOS } from "@/lib/integrations/integration-logos";
@@ -32,13 +31,6 @@ export function MessageChannelSidebar({
 }: MessageChannelSidebarProps) {
   return (
     <div className="flex w-[200px] shrink-0 flex-col gap-2 self-stretch lg:w-[220px]">
-      <Link
-        href="/integrationen"
-        className="landing-caption landing-radius-sm inline-flex min-h-9 w-full items-center justify-center border border-[#E1E4EA] bg-white px-3 text-[#525866] transition-colors hover:bg-[#F5F7FA] hover:text-[#0E121B]"
-      >
-        Integration verbinden
-      </Link>
-
       <div
         className={cn(
           landingPanelClass,

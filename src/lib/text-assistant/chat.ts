@@ -3,7 +3,7 @@ import "server-only";
 import { getEnrichmentConfig } from "@/lib/admin/enrichment-config";
 import { runTextAssistantAppointmentTool } from "@/lib/text-assistant/appointment-tool";
 import {
-  buildTextAssistantSystemPrompt,
+  buildTextAssistantSystemPromptAsync,
   type TextChannelKind,
 } from "@/lib/text-assistant/prompt";
 import { textAssistantTools } from "@/lib/text-assistant/tools";
@@ -48,6 +48,7 @@ export async function runTextAssistantTurn(input: {
   history: TextChatTurn[];
   userMessage: string;
   channel?: TextChannelKind;
+  userId?: string;
 }): Promise<{
   reply: string;
   history: TextChatTurn[];
@@ -60,10 +61,15 @@ export async function runTextAssistantTurn(input: {
   }
 
   const tools = textAssistantTools(input.agent);
+  const systemPrompt = await buildTextAssistantSystemPromptAsync(
+    input.agent,
+    input.channel,
+    input.userId
+  );
   const openAiMessages: OpenAiMessage[] = [
     {
       role: "system",
-      content: buildTextAssistantSystemPrompt(input.agent, input.channel),
+      content: systemPrompt,
     },
     ...input.history.map(
       (turn) =>

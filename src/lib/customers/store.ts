@@ -4,7 +4,7 @@ import type {
   CustomerDataProviderId,
   CustomerRecord,
 } from "@/lib/customers/types";
-import { normalizePhoneNumber } from "@/lib/phone/normalize";
+import { toE164 } from "@/lib/phone/normalize";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient, requireUserId } from "@/lib/supabase/server";
 
@@ -14,15 +14,25 @@ function rowToRecord(row: any): CustomerRecord {
   return {
     id: `${row.provider}:${row.external_id}`,
     provider: row.provider as CustomerDataProviderId,
+    recordType:
+      row.record_type === "craftsman"
+        ? "craftsman"
+        : row.record_type === "customer"
+          ? "customer"
+          : undefined,
     externalId: row.external_id ?? undefined,
     name: row.name,
     phone: row.phone ?? undefined,
+    phoneNormalized: row.phone_normalized ?? undefined,
     email: row.email ?? undefined,
     address: row.address ?? undefined,
     propertyLabel: row.property_label ?? undefined,
+    unit: row.unit ?? undefined,
+    trade: row.trade ?? undefined,
     rentalStart: row.rental_start ?? undefined,
     rentalEnd: row.rental_end ?? undefined,
     rentalInfo: row.rental_info ?? undefined,
+    raw: (row.raw as Record<string, unknown> | null) ?? undefined,
   };
 }
 
@@ -30,23 +40,26 @@ function recordToRow(
   userId: string,
   provider: CustomerDataProviderId,
   record: CustomerRecord,
-  syncedAt: string
+  syncedAt: string,
+  phoneNormalized: string | null
 ): Record<string, unknown> {
   return {
     user_id: userId,
     provider,
     external_id: record.externalId ?? record.id,
+    record_type: record.recordType ?? "customer",
     name: record.name,
     phone: record.phone ?? null,
-    phone_normalized: record.phone
-      ? normalizePhoneNumber(record.phone)
-      : null,
+    phone_normalized: phoneNormalized,
     email: record.email ?? null,
     address: record.address ?? null,
     property_label: record.propertyLabel ?? null,
+    unit: record.unit ?? null,
+    trade: record.trade ?? null,
     rental_start: record.rentalStart ?? null,
     rental_end: record.rentalEnd ?? null,
     rental_info: record.rentalInfo ?? null,
+    raw: record.raw ?? null,
     synced_at: syncedAt,
   };
 }
@@ -73,9 +86,19 @@ export async function replaceCustomerRecords(
 
   if (records.length === 0) return 0;
 
-  const rows = records.map((record) =>
-    recordToRow(userId, provider, record, syncedAt)
-  );
+  // Compute strict E.164 once and de-duplicate by phone so the
+  // UNIQUE (user_id, phone_normalized) index never trips. The first record
+  // for a number keeps it; later duplicates are stored with a null phone_e164.
+  const seenPhones = new Set<string>();
+  const rows = records.map((record) => {
+    const e164 = record.phoneNormalized ?? toE164(record.phone ?? "") ?? null;
+    let phoneNormalized: string | null = null;
+    if (e164 && !seenPhones.has(e164)) {
+      seenPhones.add(e164);
+      phoneNormalized = e164;
+    }
+    return recordToRow(userId, provider, record, syncedAt, phoneNormalized);
+  });
 
   // Insert in batches to stay within payload limits.
   const BATCH = 500;
@@ -89,7 +112,7 @@ export async function replaceCustomerRecords(
   return inserted;
 }
 
-/** Synced customer records for the signed-in user (optionally one provider). */
+/** Synced tenant/customer records for the signed-in user (optionally one provider). */
 export async function getCustomerRecords(
   provider?: CustomerDataProviderId
 ): Promise<CustomerRecord[]> {
@@ -99,6 +122,28 @@ export async function getCustomerRecords(
     .from("customer_records")
     .select("*")
     .eq("user_id", userId)
+    .eq("record_type", "customer")
+    .order("name", { ascending: true });
+
+  if (provider) {
+    query = query.eq("provider", provider);
+  }
+
+  const { data } = await query;
+  return (data ?? []).map(rowToRecord);
+}
+
+/** Synced craftsman records from the active Daten source. */
+export async function getCraftsmanRecords(
+  provider?: CustomerDataProviderId
+): Promise<CustomerRecord[]> {
+  const supabase = createClient();
+  const userId = await requireUserId();
+  let query = supabase
+    .from("customer_records")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("record_type", "craftsman")
     .order("name", { ascending: true });
 
   if (provider) {
@@ -132,7 +177,7 @@ export async function findCustomerByPhoneForUser(
   phone: string
 ): Promise<CustomerRecord | null> {
   if (!phone) return null;
-  const normalized = normalizePhoneNumber(phone);
+  const normalized = toE164(phone);
   if (!normalized) return null;
 
   const admin = createAdminClient();
@@ -140,9 +185,52 @@ export async function findCustomerByPhoneForUser(
     .from("customer_records")
     .select("*")
     .eq("user_id", userId)
+    .eq("record_type", "customer")
     .eq("phone_normalized", normalized)
     .limit(1)
     .maybeSingle();
 
   return data ? rowToRecord(data) : null;
+}
+
+/**
+ * Find customer records by (partial) name from the Supabase mirror ONLY.
+ * Safe during a live call (service-role, no user session).
+ */
+export async function findCustomersByNameForUser(
+  userId: string,
+  name: string,
+  limit = 5
+): Promise<CustomerRecord[]> {
+  const needle = name.trim();
+  if (!needle) return [];
+
+  const admin = createAdminClient();
+  // Escape PostgREST ilike wildcards/special chars in the user-provided needle.
+  const escaped = needle.replace(/[%_,]/g, " ").trim();
+  const { data } = await admin
+    .from("customer_records")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("record_type", "customer")
+    .ilike("name", `%${escaped}%`)
+    .order("name", { ascending: true })
+    .limit(limit);
+
+  return (data ?? []).map(rowToRecord);
+}
+
+/** Craftsman records for a user (service-role, e.g. message inquiry analysis). */
+export async function getCraftsmanRecordsForUser(
+  userId: string
+): Promise<CustomerRecord[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("customer_records")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("record_type", "craftsman")
+    .order("name", { ascending: true });
+
+  return (data ?? []).map(rowToRecord);
 }

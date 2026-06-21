@@ -27,6 +27,12 @@ import {
   getUserIdByAgentId,
   upsertCalendarForUser,
 } from "@/lib/store";
+import { customerAccessFields } from "@/lib/elevenlabs/prompt";
+import {
+  findCustomerByPhoneForUser,
+  findCustomersByNameForUser,
+} from "@/lib/customers/store";
+import type { CustomerRecord } from "@/lib/customers/types";
 
 export const dynamic = "force-dynamic";
 
@@ -548,6 +554,73 @@ export async function POST(req: NextRequest) {
         ? "Ein kurzer Danke-Satz an den Kunden, dann SOFORT end_call aufrufen."
         : "book_appointment sofort erneut aufrufen. Dem Kunden nicht bestätigen.",
     });
+  }
+
+  if (body.action === "lookup_customer") {
+    const fields = customerAccessFields(agent);
+    if (!fields.name && !fields.phone && !fields.address) {
+      return NextResponse.json({
+        ok: false,
+        found: false,
+        message:
+          "Zugriff auf Kundendaten ist für diesen Assistenten nicht aktiviert.",
+      });
+    }
+
+    try {
+      let matches: CustomerRecord[] = [];
+
+      const phone = body.attendeePhone?.trim();
+      if (phone) {
+        const byPhone = await findCustomerByPhoneForUser(userId, phone);
+        if (byPhone) matches = [byPhone];
+      }
+
+      const nameQuery = (body.query || body.attendeeName)?.trim();
+      if (matches.length === 0 && nameQuery) {
+        matches = await findCustomersByNameForUser(userId, nameQuery, 5);
+      }
+
+      if (matches.length === 0) {
+        return NextResponse.json({
+          ok: true,
+          found: false,
+          message:
+            "Keine passende Person in der Kundendatenbank gefunden. Bitte Name und Liegenschaft erfragen.",
+        });
+      }
+
+      // Project only the fields this agent is permitted to read.
+      const customers = matches.map((customer) => ({
+        ...(fields.name ? { name: customer.name } : {}),
+        ...(fields.phone ? { phone: customer.phone } : {}),
+        ...(fields.address ? { address: customer.address } : {}),
+        propertyLabel: customer.propertyLabel,
+        rentalInfo: customer.rentalInfo,
+      }));
+
+      return NextResponse.json({
+        ok: true,
+        found: true,
+        customers,
+        message:
+          matches.length === 1
+            ? "Eine passende Person gefunden."
+            : `${matches.length} mögliche Personen gefunden. Bei Bedarf mit einer Rückfrage eingrenzen.`,
+      });
+    } catch (error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          found: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Kundensuche fehlgeschlagen.",
+        },
+        { status: 502 }
+      );
+    }
   }
 
   console.warn("[appointment-tool] unknown action", body.action, rawBody);

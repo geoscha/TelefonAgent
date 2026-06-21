@@ -21,7 +21,23 @@ export interface PropertySoftwareConnection {
   worksheetId?: string;
   worksheetName?: string;
   columnMapping?: SpreadsheetColumnMapping | null;
+  /** Optional second worksheet for Handwerker (spreadsheet sources). */
+  craftsmanWorksheetId?: string | null;
+  craftsmanWorksheetName?: string | null;
+  craftsmanColumnMapping?: SpreadsheetColumnMapping | null;
+  craftsmenKbText?: string | null;
+  craftsmenElevenLabsDocId?: string | null;
+  craftsmenElevenLabsDocName?: string | null;
   lastSyncedAt?: string | null;
+  /** Upload source: Supabase Storage object path + original file name. */
+  fileRef?: string;
+  fileName?: string;
+  /** Google Sheet source: share URL + optional tab gid. */
+  gsheetUrl?: string;
+  gsheetGid?: string;
+  /** Last sync outcome (ok | error) + error detail (for import_sources parity). */
+  syncStatus?: string | null;
+  syncError?: string | null;
 }
 
 export interface PublicPropertySoftwareStatus {
@@ -51,7 +67,20 @@ function rowToConnection(row: any): PropertySoftwareConnection {
     worksheetId: row.worksheet_id ?? undefined,
     worksheetName: row.worksheet_name ?? undefined,
     columnMapping: (row.column_mapping as SpreadsheetColumnMapping) ?? undefined,
+    craftsmanWorksheetId: row.craftsman_worksheet_id ?? undefined,
+    craftsmanWorksheetName: row.craftsman_worksheet_name ?? undefined,
+    craftsmanColumnMapping:
+      (row.craftsman_column_mapping as SpreadsheetColumnMapping) ?? undefined,
+    craftsmenKbText: row.craftsmen_kb_text ?? undefined,
+    craftsmenElevenLabsDocId: row.craftsmen_elevenlabs_doc_id ?? undefined,
+    craftsmenElevenLabsDocName: row.craftsmen_elevenlabs_doc_name ?? undefined,
     lastSyncedAt: row.last_synced_at ?? undefined,
+    fileRef: row.file_ref ?? undefined,
+    fileName: row.file_name ?? undefined,
+    gsheetUrl: row.gsheet_url ?? undefined,
+    gsheetGid: row.gsheet_gid ?? undefined,
+    syncStatus: row.sync_status ?? undefined,
+    syncError: row.sync_error ?? undefined,
   };
 }
 
@@ -73,7 +102,29 @@ function patchToRow(
   if (patch.worksheetId !== undefined) row.worksheet_id = patch.worksheetId;
   if (patch.worksheetName !== undefined) row.worksheet_name = patch.worksheetName;
   if (patch.columnMapping !== undefined) row.column_mapping = patch.columnMapping;
+  if (patch.craftsmanWorksheetId !== undefined) {
+    row.craftsman_worksheet_id = patch.craftsmanWorksheetId;
+  }
+  if (patch.craftsmanWorksheetName !== undefined) {
+    row.craftsman_worksheet_name = patch.craftsmanWorksheetName;
+  }
+  if (patch.craftsmanColumnMapping !== undefined) {
+    row.craftsman_column_mapping = patch.craftsmanColumnMapping;
+  }
+  if (patch.craftsmenKbText !== undefined) row.craftsmen_kb_text = patch.craftsmenKbText;
+  if (patch.craftsmenElevenLabsDocId !== undefined) {
+    row.craftsmen_elevenlabs_doc_id = patch.craftsmenElevenLabsDocId;
+  }
+  if (patch.craftsmenElevenLabsDocName !== undefined) {
+    row.craftsmen_elevenlabs_doc_name = patch.craftsmenElevenLabsDocName;
+  }
   if (patch.lastSyncedAt !== undefined) row.last_synced_at = patch.lastSyncedAt;
+  if (patch.fileRef !== undefined) row.file_ref = patch.fileRef;
+  if (patch.fileName !== undefined) row.file_name = patch.fileName;
+  if (patch.gsheetUrl !== undefined) row.gsheet_url = patch.gsheetUrl;
+  if (patch.gsheetGid !== undefined) row.gsheet_gid = patch.gsheetGid;
+  if (patch.syncStatus !== undefined) row.sync_status = patch.syncStatus;
+  if (patch.syncError !== undefined) row.sync_error = patch.syncError;
   return row;
 }
 

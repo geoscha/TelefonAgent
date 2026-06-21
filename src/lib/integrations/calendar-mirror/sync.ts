@@ -129,9 +129,12 @@ export async function getAgentDayEvents(params: {
 }
 
 /**
- * Read a date range for the dashboard / customer matching. Refreshes the
- * mirror lazily, then serves from Supabase — never a live API call per request
- * unless the mirror has never been populated.
+ * Read a date range for the dashboard / customer matching.
+ *
+ * Optimised for snappy page loads: serves straight from the Supabase mirror and
+ * refreshes it **in the background** (never blocks the response on the live
+ * calendar API). Only the very first time — when the mirror has never been
+ * populated — does it sync synchronously so the page isn't empty.
  */
 export async function getMirroredRangeEvents(params: {
   userId: string;
@@ -140,17 +143,23 @@ export async function getMirroredRangeEvents(params: {
 }): Promise<ListedCalendarEvent[]> {
   const { userId, rangeStartIso, rangeEndIso } = params;
 
-  let hasMirror = true;
-  try {
-    await syncCalendarMirrorForUser(userId, { staleOnly: true });
-  } catch (error) {
-    console.error("[calendar-mirror] range refresh failed", error);
-    hasMirror = Boolean(
-      await getCalendarMirrorSyncedAt(userId).catch(() => null)
+  const lastSyncedAt = await getCalendarMirrorSyncedAt(userId).catch(() => null);
+
+  if (!lastSyncedAt) {
+    // First-ever read: populate once so the UI has something to show.
+    try {
+      await syncCalendarMirrorForUser(userId, { staleOnly: false });
+    } catch (error) {
+      console.error("[calendar-mirror] initial range sync failed", error);
+      return [];
+    }
+  } else {
+    // Refresh lazily without blocking the page — next load gets fresher data.
+    void syncCalendarMirrorForUser(userId, { staleOnly: true }).catch((error) =>
+      console.error("[calendar-mirror] background range refresh failed", error)
     );
   }
 
-  if (!hasMirror) return [];
   try {
     return await readCalendarMirrorRange(userId, rangeStartIso, rangeEndIso);
   } catch (error) {

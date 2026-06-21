@@ -5,7 +5,8 @@ export interface AppointmentToolBody {
     | "check_availability"
     | "book_appointment"
     | "find_appointments"
-    | "cancel_appointment";
+    | "cancel_appointment"
+    | "lookup_customer";
   agentId?: string;
   title?: string;
   appointmentTypeId?: string;
@@ -18,6 +19,8 @@ export interface AppointmentToolBody {
   appointmentTime?: string;
   eventId?: string;
   eventUrl?: string;
+  /** lookup_customer: free-text query (name) to find a customer record. */
+  query?: string;
 }
 
 export const TOOL_NAME_TO_ACTION: Record<string, AppointmentToolBody["action"]> = {
@@ -25,6 +28,7 @@ export const TOOL_NAME_TO_ACTION: Record<string, AppointmentToolBody["action"]> 
   book_appointment: "book_appointment",
   find_appointments: "find_appointments",
   cancel_appointment: "cancel_appointment",
+  lookup_customer: "lookup_customer",
 };
 
 function readString(
@@ -154,5 +158,6 @@ export function parseAppointmentToolBody(
     ),
     eventId: readString(source, "eventId", "event_id"),
     eventUrl: readString(source, "eventUrl", "event_url"),
+    query: readString(source, "query", "customerName", "customer_name", "name"),
   };
 }

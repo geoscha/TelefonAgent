@@ -8,6 +8,7 @@ import {
   isUserNavActive,
   USER_NAV_ITEMS,
 } from "@/components/layout/user-nav";
+import { prefetchTabForHref } from "@/lib/client/tab-prefetch";
 import {
   SidebarSupportButton,
   SidebarSupportIcon,
@@ -31,6 +32,8 @@ export function UserSidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onMouseEnter={() => prefetchTabForHref(item.href)}
+              onFocus={() => prefetchTabForHref(item.href)}
               className={cn(
                 "landing-body flex items-center gap-2.5 landing-radius-sm px-3 py-2.5 transition-colors",
                 active

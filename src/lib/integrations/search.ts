@@ -1,4 +1,9 @@
-export type IntegrationSearchCategory = "calendar" | "mail" | "property" | "sms";
+export type IntegrationSearchCategory =
+  | "calendar"
+  | "mail"
+  | "property"
+  | "sms"
+  | "website";
 
 export interface IntegrationSearchTarget {
   category: IntegrationSearchCategory;
@@ -48,6 +53,21 @@ const CATEGORY_SEARCH_TERMS: Record<IntegrationSearchCategory, string[]> = {
     "alert",
     "meldung",
   ],
+  website: [
+    "website",
+    "webseite",
+    "homepage",
+    "internet",
+    "url",
+    "link",
+    "wissen",
+    "wissensdatenbank",
+    "knowledge",
+    "scrape",
+    "betreiber",
+    "verwaltung",
+    "schadensmeldung",
+  ],
 };
 
 const ITEM_SEARCH_TERMS: Record<IntegrationSearchCategory, Record<string, string[]>> = {
@@ -73,6 +93,15 @@ const ITEM_SEARCH_TERMS: Record<IntegrationSearchCategory, Record<string, string
     twilio: ["twilio", "sms", "text"],
     seven: ["seven", "seven.io", "sms77", "dach", "eu"],
     aspsms: ["aspsms", "asp", "schweiz", "swiss", "ch"],
+  },
+  website: {
+    operator_website: [
+      "website",
+      "webseite",
+      "homepage",
+      "wissensdatenbank",
+      "betreiber",
+    ],
   },
 };
 
@@ -228,6 +257,12 @@ export function integrationSearchHasResults(query: string): boolean {
       category: "sms",
       id: "aspsms",
       name: "ASPSMS",
+      description: "",
+    },
+    {
+      category: "website",
+      id: "operator_website",
+      name: "Betreiber-Website",
       description: "",
     },
   ];

@@ -57,6 +57,9 @@ const PROPERTY_LOGOS: Record<
   garaio_rem: INTEGRATION_LOGOS.garaioRem,
   rimo_r5: INTEGRATION_LOGOS.rimoR5,
   excel: INTEGRATION_LOGOS.excel,
+  // Configured from the Kunden tab, never rendered in this hub.
+  upload: INTEGRATION_LOGOS.excel,
+  gsheet: INTEGRATION_LOGOS.excel,
 };
 
 /** Temporarily disabled until partner/on-prem setup is ready. */

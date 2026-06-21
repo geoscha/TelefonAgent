@@ -11,6 +11,15 @@ import { createClient, requireUserId } from "@/lib/supabase/server";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 const SYNC_MAX_MESSAGES = 50;
+const MAX_INBOX_THREADS = 250;
+const VERIFY_CONCURRENCY = 8;
+/** Gmail search: inbox only — excludes spam, trash, archived. */
+const INBOX_QUERY = "in:inbox -in:spam -in:trash";
+
+export interface GmailSyncResult {
+  imported: number;
+  removed: number;
+}
 
 interface GmailHeader {
   name: string;
@@ -163,21 +172,123 @@ async function gmailFetch<T>(
   return (await res.json()) as T;
 }
 
-async function providerMessageExists(
+async function providerMessageIdsExist(
   userId: string,
-  providerMessageId: string
-): Promise<boolean> {
+  messageIds: string[]
+): Promise<Set<string>> {
+  if (messageIds.length === 0) return new Set();
+
   const supabase = createClient();
   const { data } = await supabase
     .from("inbound_messages")
-    .select("id")
+    .select("provider_message_id")
     .eq("user_id", userId)
     .eq("channel_type", "gmail")
     .eq("channel_ref", "gmail")
-    .eq("provider_message_id", providerMessageId)
-    .maybeSingle();
+    .in("provider_message_id", messageIds);
 
-  return Boolean(data);
+  return new Set(
+    (data ?? [])
+      .map((row) => row.provider_message_id as string | null)
+      .filter((id): id is string => Boolean(id))
+  );
+}
+
+const FETCH_CONCURRENCY = 6;
+
+async function listInboxThreadIds(accessToken: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let pageToken: string | undefined;
+
+  while (ids.size < MAX_INBOX_THREADS) {
+    const params = new URLSearchParams({
+      maxResults: String(Math.min(100, MAX_INBOX_THREADS - ids.size)),
+      q: INBOX_QUERY,
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+
+    const page = await gmailFetch<{
+      threads?: Array<{ id: string }>;
+      nextPageToken?: string;
+    }>(accessToken, `/threads?${params.toString()}`);
+
+    for (const thread of page.threads ?? []) {
+      ids.add(thread.id);
+    }
+
+    if (!page.nextPageToken || !page.threads?.length) break;
+    pageToken = page.nextPageToken;
+  }
+
+  return ids;
+}
+
+async function listLocalGmailThreadIds(userId: string): Promise<string[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("inbound_messages")
+    .select("thread_id")
+    .eq("user_id", userId)
+    .eq("channel_type", "gmail")
+    .eq("channel_ref", "gmail");
+
+  if (error) throw error;
+
+  return Array.from(new Set((data ?? []).map((row) => row.thread_id as string)));
+}
+
+async function threadStillInInbox(
+  accessToken: string,
+  threadId: string
+): Promise<boolean> {
+  const result = await gmailFetch<{ messages?: Array<{ id: string }> }>(
+    accessToken,
+    `/messages?q=${encodeURIComponent(`thread:${threadId} ${INBOX_QUERY}`)}&maxResults=1`
+  );
+  return (result.messages?.length ?? 0) > 0;
+}
+
+async function purgeGmailThreadsNotInInbox(
+  userId: string,
+  accessToken: string,
+  inboxThreadIds: Set<string>
+): Promise<number> {
+  const localThreadIds = await listLocalGmailThreadIds(userId);
+  const candidates = localThreadIds.filter((id) => !inboxThreadIds.has(id));
+  if (candidates.length === 0) return 0;
+
+  const toRemove: string[] = [];
+  for (let i = 0; i < candidates.length; i += VERIFY_CONCURRENCY) {
+    const batch = candidates.slice(i, i + VERIFY_CONCURRENCY);
+    const checks = await Promise.all(
+      batch.map(async (threadId) => ({
+        threadId,
+        inInbox: await threadStillInInbox(accessToken, threadId),
+      }))
+    );
+    for (const check of checks) {
+      if (!check.inInbox) toRemove.push(check.threadId);
+    }
+  }
+
+  if (toRemove.length === 0) return 0;
+
+  const { deleteInquiriesForThreads } = await import(
+    "@/lib/messages/inquiry-store"
+  );
+  await deleteInquiriesForThreads(toRemove);
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("inbound_messages")
+    .delete()
+    .eq("user_id", userId)
+    .eq("channel_type", "gmail")
+    .eq("channel_ref", "gmail")
+    .in("thread_id", toRemove);
+
+  if (error) throw error;
+  return toRemove.length;
 }
 
 function mapGmailMessage(message: GmailMessage): {
@@ -215,8 +326,8 @@ function mapGmailMessage(message: GmailMessage): {
   };
 }
 
-/** Pulls recent Gmail inbox messages into inbound_messages. */
-export async function syncGmailInbox(): Promise<number> {
+/** Pulls recent Gmail inbox messages into inbound_messages and purges deleted/spam threads. */
+export async function syncGmailInbox(): Promise<GmailSyncResult> {
   const userId = await requireUserId();
   const connections = await getMailConnections();
   const gmail = connections.gmail;
@@ -226,44 +337,56 @@ export async function syncGmailInbox(): Promise<number> {
   }
 
   const accessToken = await ensureGmailAccessToken(gmail);
+  const inboxThreadIds = await listInboxThreadIds(accessToken);
+
   const list = await gmailFetch<{ messages?: Array<{ id: string }> }>(
     accessToken,
-    `/messages?maxResults=${SYNC_MAX_MESSAGES}&q=${encodeURIComponent("in:inbox")}`
+    `/messages?maxResults=${SYNC_MAX_MESSAGES}&q=${encodeURIComponent(INBOX_QUERY)}`
   );
 
   const messageIds = list.messages?.map((entry) => entry.id) ?? [];
+  const existingIds = await providerMessageIdsExist(userId, messageIds);
+  const toImport = messageIds.filter((id) => !existingIds.has(id));
   let imported = 0;
 
-  for (const messageId of messageIds) {
-    if (await providerMessageExists(userId, messageId)) {
-      continue;
-    }
-
-    const full = await gmailFetch<GmailMessage>(
-      accessToken,
-      `/messages/${messageId}?format=full`
+  for (let i = 0; i < toImport.length; i += FETCH_CONCURRENCY) {
+    const batch = toImport.slice(i, i + FETCH_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (messageId) => {
+        try {
+          const full = await gmailFetch<GmailMessage>(
+            accessToken,
+            `/messages/${messageId}?format=full`
+          );
+          const mapped = mapGmailMessage(full);
+          await saveChannelMessageForUser(userId, {
+            channelType: "gmail",
+            channelRef: "gmail",
+            threadId: mapped.threadId,
+            direction: "inbound",
+            body: mapped.body,
+            subject: mapped.subject,
+            preview: mapped.preview,
+            senderLabel: mapped.senderLabel,
+            senderAddress: mapped.senderAddress,
+            providerMessageId: mapped.providerMessageId,
+            receivedAt: mapped.receivedAt,
+          });
+          return true;
+        } catch (error) {
+          console.warn("[gmail-sync] skip message", messageId, error);
+          return false;
+        }
+      })
     );
-    const mapped = mapGmailMessage(full);
-
-    try {
-      await saveChannelMessageForUser(userId, {
-        channelType: "gmail",
-        channelRef: "gmail",
-        threadId: mapped.threadId,
-        direction: "inbound",
-        body: mapped.body,
-        subject: mapped.subject,
-        preview: mapped.preview,
-        senderLabel: mapped.senderLabel,
-        senderAddress: mapped.senderAddress,
-        providerMessageId: mapped.providerMessageId,
-        receivedAt: mapped.receivedAt,
-      });
-      imported += 1;
-    } catch (error) {
-      console.warn("[gmail-sync] skip message", messageId, error);
-    }
+    imported += results.filter(Boolean).length;
   }
 
-  return imported;
+  const removed = await purgeGmailThreadsNotInInbox(
+    userId,
+    accessToken,
+    inboxThreadIds
+  );
+
+  return { imported, removed };
 }
