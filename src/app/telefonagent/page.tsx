@@ -156,8 +156,10 @@ export default function TelefonagentPage() {
     }
   }, []);
 
-  const loadVoices = useCallback(async () => {
-    const cached = readStaleCache<Voice[]>("voices", 10 * 60_000);
+  const loadVoices = useCallback(async (languageHint?: string) => {
+    const lang = normalizeAgentLanguage(languageHint);
+    const cacheKey = `voices:${lang}`;
+    const cached = readStaleCache<Voice[]>(cacheKey, 10 * 60_000);
     if (cached?.length) {
       setVoices(cached);
       setVoiceId((prev) => {
@@ -168,11 +170,13 @@ export default function TelefonagentPage() {
 
     setVoicesLoading(!cached?.length);
     try {
-      const res = await fetch("/api/elevenlabs/voices");
+      const res = await fetch(
+        `/api/elevenlabs/voices?language=${encodeURIComponent(lang)}`
+      );
       const data = await res.json();
       if (res.ok && data.ok) {
         const loadedVoices = data.voices as Voice[];
-        writeStaleCache("voices", loadedVoices);
+        writeStaleCache(cacheKey, loadedVoices);
         const langs = (data.languages as LanguageOption[] | undefined)?.length
           ? (data.languages as LanguageOption[])
           : DEFAULT_LANGUAGES;
@@ -230,7 +234,7 @@ export default function TelefonagentPage() {
     );
 
     if (s.connected) {
-      loadVoices();
+      loadVoices(normalizeAgentLanguage(s.language));
     } else if (capabilities.hasApiKey) {
       void autoConnect();
     }
@@ -275,8 +279,8 @@ export default function TelefonagentPage() {
   }, []);
 
   useEffect(() => {
-    if (settings.connected) loadVoices();
-  }, [settings.connected, loadVoices]);
+    if (settings.connected) loadVoices(normalizeAgentLanguage(language));
+  }, [settings.connected, loadVoices, language]);
 
   async function handleSaveAgent(
     override?: AgentWizardDraft & {
@@ -389,7 +393,10 @@ export default function TelefonagentPage() {
 
   function handleSelectAgent(agentId: string) {
     setDetailAgentId(agentId);
-    if (settings.connected || caps.hasApiKey) loadVoices();
+    if (settings.connected || caps.hasApiKey) {
+      const agent = storedAgents.find((a) => a.id === agentId);
+      loadVoices(normalizeAgentLanguage(agent?.language ?? language));
+    }
   }
 
   const queueElevenLabsSync = useCallback(
@@ -498,7 +505,9 @@ export default function TelefonagentPage() {
   function handleCreateNewAgent() {
     setCreateWizardOpen(true);
     setDetailAgentId(null);
-    if (settings.connected || caps.hasApiKey) loadVoices();
+    if (settings.connected || caps.hasApiKey) {
+      loadVoices(normalizeAgentLanguage(language));
+    }
   }
 
   async function handleDeactivateAgent() {
@@ -693,6 +702,7 @@ export default function TelefonagentPage() {
               activating={activatingAgentId === detailAgent.id}
               onUpdate={(patch) => void handleAgentAutoSave(detailAgent.id, patch)}
               onAgentsChange={(agents) => setStoredAgents(agents)}
+              onVoicesChange={setVoices}
             />
           ) : (
             <div className="landing-panel flex flex-1 items-center justify-center self-stretch border border-dashed border-[#E1E4EA] p-8">

@@ -172,8 +172,8 @@ export function LandingSiteFooter() {
                 KI-Zusammenfassung anfordern
               </h3>
               <p className="landing-subtitle mt-2 text-[#525866]">
-                Erfahren Sie mehr darüber, wie Linker das Kundenerlebnis bei
-                führenden Unternehmen verbessert.
+                Erfahren Sie, wie Linker die telefonische Erreichbarkeit von
+                Immobilienverwaltungen verbessert.
               </p>
               <AiProviderIcons />
             </div>

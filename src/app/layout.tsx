@@ -6,7 +6,7 @@ import "@/styles/retell-fonts.css";
 export const metadata: Metadata = {
   title: "Linker — KI-Telefonagent für automatisierte Anrufe",
   description:
-    "Erstellen, einsetzen und verwalten Sie KI-Telefonagenten der nächsten Generation — natürlich klingend, aufgabenorientiert und mühelos skalierbar.",
+    "Linker nimmt Mieter- und Eigentümeranrufe entgegen, erfasst Schadensmeldungen strukturiert, vereinbart Besichtigungstermine und entlastet Ihr Team — natürlich klingend und rund um die Uhr.",
 };
 
 export default function RootLayout({

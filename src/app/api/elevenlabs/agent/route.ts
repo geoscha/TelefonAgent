@@ -294,7 +294,7 @@ export async function POST(req: NextRequest) {
     const voiceRes = (await client.voices.getAll()) as {
       voices?: RawElevenLabsVoice[];
     };
-    const allowedVoices = filterAgentVoices(voiceRes.voices ?? []);
+    const allowedVoices = filterAgentVoices(voiceRes.voices ?? [], language);
     if (!allowedVoices.some((v) => v.id === voiceId)) {
       return NextResponse.json(
         {

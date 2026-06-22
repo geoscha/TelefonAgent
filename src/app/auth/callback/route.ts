@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 
 import { syncOAuthProfile } from "@/lib/auth/sync-oauth-profile";
 import { provisionCurrentUser } from "@/lib/provision";
@@ -12,8 +11,14 @@ function safeNextPath(value: string | null): string {
   return value;
 }
 
-export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+function redirectBase(request: NextRequest, origin: string): string {
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const isLocalEnv = process.env.NODE_ENV === "development";
+  return isLocalEnv || !forwardedHost ? origin : `https://${forwardedHost}`;
+}
+
+export async function GET(request: NextRequest) {
+  const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
   const next = safeNextPath(searchParams.get("next"));
   const oauthError = searchParams.get("error");
@@ -33,18 +38,24 @@ export async function GET(request: Request) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const cookieStore = cookies();
+  const base = redirectBase(request, origin);
+  let response = NextResponse.redirect(`${base}${next}`);
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         getAll() {
-          return cookieStore.getAll();
+          return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          response = NextResponse.redirect(`${base}${next}`);
           cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
+            response.cookies.set(name, value, options)
           );
         },
       },
@@ -58,11 +69,13 @@ export async function GET(request: Request) {
     const msg = error.message.toLowerCase();
     loginUrl.searchParams.set(
       "error",
-      msg.includes("missing oauth secret")
-        ? "oauth_missing_secret"
-        : msg.includes("not enabled") || msg.includes("unsupported provider")
-          ? "oauth_not_configured"
-          : "oauth"
+      msg.includes("fetch failed") || msg.includes("enotfound")
+        ? "oauth_network"
+        : msg.includes("missing oauth secret")
+          ? "oauth_missing_secret"
+          : msg.includes("not enabled") || msg.includes("unsupported provider")
+            ? "oauth_not_configured"
+            : "oauth"
     );
     return NextResponse.redirect(loginUrl);
   }
@@ -75,10 +88,5 @@ export async function GET(request: Request) {
     console.warn("[auth/callback] provision skipped:", err)
   );
 
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const isLocalEnv = process.env.NODE_ENV === "development";
-  const redirectBase =
-    isLocalEnv || !forwardedHost ? origin : `https://${forwardedHost}`;
-
-  return NextResponse.redirect(`${redirectBase}${next}`);
+  return response;
 }

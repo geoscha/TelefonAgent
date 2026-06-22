@@ -20,22 +20,22 @@ export function RetellHero() {
           <div className="flex flex-col gap-10 pb-8 sm:gap-12 sm:pb-10">
             <div className="mx-auto flex w-full max-w-[min(560px,32vw)] flex-col items-center text-center">
               <p className="landing-hero-eyebrow mb-[60px] text-white">
-                #1 KI-Telefonagent-Plattform für automatisierte Anrufe
+                KI-TELEFONAGENT FÜR IMMOBILIENVERWALTUNGEN
               </p>
               <h1 className={LANDING_DISPLAY_HEADLINE_CLASS}>
-                <span className="block">Ihr KI-</span>
-                <span className="block">Callcenter</span>
-                <span className="block">der</span>
-                <span className="block">Zukunft.</span>
+                <span className="block">Ihre</span>
+                <span className="block">Verwaltung</span>
+                <span className="block">ist immer</span>
+                <span className="block">erreichbar.</span>
               </h1>
             </div>
 
             <div className="flex flex-col items-start justify-between gap-8 lg:flex-row lg:items-end">
               <div className="max-w-[340px]">
                 <p className="landing-hero-body text-white/90">
-                  Erstellen, einsetzen und verwalten Sie KI-Telefonagenten der
-                  nächsten Generation — natürlich klingend, aufgabenorientiert
-                  und mühelos skalierbar.
+                  Linker nimmt Mieter- und Eigentümeranrufe entgegen, erfasst
+                  Schadensmeldungen strukturiert, vereinbart Besichtigungstermine
+                  und entlastet Ihr Team — natürlich klingend und rund um die Uhr.
                 </p>
               </div>
 

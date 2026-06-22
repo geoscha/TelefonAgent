@@ -127,8 +127,9 @@ export function LiveDemoSection() {
 
         <div className="landing-radius flex min-h-[420px] flex-col bg-[#F5F7FA] p-6 sm:p-8">
           <p className="landing-subtitle max-w-[420px]">
-            Erhalten Sie einen Live-Anruf von unserem Telefonagenten und erleben
-            Sie, wie Linker Kundengespräche natürlich und effizient abwickelt.
+            Erhalten Sie einen Live-Anruf von Linker und erleben Sie, wie ein
+            Mieteranruf — von der Schadensmeldung bis zur Terminbuchung —
+            automatisch abgewickelt wird.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-8 flex flex-1 flex-col">

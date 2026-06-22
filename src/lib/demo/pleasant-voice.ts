@@ -58,7 +58,7 @@ export async function resolvePleasantDemoVoiceId(): Promise<string> {
   }
 
   const rawVoices = await fetchWorkspaceVoices();
-  const catalog = filterAgentVoices(rawVoices);
+  const catalog = filterAgentVoices(rawVoices, "Deutsch");
 
   const preferred = catalog.find((v) => {
     const hay = v.name.toLowerCase();

@@ -36,21 +36,21 @@ export const DEMO_USE_CASES: DemoUseCase[] = [
   },
   {
     id: "appointment",
-    label: "Terminvereinbarung",
+    label: "Besichtigungen",
     voice: "female-de",
     scenario:
       "Sie buchen Besichtigungs- oder Service-Termine: Datum, Uhrzeit und Kontaktdaten erfassen und bestätigen.",
   },
   {
     id: "lead",
-    label: "Lead-Qualifizierung",
+    label: "Mietinteressenten",
     voice: "female-de",
     scenario:
       "Sie qualifizieren Interessenten für Mietobjekte: Bedarf, Budget, Einzugsdatum und Kontaktdaten strukturiert erfassen.",
   },
   {
     id: "service",
-    label: "Kundenservice",
+    label: "Mieteranfragen",
     voice: "female-de",
     scenario:
       "Sie beantworten Mieteranfragen zu Miete, Nebenkosten und Hausordnung — klar, geduldig und lösungsorientiert.",
@@ -64,7 +64,7 @@ export const DEMO_USE_CASES: DemoUseCase[] = [
   },
   {
     id: "survey",
-    label: "Umfrage",
+    label: "Schadensmeldung",
     voice: "female-de",
     scenario:
       "Sie führen eine kurze Zufriedenheitsumfrage zu Service und Reaktionszeit — freundlich und prägnant.",

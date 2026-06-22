@@ -10,10 +10,10 @@ const OTHER_LIMITATIONS = [
 ] as const;
 
 const LINKER_BENEFITS = [
-  "Natürliche, menschlich klingende Gespräche",
-  "Schnelle Einrichtung mit minimalem Setup",
-  "Umgang mit Edge-Cases und unerwarteten Anfragen",
-  "Komplexe Mehr-Schritt-Gespräche und Terminbuchung",
+  "Natürliche Gespräche im Dialekt und auf Hochdeutsch",
+  "Onboarding per Mieterliste — in Stunden statt Wochen",
+  "Erkennt Notfälle und eskaliert an den Pikettdienst",
+  "Schadensaufnahme, Terminbuchung und Handwerker-Koordination",
 ] as const;
 
 export function WasIstLinker() {
@@ -25,8 +25,8 @@ export function WasIstLinker() {
           <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-10">
             <h2 className="landing-title">Was ist Linker?</h2>
             <p className="landing-subtitle max-w-[320px] lg:text-right">
-              KI-gestützte, menschlich klingende Telefonagenten — speziell für
-              Schweizer Liegenschaftsverwaltungen.
+              KI-gestützte, menschlich klingende Telefonagenten — gebaut für
+              Liegenschafts- und Hausverwaltungen in der Schweiz und Deutschland.
             </p>
           </div>
         </div>

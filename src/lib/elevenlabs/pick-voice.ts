@@ -4,6 +4,7 @@ import {
   pickDefaultAgentVoice,
   type RawElevenLabsVoice,
 } from "@/lib/elevenlabs/agent-config";
+import { preferredVoiceScoreBonus } from "@/lib/elevenlabs/swiss-voices";
 
 export type AgentVoiceGender = "male" | "female";
 
@@ -11,12 +12,8 @@ export function pickDefaultAgentVoiceForLanguage(
   rawVoices: RawElevenLabsVoice[],
   language: AgentLanguageLabel
 ) {
-  const catalog = filterAgentVoices(rawVoices);
-  const wantSwiss = language === "Schweizerdeutsch";
-  const filtered = catalog.filter((voice) =>
-    wantSwiss ? voice.swissGerman : !voice.swissGerman
-  );
-  return pickDefaultAgentVoice(filtered.length > 0 ? filtered : catalog);
+  const catalog = filterAgentVoices(rawVoices, language);
+  return pickDefaultAgentVoice(catalog);
 }
 
 export function pickAgentVoiceId(
@@ -24,18 +21,26 @@ export function pickAgentVoiceId(
   gender: AgentVoiceGender,
   language: AgentLanguageLabel
 ): string | undefined {
-  const catalog = filterAgentVoices(rawVoices);
+  const catalog = filterAgentVoices(rawVoices, language);
   if (catalog.length === 0) return undefined;
+
+  const match = catalog.find((v) => v.gender === gender);
+  if (match) return match.id;
 
   const meta = new Map(catalog.map((v) => [v.id, v]));
   const eligible = rawVoices.filter((v) => v.voiceId && meta.has(v.voiceId));
-  const wantSwiss = language === "Schweizerdeutsch";
 
   const score = (v: RawElevenLabsVoice): number => {
     const opt = meta.get(v.voiceId!);
     if (!opt) return -100;
 
-    let s = 0;
+    let s = preferredVoiceScoreBonus(
+      v.voiceId!,
+      v.name ?? "",
+      language,
+      gender
+    );
+
     const g = (v.labels?.gender ?? "").toLowerCase();
     if (gender === "male") {
       if (g === "male") s += 40;
@@ -45,7 +50,7 @@ export function pickAgentVoiceId(
       else if (g === "male") s -= 30;
     }
 
-    if (wantSwiss) {
+    if (language === "Schweizerdeutsch") {
       if (opt.swissGerman) s += 50;
       else s -= 15;
     } else if (!opt.swissGerman) {

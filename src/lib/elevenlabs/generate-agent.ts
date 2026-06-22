@@ -243,7 +243,7 @@ Fülle die sections knapp aus — insgesamt höchstens ${MAX_AGENT_INSTRUCTION_P
 - sonstiges: nur wenn nötig, 1 kurzer Hinweis
 
 Regeln:
-- Sprache: ${language}
+- Sprache: ${language}${language === "Schweizerdeutsch" ? " — alle Texte (name, greeting, sections) auf Schweizerdeutsch schreiben, z. B. «Grüezi», «isch», «chönd», «Merci vilmal»" : ""}
 - Keine Emojis, keine langen Texte, keine Marketing-Floskeln
 - Nur das Nötigste — wenig Kontext, telefonisch umsetzbar
 - Zentral: Liegenschaft/Adresse und Wohnung erfassen, Reparaturen mit kurzer Schadensbeschreibung, Termine für Schlüsselübergabe/Besichtigung/Abnahme`;

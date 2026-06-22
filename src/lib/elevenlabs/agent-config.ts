@@ -269,6 +269,16 @@ export function normalizeAgentLanguage(language?: string): AgentLanguageLabel {
   return "Deutsch";
 }
 
+const SWISS_GERMAN_LANGUAGE_BLOCK = `# Sprache (Schweizerdeutsch — PFLICHT)
+- Antworte **durchgehend auf Schweizerdeutsch** (Zürich/Bern, alltagsnah) — **niemals Hochdeutsch**, ausser der Anrufer verlangt es ausdrücklich.
+- Sie-Form im Dialekt beibehalten: «Sie», «Ihne», «gern» → «gärn», «haben» → «händ», «ist» → «isch», «nicht» → «nöd»/«nid», «können» → «chönd», «möchten» → «würded gärn».
+- Typisch: «Grüezi», «Merci vilmal», «En Guete», «Uf Wiederluege», «Moment, ich luege grad nah», «Was chani für Sie tue?», «I ha das notiert.», «De Termin isch am … um …».
+- Verstehe Zustimmungen: «jo», «passt scho», «isch guet», «gärn», «super», «machen mir so».
+- Kein ß — immer «ss» (Schwiiz-Standard). Kurze, klare Sätz wie am Telefon in einer Verwaltung.`;
+
+const STANDARD_GERMAN_LANGUAGE_BLOCK = `# Sprache
+- Antworte durchgehend auf Hochdeutsch, klar und verständlich.`;
+
 /** Appends spoken-language rules to the system prompt. */
 export function applyLanguageInstructions(
   systemPrompt: string,
@@ -276,8 +286,8 @@ export function applyLanguageInstructions(
 ): string {
   const block =
     language === "Schweizerdeutsch"
-      ? `\n\n# Sprache\n- Antworte durchgehend auf Schweizerdeutsch (alltagsnah, z. B. Zürich/Bern).\n- Verwende typische Formulierungen wie «Grüezi», «Merci vilmal», «En Guete».\n- Hochdeutsch nur, wenn der Anrufer ausdrücklich danach fragt.`
-      : `\n\n# Sprache\n- Antworte durchgehend auf Hochdeutsch, klar und verständlich.`;
+      ? `\n\n${SWISS_GERMAN_LANGUAGE_BLOCK}`
+      : `\n\n${STANDARD_GERMAN_LANGUAGE_BLOCK}`;
 
   return systemPrompt.trim() + block;
 }
@@ -367,6 +377,11 @@ import {
   normalizeVoiceGender,
   type AssistantVoiceGender,
 } from "@/lib/elevenlabs/assistant-names";
+import {
+  preferredVoiceIdsForLanguage,
+  voiceIdIsPreferredSwiss,
+  voiceNameLooksSwiss,
+} from "@/lib/elevenlabs/swiss-voices";
 
 export interface AgentVoiceOption {
   id: string;
@@ -401,6 +416,7 @@ export function voiceSupportsGerman(v: RawElevenLabsVoice): boolean {
 }
 
 export function voiceIsSwissGerman(v: RawElevenLabsVoice): boolean {
+  if (v.voiceId && voiceIdIsPreferredSwiss(v.voiceId)) return true;
   const verified = v.verifiedLanguages ?? [];
   if (
     verified.some(
@@ -411,7 +427,9 @@ export function voiceIsSwissGerman(v: RawElevenLabsVoice): boolean {
   ) {
     return true;
   }
-  return /(schweiz|swiss|zürich|zurich|bern|basel|grüezi)/i.test(voiceHaystack(v));
+  const haystack = voiceHaystack(v);
+  if (voiceNameLooksSwiss(v.name ?? "")) return true;
+  return /(schweiz|swiss|zürich|zurich|bern|basel|grüezi)/i.test(haystack);
 }
 
 export function voiceDisplayLanguage(v: RawElevenLabsVoice): string {
@@ -424,20 +442,38 @@ export function voiceDisplayLanguage(v: RawElevenLabsVoice): string {
 export const AGENT_VOICE_FEMALE_LABEL = "Marta";
 export const AGENT_VOICE_MALE_LABEL = "Otto";
 
-function voicePreferenceScore(option: AgentVoiceOption): number {
-  return (
-    (option.swissGerman ? 2 : 0) + (option.language === "Deutsch" ? 1 : 0)
-  );
+function voicePreferenceScore(
+  option: AgentVoiceOption,
+  language: AgentLanguageLabel
+): number {
+  const wantSwiss = language === "Schweizerdeutsch";
+  let score = 0;
+  if (wantSwiss) {
+    if (option.swissGerman) score += 4;
+    else score -= 3;
+  } else if (!option.swissGerman) {
+    score += 4;
+  } else {
+    score -= 2;
+  }
+
+  const preferred = preferredVoiceIdsForLanguage(language, option.gender);
+  const prefIndex = preferred.indexOf(option.id);
+  if (prefIndex >= 0) score += 20 - prefIndex;
+
+  return score;
 }
 
 function pickBestVoiceForGender(
   voices: AgentVoiceOption[],
-  gender: AssistantVoiceGender
+  gender: AssistantVoiceGender,
+  language: AgentLanguageLabel
 ): AgentVoiceOption | undefined {
   const pool = voices.filter((v) => v.gender === gender);
   if (pool.length === 0) return undefined;
   return [...pool].sort((a, b) => {
-    const diff = voicePreferenceScore(b) - voicePreferenceScore(a);
+    const diff =
+      voicePreferenceScore(b, language) - voicePreferenceScore(a, language);
     return diff !== 0
       ? diff
       : a.name.localeCompare(b.name, "de");
@@ -446,7 +482,8 @@ function pickBestVoiceForGender(
 
 /** Voices suitable for German phone agents — exactly one female (Marta) and one male (Otto). */
 export function filterAgentVoices(
-  voices: RawElevenLabsVoice[]
+  voices: RawElevenLabsVoice[],
+  language: AgentLanguageLabel = "Deutsch"
 ): AgentVoiceOption[] {
   const eligible = voices.filter(
     (v) => v.voiceId && v.name && voiceSupportsGerman(v)
@@ -465,8 +502,8 @@ export function filterAgentVoices(
     };
   });
 
-  const female = pickBestVoiceForGender(mapped, "female");
-  const male = pickBestVoiceForGender(mapped, "male");
+  const female = pickBestVoiceForGender(mapped, "female", language);
+  const male = pickBestVoiceForGender(mapped, "male", language);
 
   return [female, male].filter((v): v is AgentVoiceOption => Boolean(v));
 }

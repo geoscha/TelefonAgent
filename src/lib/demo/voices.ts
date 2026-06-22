@@ -13,6 +13,14 @@ export const DEMO_VOICE_PRESETS = [
     envKey: "DEMO_VOICE_FEMALE_DE",
   },
   {
+    id: "female-ch",
+    label: "Frau · Schweizerdeutsch",
+    shortLabel: "Frau",
+    language: "Schweizerdeutsch" as AgentLanguageLabel,
+    sttLocale: "de-CH",
+    envKey: "DEMO_VOICE_FEMALE_CH",
+  },
+  {
     id: "male-ch",
     label: "Mann · Schweizerdeutsch",
     shortLabel: "Mann",

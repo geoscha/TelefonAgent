@@ -24,6 +24,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   oauth_cancelled: "Google-Anmeldung abgebrochen.",
   oauth_not_configured: PROVIDER_NOT_ENABLED,
   oauth_missing_secret: MISSING_OAUTH_SECRET,
+  oauth_network:
+    "Der lokale Server konnte Supabase nicht erreichen. Bitte Dev-Server neu starten (npm run dev) und erneut versuchen.",
   auth: "Anmeldung fehlgeschlagen. Bitte erneut versuchen.",
 };
 

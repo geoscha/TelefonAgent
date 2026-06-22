@@ -2,9 +2,11 @@ import "server-only";
 
 import {
   filterAgentVoices,
+  type AgentLanguageLabel,
   type RawElevenLabsVoice,
 } from "@/lib/elevenlabs/agent-config";
 import { getElevenLabsClient } from "@/lib/elevenlabs/client";
+import { preferredVoiceScoreBonus } from "@/lib/elevenlabs/swiss-voices";
 
 import {
   getDemoVoicePreset,
@@ -21,48 +23,51 @@ async function fetchWorkspaceVoices(): Promise<RawElevenLabsVoice[]> {
   return res.voices ?? [];
 }
 
-function voiceGender(v: RawElevenLabsVoice): string {
-  return (v.labels?.gender ?? "").toLowerCase();
-}
-
 /** Pick a German-capable voice with the right gender + accent metadata. */
 export function pickDemoVoiceFromCatalog(
   rawVoices: RawElevenLabsVoice[],
   presetId: DemoVoicePresetId
 ): string | undefined {
   const preset = getDemoVoicePreset(presetId);
-  const catalog = filterAgentVoices(rawVoices);
+  const language = preset.language as AgentLanguageLabel;
+  const catalog = filterAgentVoices(rawVoices, language);
   if (catalog.length === 0) return undefined;
+
+  const wantMale = presetId === "male-ch";
+  const gender = wantMale ? "male" : "female";
+  const direct = catalog.find((v) => v.gender === gender);
+  if (direct) return direct.id;
 
   const meta = new Map(catalog.map((v) => [v.id, v]));
   const eligible = rawVoices.filter((v) => v.voiceId && meta.has(v.voiceId));
-
-  const wantMale = presetId === "male-ch";
-  const wantSwiss = preset.language === "Schweizerdeutsch";
 
   const score = (v: RawElevenLabsVoice): number => {
     const opt = meta.get(v.voiceId!);
     if (!opt) return -100;
 
-    let s = 0;
-    const gender = voiceGender(v);
+    let s = preferredVoiceScoreBonus(
+      v.voiceId!,
+      v.name ?? "",
+      language,
+      gender
+    );
+
+    const voiceGender = (v.labels?.gender ?? "").toLowerCase();
     if (wantMale) {
-      if (gender === "male") s += 40;
-      else if (gender === "female") s -= 30;
+      if (voiceGender === "male") s += 40;
+      else if (voiceGender === "female") s -= 30;
     } else {
-      if (gender === "female") s += 40;
-      else if (gender === "male") s -= 30;
+      if (voiceGender === "female") s += 40;
+      else if (voiceGender === "male") s -= 30;
     }
 
-    if (wantSwiss) {
+    if (language === "Schweizerdeutsch") {
       if (opt.swissGerman) s += 50;
       else s -= 15;
-    } else {
-      if (!opt.swissGerman) s += 50;
-      else s -= 10;
+    } else if (!opt.swissGerman) {
+      s += 50;
     }
 
-    if (opt.language === "Deutsch") s += 10;
     return s;
   };
 

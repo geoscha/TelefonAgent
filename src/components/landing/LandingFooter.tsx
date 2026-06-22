@@ -22,7 +22,7 @@ export function LandingFooter() {
         <div className="relative flex min-h-[420px] flex-col justify-between p-5 sm:min-h-[500px] sm:p-10 lg:min-h-[560px] lg:p-14">
           <h2 className={cn(LANDING_DISPLAY_HEADLINE_CLASS, "max-w-[12ch]")}>
             <span className="block">Gebaut für</span>
-            <span className="block">Skalierung,</span>
+            <span className="block">Verwaltungen,</span>
           </h2>
 
           <div className="flex flex-col gap-10 lg:flex-row lg:items-end lg:justify-between lg:gap-16">

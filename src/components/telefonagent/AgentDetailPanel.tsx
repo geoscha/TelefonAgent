@@ -96,6 +96,7 @@ interface AgentDetailPanelProps {
   activating?: boolean;
   onUpdate: (patch: AgentDetailUpdate) => void | Promise<void>;
   onAgentsChange?: (agents: StoredAgent[]) => void;
+  onVoicesChange?: (voices: VoiceOption[]) => void;
 }
 
 const fieldClass =
@@ -184,6 +185,7 @@ export function AgentDetailPanel({
   activating = false,
   onUpdate,
   onAgentsChange,
+  onVoicesChange,
 }: AgentDetailPanelProps) {
   const [name, setName] = useState(agent.name);
   const [greeting, setGreeting] = useState(agent.greeting);
@@ -347,7 +349,34 @@ export function AgentDetailPanel({
       patch.greeting = nextDefault;
     }
 
-    scheduleSave(patch);
+    const currentGender =
+      voices.find((v) => v.id === voiceId)?.gender ?? ("female" as const);
+
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/elevenlabs/voices?language=${encodeURIComponent(nextLanguage)}`
+        );
+        const data = (await res.json()) as {
+          ok?: boolean;
+          voices?: VoiceOption[];
+        };
+        if (res.ok && data.ok && data.voices?.length) {
+          onVoicesChange?.(data.voices);
+          const nextVoice =
+            data.voices.find((v) => v.gender === currentGender) ??
+            data.voices[0];
+          if (nextVoice && nextVoice.id !== voiceId) {
+            setVoiceId(nextVoice.id);
+            patch.voiceId = nextVoice.id;
+            patch.voiceName = nextVoice.name;
+          }
+        }
+      } catch {
+        /* non-fatal */
+      }
+      scheduleSave(patch);
+    })();
   }
 
   function handleSystemPromptChange(value: string) {
