@@ -108,6 +108,8 @@ export async function ensureInquiryAnalyzed(input: {
     suggestedActions: analysis.suggestedActions,
     matchedCustomers: analysis.matchedCustomers,
     dossiers: analysis.dossiers,
+    matchedWorkflow: analysis.matchedWorkflow,
+    workflowSlots: analysis.workflowSlots,
     status: "open",
     analyzedAt: new Date().toISOString(),
   });

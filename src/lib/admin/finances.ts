@@ -18,6 +18,11 @@ import {
 import type { ProviderCostResult } from "@/lib/admin/finance-plugins/twilio-costs";
 import { listAdminPoolNumbers } from "@/lib/admin/number-pool";
 import { getFinanceConfig } from "@/lib/admin/finance-config";
+import type { FinanceVendorEntry } from "@/lib/admin/finance-vendor-types";
+import {
+  buildFinanceVendorLedger,
+  sumInfrastructureCosts,
+} from "@/lib/admin/finance-vendors";
 import { getPlatformTokensSpent } from "@/lib/billing/platform-metrics";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -78,6 +83,7 @@ export interface FinanceDashboard {
     twilioCostChf: number;
     elevenLabsCostChf: number;
     openAiCostChf: number;
+    infrastructureCostChf: number;
     totalSignups: number;
     totalCustomersEver: number;
     deletedCustomers: number;
@@ -108,6 +114,7 @@ export interface FinanceDashboard {
   };
   series: FinanceTimePoint[];
   weekSeries: FinanceTimePoint[];
+  vendors: FinanceVendorEntry[];
 }
 
 interface ProfileRow {
@@ -249,10 +256,13 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
   );
   const openAiThisMonth = pickOpenAiCost(openAiCosts.thisMonth);
 
+  const infrastructureCostChf = sumInfrastructureCosts(config.infrastructure);
+
   const monthlyCostChf =
     twilioThisMonth.amountChf +
     elevenLabsThisMonth.amountChf +
-    openAiThisMonth.amountChf;
+    openAiThisMonth.amountChf +
+    infrastructureCostChf;
   const monthlyProfitChf = thisMonthRevenueChf - monthlyCostChf;
   const userValueRatio =
     monthlyCostChf > 0 ? mrrChf / monthlyCostChf : mrrChf > 0 ? Infinity : 0;
@@ -339,6 +349,34 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
       ? currentMonth.revenueChf - priorMonth.revenueChf
       : null;
 
+  const vendors = buildFinanceVendorLedger({
+    twilio: twilioThisMonth,
+    elevenLabs: elevenLabsThisMonth,
+    openAi: openAiThisMonth,
+    stripe: stripeRevenue.mrr,
+    balances: {
+      twilioBalanceChf: twilioBalance.balanceChf,
+      twilioBalanceUsd: twilioBalance.balanceUsd,
+      elevenLabsCreditsRemaining: elevenLabsBalance.creditsRemaining,
+      elevenLabsCreditsLimit: elevenLabsBalance.creditsLimit,
+      elevenLabsTier: elevenLabsBalance.tier,
+      openAiSpendChf: openAiSpend.spendChf,
+    },
+    integrations: {
+      twilioConfigured: Boolean(
+        integrations.twilioAccountSid && integrations.twilioAuthToken
+      ),
+      elevenLabsConfigured: Boolean(integrations.elevenLabsApiKey),
+      stripeConfigured: Boolean(integrations.stripeSecretKey),
+      openAiConfigured: Boolean(enrichment.apiKey),
+    },
+    infrastructure: config.infrastructure,
+    envSignals: {
+      supabaseConfigured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()),
+      vercelConfigured: Boolean(process.env.VERCEL_URL?.trim()),
+    },
+  });
+
   return {
     integrations: {
       twilioConfigured: Boolean(
@@ -358,6 +396,7 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
       twilioCostChf: twilioThisMonth.amountChf,
       elevenLabsCostChf: elevenLabsThisMonth.amountChf,
       openAiCostChf: openAiThisMonth.amountChf,
+      infrastructureCostChf,
       totalSignups,
       totalCustomersEver,
       deletedCustomers,
@@ -420,6 +459,7 @@ export async function getAdminFinances(): Promise<FinanceDashboard> {
     },
     series,
     weekSeries,
+    vendors,
   };
 }
 

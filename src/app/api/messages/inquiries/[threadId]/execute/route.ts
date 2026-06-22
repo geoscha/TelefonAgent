@@ -24,11 +24,20 @@ export async function POST(
     );
   }
 
-  let body: { draftReply?: string; craftsmanDrafts?: CraftsmanEmailDraft[] };
+  let body: {
+    draftReply?: string;
+    craftsmanDrafts?: CraftsmanEmailDraft[];
+    actionIds?: string[];
+    craftsmanDraftIds?: string[];
+    sendCustomerReply?: boolean;
+  };
   try {
     body = (await req.json()) as {
       draftReply?: string;
       craftsmanDrafts?: CraftsmanEmailDraft[];
+      actionIds?: string[];
+      craftsmanDraftIds?: string[];
+      sendCustomerReply?: boolean;
     };
   } catch {
     body = {};
@@ -54,16 +63,18 @@ export async function POST(
     const inquiry = await getInquiryByThreadId(threadId);
     const draftReply = body.draftReply?.trim() || inquiry?.draftReply?.trim() || "";
     const craftsmanDrafts = body.craftsmanDrafts ?? inquiry?.craftsmanDrafts ?? [];
-    const hasCustomerReply = Boolean(draftReply);
+    const hasCustomerReply = Boolean(draftReply) && body.sendCustomerReply !== false;
     const hasCraftsmanMail = craftsmanDrafts.some(
       (draft) =>
         draft.recipientEmail?.trim() &&
         draft.body?.trim() &&
         draft.subject?.trim() &&
-        draft.status !== "sent"
+        draft.status !== "sent" &&
+        (!body.craftsmanDraftIds?.length || body.craftsmanDraftIds.includes(draft.id))
     );
+    const hasSelectedActions = Boolean(body.actionIds?.length);
 
-    if (!hasCustomerReply && !hasCraftsmanMail) {
+    if (!hasCustomerReply && !hasCraftsmanMail && !hasSelectedActions) {
       return NextResponse.json(
         { ok: false, error: "Kein Antwort- oder Handwerker-Entwurf vorhanden." },
         { status: 400 }
@@ -76,6 +87,9 @@ export async function POST(
         messages,
         draftReply,
         craftsmanDrafts,
+        actionIds: body.actionIds,
+        craftsmanDraftIds: body.craftsmanDraftIds,
+        sendCustomerReply: body.sendCustomerReply,
       });
 
       const saved = await upsertInquiry({

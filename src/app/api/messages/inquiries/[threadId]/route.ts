@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
+  buildInquiryQuickActions,
+  resolveInquiryCapabilities,
+} from "@/lib/messages/inquiry-capabilities";
+import {
   ensureInquiryAnalyzed,
   resolveDefaultAgent,
 } from "@/lib/messages/inquiry-service";
@@ -79,10 +83,27 @@ export async function GET(
 
     await markThreadRead(threadId);
 
+    const capabilities = inquiry
+      ? await resolveInquiryCapabilities({
+          channelType: inquiry.channelType,
+          agent,
+        })
+      : null;
+    const quickActions =
+      inquiry && capabilities
+        ? buildInquiryQuickActions({
+            inquiry,
+            capabilities,
+            matchedWorkflow: inquiry.matchedWorkflow,
+          })
+        : [];
+
     return NextResponse.json({
       ok: true,
       inquiry,
       messages,
+      capabilities,
+      quickActions,
     });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {

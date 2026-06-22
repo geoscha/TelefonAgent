@@ -6,6 +6,7 @@ import type {
   GovernanceWorkflow,
   GovernanceWorkflowInput,
 } from "@/lib/governance/types";
+import { DEFAULT_RECHTSAUSKUNFT_WORKFLOW_INPUT } from "@/lib/workflow-engine/defaults";
 
 export const DEFAULT_GLOBAL_RULES: GovernanceGlobalRules = {
   grounding: `Behaupte nur Fakten, die aus der Wissensbasis, Kundendaten oder dem laufenden Workflow-Kontext stammen.
@@ -116,7 +117,7 @@ Pflichtangaben müssen vollständig sein, bevor der Workflow abgeschlossen wird.
   },
   messageVariant: {
     instructions:
-      "Formuliere einen vollständigen Entwurf zur Bestätigung. Frage nach Fotos als Anhang, wenn sinnvoll.",
+      "Formuliere einen vollständigen Entwurf zur Bestätigung. Frage nach Fotos als Anhang, wenn sinnvoll. Beantworte auch Ablauf-/Prozessfragen (z. B. «Wie reiche ich Fotos ein?») anhand der Wissensdatenbank oder mit dem Hinweis, Fotos als Antwort auf diese E-Mail zu senden.",
     slotCollection:
       "Liste fehlende Pflichtfelder klar auf. Nutze Aufzählungen nur für fehlende Angaben.",
     escalation:
@@ -139,6 +140,11 @@ Pflichtangaben müssen vollständig sein, bevor der Workflow abgeschlossen wird.
       channel: "voice",
       dialogue:
         "Kunde: «Bei uns tropft es unter der Spüle.»\nAgent: «Das nehme ich auf. In welcher Liegenschaft oder Wohnung ist das? Und seit wann tropft es?»",
+    },
+    {
+      channel: "message",
+      dialogue:
+        "Kunde: «Wie sollte ich die Fotos meiner Schadenmeldung einreichen?»\nEntwurf: «Guten Tag, vielen Dank für Ihre Nachricht. Sie können die Fotos zu Ihrer Schadenmeldung gerne als Anhang direkt auf diese E-Mail antworten. Bitte fügen Sie wenn möglich eine kurze Beschreibung und die betroffene Adresse bei. Wir leiten Ihre Unterlagen anschliessend an die zuständige Stelle weiter.»",
     },
     {
       channel: "message",
@@ -231,6 +237,7 @@ Bei mehrteiligen Fragen: jeden Teil einzeln prüfen — beantworten, was klar in
 export const DEFAULT_GOVERNANCE_WORKFLOWS: GovernanceWorkflowInput[] = [
   DEFAULT_DAMAGE_WORKFLOW_INPUT,
   DEFAULT_GENERAL_INQUIRY_WORKFLOW_INPUT,
+  DEFAULT_RECHTSAUSKUNFT_WORKFLOW_INPUT,
 ];
 
 export function emptyWorkflowChannelVariant() {

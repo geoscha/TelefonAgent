@@ -29,6 +29,9 @@ import { buildAgentKnowledgeBaseLocators } from "@/lib/elevenlabs/knowledge-base
 import { getCraftsmenKnowledgeForUser } from "@/lib/customers/craftsmen-kb";
 import { getWebsiteIntegrationForUser } from "@/lib/integrations/website/store";
 import { getSettingsForUser, getUserIdByAgentId } from "@/lib/store";
+import { isWorkflowEngineEnabledForUser } from "@/lib/workflow-engine/flags";
+import { buildRouterOnlyVoicePrompt } from "@/lib/workflow-engine/prompt-builder";
+import { ensureWorkflowContextToolId } from "@/lib/elevenlabs/workflow-tool-sync";
 
 function buildEscalationBlock(phoneNumber: string): string {
   return `
@@ -99,7 +102,8 @@ export function buildLiveAgentConversationConfig(
   toolIds: string[] = [],
   escalationPhone?: string,
   governanceBlock?: string,
-  knowledgeBase?: unknown
+  knowledgeBase?: unknown,
+  systemPromptOverride?: string
 ) {
   return buildConversationConfig({
     greeting: applyEuComplianceGreeting(
@@ -107,11 +111,9 @@ export function buildLiveAgentConversationConfig(
       Boolean(agent.euComplianceEnabled)
     ),
     language: agent.language ?? "Deutsch",
-    systemPrompt: buildLiveAgentSystemPrompt(
-      agent,
-      escalationPhone,
-      governanceBlock
-    ),
+    systemPrompt:
+      systemPromptOverride ??
+      buildLiveAgentSystemPrompt(agent, escalationPhone, governanceBlock),
     voiceId: agent.voiceId,
     builtInTools: buildBuiltInTools(agent, { escalationPhone }),
     toolIds,
@@ -128,7 +130,8 @@ export function buildLiveAgentChatConversationConfig(
   toolIds: string[] = [],
   escalationPhone?: string,
   governanceBlock?: string,
-  knowledgeBase?: unknown
+  knowledgeBase?: unknown,
+  systemPromptOverride?: string
 ) {
   return buildConversationConfig({
     greeting: applyEuComplianceGreeting(
@@ -136,11 +139,9 @@ export function buildLiveAgentChatConversationConfig(
       Boolean(agent.euComplianceEnabled)
     ),
     language: agent.language ?? "Deutsch",
-    systemPrompt: buildLiveAgentSystemPrompt(
-      agent,
-      escalationPhone,
-      governanceBlock
-    ),
+    systemPrompt:
+      systemPromptOverride ??
+      buildLiveAgentSystemPrompt(agent, escalationPhone, governanceBlock),
     voiceId: agent.voiceId,
     builtInTools: buildBuiltInTools(agent, { chatMode: true, escalationPhone }),
     toolIds,
@@ -193,7 +194,20 @@ export async function syncAgentConversationConfig(
 ): Promise<void> {
   const appointmentConfig = normalizeAppointmentConfig(agent.appointmentConfig);
   const wantsCustomerAccess = hasAnyCustomerAccess(agent);
-  const toolIds =
+  const userId =
+    options?.userId ??
+    (await getUserIdByAgentId(agent.id)) ??
+    undefined;
+
+  const engineEnabled = userId
+    ? await isWorkflowEngineEnabledForUser(userId)
+    : false;
+
+  const governanceBlock = engineEnabled
+    ? ""
+    : await loadGovernanceVoiceBlock(userId);
+
+  let toolIds =
     agent.appointmentBookingEnabled || wantsCustomerAccess
       ? await ensureAppointmentToolIds(client, appointmentConfig, {
           siteUrl: options?.siteUrl,
@@ -202,16 +216,24 @@ export async function syncAgentConversationConfig(
         })
       : [];
 
+  if (engineEnabled) {
+    const workflowToolId = await ensureWorkflowContextToolId(
+      client,
+      options?.siteUrl
+    );
+    if (workflowToolId) {
+      toolIds = [...toolIds, workflowToolId];
+    }
+  }
+
   const escalationPhone = await resolveEscalationPhoneForAgent(
     agent,
     options?.escalationContext
   );
 
-  const userId =
-    options?.userId ??
-    (await getUserIdByAgentId(agent.id)) ??
-    undefined;
-  const governanceBlock = await loadGovernanceVoiceBlock(userId);
+  const systemPromptOverride = engineEnabled
+    ? await buildRouterOnlyVoicePrompt({ agent, userId })
+    : undefined;
   const websiteIntegration = userId
     ? await getWebsiteIntegrationForUser(userId)
     : null;
@@ -236,14 +258,16 @@ export async function syncAgentConversationConfig(
         toolIds,
         escalationPhone,
         governanceBlock,
-        knowledgeBase
+        knowledgeBase,
+        systemPromptOverride
       )
     : buildLiveAgentConversationConfig(
         agent,
         toolIds,
         escalationPhone,
         governanceBlock,
-        knowledgeBase
+        knowledgeBase,
+        systemPromptOverride
       );
 
   await client.conversationalAi.agents.update(agent.id, {

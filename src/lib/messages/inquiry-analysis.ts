@@ -3,6 +3,15 @@ import "server-only";
 import { getEnrichmentConfig } from "@/lib/admin/enrichment-config";
 import { hasAnyCustomerAccess } from "@/lib/elevenlabs/prompt";
 import { getGovernancePromptBlock } from "@/lib/governance/runtime";
+import { getWebsiteIntegration } from "@/lib/integrations/website/store";
+import {
+  enrichSuggestedActions,
+  resolveInquiryCapabilities,
+} from "@/lib/messages/inquiry-capabilities";
+import {
+  listEnabledGovernanceWorkflows,
+  resolveInquiryWorkflowAsync,
+} from "@/lib/messages/inquiry-workflow-match";
 import {
   getEnabledAppointmentTypes,
   normalizeAppointmentConfig,
@@ -27,6 +36,7 @@ import type {
   CraftsmanEmailDraft,
   CustomerDossier,
   MatchedCustomer,
+  MatchedInquiryWorkflow,
   MessageActionStep,
   MessageActionType,
   MessageInquiryCategory,
@@ -56,11 +66,13 @@ export interface InquiryAnalysisResult {
   suggestedActions: MessageSuggestedAction[];
   matchedCustomers: MatchedCustomer[];
   dossiers: CustomerDossier[];
+  matchedWorkflow?: MatchedInquiryWorkflow;
+  workflowSlots?: Record<string, string>;
 }
 
 /** Broad pre-filter — full thread text, not only the latest message. */
 const RELEVANCE_PATTERN =
-  /termin|besichtig|schlüssel|schluessel|übergabe|uebergabe|handwerker|reparatur|rohrbruch|heizung|lift|storn|absag|verschieb|umbuch|schaden|defekt|kaputt|undicht|wasser|tropf|leck|notfall|mieter|miete|mietzins|nebenkosten|schimmel|fenster|tür|tuer|klingel|briefkasten|waschmaschine|keller|balkon|parkplatz|garage|schloss|auszug|einzug|abnahme|frei|verfügbar|verfuegbar|kalender|uhr|morgen|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag/i;
+  /termin|besichtig|schlüssel|schluessel|übergabe|uebergabe|handwerker|reparatur|rohrbruch|heizung|lift|storn|absag|verschieb|umbuch|schaden|defekt|kaputt|undicht|wasser|tropf|leck|notfall|mieter|miete|mietzins|nebenkosten|schimmel|fenster|tür|tuer|klingel|briefkasten|waschmaschine|keller|balkon|parkplatz|garage|schloss|auszug|einzug|abnahme|frei|verfügbar|verfuegbar|kalender|uhr|morgen|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|öffnungszeit|information|auskunft|frage|kontakt|hausordnung|website|leistung|preis|kosten|adresse|email|telefon|faq|vertrag|kündig|kuendig|foto|photo|bild|einreich|hochlad|anhang|meldung/i;
 
 const MAX_TOOL_ROUNDS = 5;
 
@@ -358,6 +370,17 @@ function submitAnalysisTool() {
               required: ["recipient_name", "recipient_email", "subject", "body"],
             },
           },
+          matched_workflow_slug: {
+            type: "string",
+            description:
+              "Slug des passenden Admin-Workflows: schadensfall-meldung oder allgemeine-auskunft.",
+          },
+          workflow_slots: {
+            type: "object",
+            description:
+              "Extrahierte Workflow-Felder (z. B. inquiry_topic, damage_type, urgency).",
+            additionalProperties: { type: "string" },
+          },
         },
         required: ["actionable", "summary", "draft_reply", "suggested_actions"],
       },
@@ -375,6 +398,19 @@ interface SubmitArgs {
   draft_reply?: string;
   suggested_actions?: unknown;
   craftsman_drafts?: unknown;
+  matched_workflow_slug?: string;
+  workflow_slots?: Record<string, string>;
+}
+
+function parseWorkflowSlots(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const slots: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string" && value.trim()) {
+      slots[key] = value.trim();
+    }
+  }
+  return Object.keys(slots).length > 0 ? slots : undefined;
 }
 
 function resultFromSubmit(
@@ -397,8 +433,13 @@ function resultFromSubmit(
     suggestedActions: actionable ? parseSuggestedActions(args.suggested_actions) : [],
     matchedCustomers,
     dossiers,
+    workflowSlots: actionable ? parseWorkflowSlots(args.workflow_slots) : undefined,
     _rawCraftsmanDrafts: actionable ? args.craftsman_drafts : undefined,
-  } as InquiryAnalysisResult & { _rawCraftsmanDrafts?: unknown };
+    _llmWorkflowSlug: actionable ? args.matched_workflow_slug?.trim() : undefined,
+  } as InquiryAnalysisResult & {
+    _rawCraftsmanDrafts?: unknown;
+    _llmWorkflowSlug?: string;
+  };
 }
 
 async function finalizeCraftsmanDrafts(
@@ -423,6 +464,42 @@ async function finalizeCraftsmanDrafts(
   return { ...rest, craftsmanDrafts };
 }
 
+async function finalizeWorkflowAndActions(
+  result: InquiryAnalysisResult & { _llmWorkflowSlug?: string },
+  input: InquiryAnalysisInput
+): Promise<InquiryAnalysisResult> {
+  const { _llmWorkflowSlug, ...rest } = result;
+  if (!rest.actionable) return rest;
+
+  const workflows = await listEnabledGovernanceWorkflows(input.userId);
+  const matchedWorkflow = await resolveInquiryWorkflowAsync({
+    category: rest.category,
+    urgency: rest.urgency,
+    threadText: threadFullText(input.messages),
+    workflows,
+    llmWorkflowSlug: _llmWorkflowSlug,
+    userId: input.userId,
+  });
+
+  const capabilities = await resolveInquiryCapabilities({
+    channelType: input.channelType,
+    agent: input.agent,
+  });
+
+  return {
+    ...rest,
+    matchedWorkflow,
+    suggestedActions: enrichSuggestedActions(rest.suggestedActions, capabilities),
+  };
+}
+
+function buildWebsiteKnowledgeBlock(
+  knowledgeText: string | null | undefined
+): string {
+  if (!knowledgeText?.trim()) return "";
+  return `\n\nWISSENSDATENBANK (Betreiber-Website / FAQ):\n${knowledgeText.trim()}\n\nNutze diese Fakten für allgemeine Auskünfte. Wenn etwas nicht hier steht, nicht erfinden.`;
+}
+
 async function runAgentLoop(
   input: InquiryAnalysisInput,
   matchedCustomers: MatchedCustomer[],
@@ -444,6 +521,12 @@ async function runAgentLoop(
     "message",
     input.userId
   );
+  const websiteIntegration = input.userId
+    ? await getWebsiteIntegration()
+    : null;
+  const knowledgeBlock = buildWebsiteKnowledgeBlock(
+    websiteIntegration?.knowledgeText
+  );
 
   const system = `Du bist ein erfahrener Sachbearbeiter einer Schweizer Liegenschaftsverwaltung und triagierst eingehende Mieter-/Kundennachrichten.
 
@@ -459,16 +542,24 @@ Vorgehen:
 2. Prüfe nötige Fakten mit Tools (nur wenn relevant).
 3. Rufe danach GENAU EINMAL submit_analysis auf.
 
+Workflow-Zuordnung:
+- matched_workflow_slug=schadensfall-meldung bei Schaden/Defekt/Notfall/Reparatur
+- matched_workflow_slug=allgemeine-auskunft bei allgemeinen Informationsfragen (Öffnungszeiten, Leistungen, Kontakt, Nebenkosten, Hausordnung)
+- workflow_slots: relevante Felder aus dem passenden Workflow füllen (z. B. inquiry_topic, damage_type)
+
 Klassifizierung:
-- actionable=true bei: Schadenmeldung, Terminanfrage/-änderung, Vertrags-/Mietanliegen mit Handlungsbedarf, oder wenn ein bekannter Mieter ein konkretes Anliegen hat.
-- actionable=false bei: Werbung, Newsletter, Spam, automatische Systemmails, reiner Info ohne Handlungsbedarf, oder wenn die letzte Nachricht bereits von der Verwaltung final beantwortet wurde.
+- actionable=true bei: Schadenmeldung, Terminanfrage/-änderung, Vertrags-/Mietanliegen mit Handlungsbedarf, Ablauf-/Informationsfragen (z. B. «Wie reiche ich Fotos ein?»), allgemeine Auskünfte aus der Wissensdatenbank, oder wenn ein bekannter Mieter ein konkretes Anliegen hat.
+- actionable=false bei: Werbung, Newsletter, Spam, automatische Systemmails ohne Antwortbedarf, oder wenn die letzte Nachricht bereits von der Verwaltung final beantwortet wurde.
 
 Verfügbare Fähigkeiten der Verwaltung:
 ${buildCapabilitiesBlock(input.agent)}
 
 Regeln für die Antwort (draft_reply):
+- draft_reply ist IMMER Pflicht bei actionable=true — niemals leer lassen.
 - Sie-Form, höflich, konkret, mit Bezug auf Name & Kontext.
+- Nutze die WISSENSDATENBANK für Ablauf-, FAQ- und Prozessfragen (z. B. Foto-Einreichung, Öffnungszeiten). Wenn die KB eine Antwort enthält, formuliere sie natürlich um.
 - Bei Schäden: Empathie + konkrete nächste Schritte (z. B. Handwerker organisieren, Termin vorschlagen).
+- Bei Fragen zum Einreichen von Fotos/Dokumenten zu einer Schadenmeldung: erkläre den Weg aus der Wissensdatenbank; falls dort nichts steht, antworte dass Fotos als Anhang auf diese E-Mail geantwortet werden können (mit Adresse/Kurzbeschreibung).
 - Schlage in suggested_actions nur Termine vor, deren Slot du mit check_availability geprüft hast.
 - Für Verschiebungen: cancel_appointment + book_appointment als zwei steps; zusätzlich contact_craftsman erwähnen.
 - Bei Schadenmeldung/Notfall/Reparatur: wähle einen passenden Handwerker aus HANDWERKER-STAMM (Gewerk!) und erstelle in craftsman_drafts eine versandfertige E-Mail an dessen hinterlegte Adresse. Ergänze contact_craftsman oder schedule_repair in suggested_actions.`;
@@ -477,7 +568,7 @@ Regeln für die Antwort (draft_reply):
     { role: "system", content: system },
     {
       role: "user",
-      content: `NACHRICHTENVERLAUF:\n\n${formatThreadForPrompt(input.messages)}${dossierBlock}${craftsmenBlock}${matchBlock}`,
+      content: `NACHRICHTENVERLAUF:\n\n${formatThreadForPrompt(input.messages)}${dossierBlock}${craftsmenBlock}${matchBlock}${knowledgeBlock}`,
     },
   ];
 
@@ -521,8 +612,11 @@ Regeln für die Antwort (draft_reply):
       } catch {
         args = {};
       }
-      return finalizeCraftsmanDrafts(
-        resultFromSubmit(args, matchedCustomers, dossiers),
+      return finalizeWorkflowAndActions(
+        await finalizeCraftsmanDrafts(
+          resultFromSubmit(args, matchedCustomers, dossiers),
+          input
+        ),
         input
       );
     }
@@ -568,10 +662,82 @@ Regeln für die Antwort (draft_reply):
 
 // ── Heuristic fallback (no API key / failure) ────────────────────────────────
 
+function extractKnowledgeSnippet(
+  knowledgeText: string | undefined,
+  keywords: string[]
+): string | undefined {
+  if (!knowledgeText?.trim()) return undefined;
+
+  const chunks = knowledgeText
+    .split(/\n{2,}|(?<=[.!?])\s+/)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+
+  const lowerKeywords = keywords.map((keyword) => keyword.toLowerCase());
+  const match = chunks.find((chunk) => {
+    const lower = chunk.toLowerCase();
+    return lowerKeywords.some((keyword) => lower.includes(keyword));
+  });
+
+  return match?.slice(0, 600);
+}
+
+function buildHeuristicDraftReply(input: {
+  text: string;
+  name: string;
+  category: MessageInquiryCategory;
+  knowledgeText?: string;
+}): string {
+  const firstName = input.name.split(/\s+/)[0] || input.name;
+  const greeting = `Guten Tag ${firstName}`;
+
+  if (/foto|photo|bild|einreich|hochlad|anhang/i.test(input.text)) {
+    const kbSnippet = extractKnowledgeSnippet(input.knowledgeText, [
+      "foto",
+      "bild",
+      "einreich",
+      "anhang",
+      "schaden",
+      "meldung",
+      "upload",
+    ]);
+
+    if (kbSnippet) {
+      return `${greeting}\n\nvielen Dank für Ihre Nachricht. ${kbSnippet}\n\nFreundliche Grüsse\nIhre Liegenschaftsverwaltung`;
+    }
+
+    return `${greeting}\n\nvielen Dank für Ihre Nachricht. Sie können die Fotos zu Ihrer Schadenmeldung gerne als Anhang direkt auf diese E-Mail antworten. Bitte fügen Sie wenn möglich eine kurze Beschreibung und die betroffene Adresse bei.\n\nFreundliche Grüsse\nIhre Liegenschaftsverwaltung`;
+  }
+
+  if (
+    input.category === "Allgemein" ||
+    /öffnungszeit|information|auskunft|hausordnung|nebenkosten|kontakt|website|faq/i.test(
+      input.text
+    )
+  ) {
+    const kbSnippet = extractKnowledgeSnippet(input.knowledgeText, [
+      "öffnung",
+      "kontakt",
+      "nebenkosten",
+      "hausordnung",
+      "miete",
+      "service",
+      "information",
+    ]);
+
+    if (kbSnippet) {
+      return `${greeting}\n\nvielen Dank für Ihre Nachricht. ${kbSnippet}\n\nFreundliche Grüsse\nIhre Liegenschaftsverwaltung`;
+    }
+  }
+
+  return `${greeting}\n\nvielen Dank für Ihre Nachricht. Wir haben Ihr Anliegen aufgenommen und kümmern uns umgehend darum. Sie hören in Kürze von uns.\n\nFreundliche Grüsse\nIhre Liegenschaftsverwaltung`;
+}
+
 function heuristicAnalysis(
   input: InquiryAnalysisInput,
   matchedCustomers: MatchedCustomer[],
-  dossiers: CustomerDossier[]
+  dossiers: CustomerDossier[],
+  knowledgeText?: string
 ): InquiryAnalysisResult {
   const text = threadFullText(input.messages);
   const hasCustomerMatch = matchedCustomers.length > 0;
@@ -665,7 +831,12 @@ function heuristicAnalysis(
     confidence: 0.4,
     summary: `${category} von ${name}${matchedCustomers[0]?.address ? ` · ${matchedCustomers[0].address}` : ""}.`,
     contextSummary: contextBits.length > 0 ? contextBits.join(" · ") : undefined,
-    draftReply: `Guten Tag ${name.split(/\s+/)[0] || name}\n\nvielen Dank für Ihre Nachricht. Wir haben Ihr Anliegen aufgenommen und kümmern uns umgehend darum. Sie hören in Kürze von uns.\n\nFreundliche Grüsse\nIhre Liegenschaftsverwaltung`,
+    draftReply: buildHeuristicDraftReply({
+      text,
+      name,
+      category,
+      knowledgeText,
+    }),
     suggestedActions: actions,
     matchedCustomers,
     dossiers,
@@ -689,30 +860,83 @@ export async function analyzeMessageInquiry(
     threadId: input.threadId,
   });
 
-  const canHelp =
-    input.agent.appointmentBookingEnabled ||
-    hasAnyCustomerAccess(input.agent) ||
-    matchedCustomers.length > 0;
-  if (!canHelp) {
-    return { actionable: false, suggestedActions: [], matchedCustomers, dossiers };
-  }
+  const websiteIntegration = input.userId
+    ? await getWebsiteIntegration()
+    : null;
+  const knowledgeText = websiteIntegration?.knowledgeText;
 
   if (!(await getEnrichmentConfig()).apiKey) {
-    return finalizeCraftsmanDrafts(
-      heuristicAnalysis(input, matchedCustomers, dossiers),
+    return finalizeWorkflowAndActions(
+      await finalizeCraftsmanDrafts(
+        heuristicAnalysis(input, matchedCustomers, dossiers, knowledgeText),
+        input
+      ),
       input
     );
   }
 
   try {
-    return await runAgentLoop(input, matchedCustomers, dossiers);
+    const result = await runAgentLoop(input, matchedCustomers, dossiers);
+    return polishAnalysisResult(
+      result,
+      input,
+      matchedCustomers,
+      dossiers,
+      knowledgeText
+    );
   } catch (error) {
     console.error("[message-inquiry] agent failed, using heuristics:", error);
-    return finalizeCraftsmanDrafts(
-      heuristicAnalysis(input, matchedCustomers, dossiers),
+    return finalizeWorkflowAndActions(
+      await finalizeCraftsmanDrafts(
+        heuristicAnalysis(input, matchedCustomers, dossiers, knowledgeText),
+        input
+      ),
       input
     );
   }
+}
+
+async function polishAnalysisResult(
+  result: InquiryAnalysisResult,
+  input: InquiryAnalysisInput,
+  matchedCustomers: MatchedCustomer[],
+  dossiers: CustomerDossier[],
+  knowledgeText?: string
+): Promise<InquiryAnalysisResult> {
+  if (!isLikelyActionableThread(input.messages)) {
+    return result;
+  }
+
+  let polished = result;
+
+  if (!polished.actionable) {
+    polished = heuristicAnalysis(
+      input,
+      matchedCustomers,
+      dossiers,
+      knowledgeText
+    );
+    polished = await finalizeCraftsmanDrafts(polished, input);
+    return finalizeWorkflowAndActions(polished, input);
+  }
+
+  if (!polished.draftReply?.trim()) {
+    const name =
+      matchedCustomers[0]?.name ||
+      latestInbound(input.messages)?.senderLabel?.trim() ||
+      "Kunde";
+    polished = {
+      ...polished,
+      draftReply: buildHeuristicDraftReply({
+        text: threadFullText(input.messages),
+        name,
+        category: polished.category ?? "Allgemein",
+        knowledgeText,
+      }),
+    };
+  }
+
+  return polished;
 }
 
 /** Quick check whether a thread is worth sending to ChatGPT (full thread, not just latest). */

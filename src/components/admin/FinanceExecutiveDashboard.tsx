@@ -11,8 +11,10 @@ import {
 } from "lucide-react";
 
 import { FinanceChart } from "@/components/admin/FinanceChart";
+import { FinanceVendorControlTower } from "@/components/admin/FinanceVendorControlTower";
 import { AdminStat, adminPanelClass } from "@/components/admin/admin-ui";
 import { buildExecutiveBriefing } from "@/lib/admin/finance-insights";
+import type { FinanceVendorEntry } from "@/lib/admin/finance-vendor-types";
 import { cn } from "@/lib/utils";
 
 interface FinanceTimePoint {
@@ -54,6 +56,7 @@ export interface FinanceDashboardData {
     twilioCostChf: number;
     elevenLabsCostChf: number;
     openAiCostChf: number;
+    infrastructureCostChf: number;
     totalSignups: number;
     totalCustomersEver: number;
     deletedCustomers: number;
@@ -96,6 +99,7 @@ export interface FinanceDashboardData {
   };
   series: FinanceTimePoint[];
   weekSeries: FinanceTimePoint[];
+  vendors: FinanceVendorEntry[];
 }
 
 function chf(value: number, decimals = 0): string {
@@ -119,6 +123,7 @@ const SLICE_COLORS: Record<string, string> = {
   twilio: "#ef4444",
   elevenlabs: "#f59e0b",
   openai: "#10b981",
+  infrastructure: "#335cff",
 };
 
 type ChartRange = "week" | "month";
@@ -163,6 +168,7 @@ export function FinanceExecutiveDashboard({
         twilioCostChf: k.twilioCostChf,
         elevenLabsCostChf: k.elevenLabsCostChf,
         openAiCostChf: k.openAiCostChf,
+        infrastructureCostChf: k.infrastructureCostChf,
         unusedNumbers: k.unusedNumbers,
         totalNumbers: k.totalNumbers,
         unusedNumberCostChf: k.unusedNumberCostChf,
@@ -184,9 +190,24 @@ export function FinanceExecutiveDashboard({
   const chartSeries = buildChartSeries(activePoints);
 
   const profitPositive = k.monthlyProfitChf >= 0;
+  const infraVendors = (data.vendors ?? []).filter(
+    (v) => v.category === "infrastructure" && v.monthlyCostChf > 0
+  );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      <header className="border-b border-[#E1E4EA] pb-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#99A0AE]">
+          Finanzen · Admin
+        </p>
+        <h1 className="mt-1 text-2xl font-medium tracking-tight text-[#0E121B]">
+          Executive Finance Cockpit
+        </h1>
+        <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-[#525866]">
+          Umsatz, Kosten und Ergebnis auf einen Blick — inklusive aller Anbieter von Twilio
+          über Azure und Google Cloud bis Vercel und Supabase.
+        </p>
+      </header>
       {!data.integrations.stripeConfigured && (
         <p className="landing-caption text-[#525866]">
           <Link href="/admin/settings" className="text-[#335cff] hover:underline">
@@ -216,7 +237,11 @@ export function FinanceExecutiveDashboard({
         <HeroMetric
           label="Kosten (Monat)"
           value={chf(k.monthlyCostChf)}
-          hint="Variable Infrastruktur"
+          hint={
+            k.infrastructureCostChf > 0
+              ? `davon CHF ${k.infrastructureCostChf.toLocaleString("de-CH")} Cloud/Infra`
+              : "Variable + Fixkosten"
+          }
         />
         <HeroMetric
           label="Ergebnis (Monat)"
@@ -234,6 +259,13 @@ export function FinanceExecutiveDashboard({
           accentNegative={k.grossMarginPct < 0}
         />
       </div>
+
+      {data.vendors && data.vendors.length > 0 ? (
+        <FinanceVendorControlTower
+          vendors={data.vendors}
+          totalCostChf={k.monthlyCostChf}
+        />
+      ) : null}
 
       <div className="grid gap-3 lg:grid-cols-5">
         <section className={`${adminPanelClass} p-4 lg:col-span-2`}>
@@ -329,6 +361,30 @@ export function FinanceExecutiveDashboard({
             <PnLRow label="− Twilio" value={chf(k.twilioCostChf, 2)} muted />
             <PnLRow label="− ElevenLabs" value={chf(k.elevenLabsCostChf, 2)} muted />
             <PnLRow label="− OpenAI" value={chf(k.openAiCostChf, 2)} muted />
+            {k.infrastructureCostChf > 0 ? (
+              <>
+                <PnLRow
+                  label="− Cloud & Infrastruktur"
+                  value={chf(k.infrastructureCostChf, 0)}
+                  muted
+                />
+                {infraVendors.map((vendor) => (
+                  <PnLRow
+                    key={vendor.id}
+                    label={`    · ${vendor.provider}`}
+                    value={chf(vendor.monthlyCostChf, 0)}
+                    muted
+                  />
+                ))}
+              </>
+            ) : (
+              <PnLRow
+                label="− Cloud & Infrastruktur"
+                value="—"
+                muted
+                hint="FINANCE_*_MONTHLY_CHF setzen"
+              />
+            )}
             <PnLRow label="= Ergebnis" value={chf(k.monthlyProfitChf)} bold accent={profitPositive} accentNegative={!profitPositive} />
           </tbody>
         </table>
@@ -556,6 +612,7 @@ function PnLRow({
   muted,
   accent,
   accentNegative,
+  hint,
 }: {
   label: string;
   value: string;
@@ -563,6 +620,7 @@ function PnLRow({
   muted?: boolean;
   accent?: boolean;
   accentNegative?: boolean;
+  hint?: string;
 }) {
   return (
     <tr>
@@ -573,6 +631,9 @@ function PnLRow({
         )}
       >
         {label}
+        {hint ? (
+          <span className="ml-2 text-[11px] text-[#99A0AE]">{hint}</span>
+        ) : null}
       </td>
       <td
         className={cn(

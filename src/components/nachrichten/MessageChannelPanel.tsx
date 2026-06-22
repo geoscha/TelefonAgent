@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowLeft, Calendar, CheckCircle2, Loader2, Mail, MessageCircle, RefreshCw, Sparkles, Wrench } from "lucide-react";
 import { toast } from "sonner";
 
 import { EmptyState } from "@/components/brand/EmptyState";
@@ -17,6 +17,7 @@ import { useStaleFetch } from "@/lib/hooks/useStaleFetch";
 import type {
   CraftsmanEmailDraft,
   CustomerDossier,
+  InquiryQuickAction,
   MatchedCustomer,
   MessageInquiry,
   MessageInquiryListItem,
@@ -26,6 +27,23 @@ import type {
 import type { InboundMessage, MessageChannel } from "@/lib/messages/types";
 import { parseChannelId } from "@/lib/messages/types";
 import { cn, formatDateTime } from "@/lib/utils";
+import { resolveInquiryWorkflowLabel } from "@/lib/messages/inquiry-workflow-label";
+
+function WorkflowLabel({ label }: { label: string }) {
+  const unclear = label === "unklar";
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+        unclear
+          ? "border-[#E1E4EA] bg-[#FAFAFA] text-[#99A0AE]"
+          : "border-[#335cff]/20 bg-[#F0F4FF] text-[#335cff]"
+      )}
+    >
+      {label}
+    </span>
+  );
+}
 
 interface MessageChannelPanelProps {
   channel: MessageChannel | null;
@@ -75,7 +93,7 @@ function MetaChips({
 }) {
   if (!category && !urgency && confidence === undefined) return null;
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       {category ? (
         <span className="rounded-full border border-[#E1E4EA] bg-white px-2 py-0.5 text-[11px] font-medium text-[#525866]">
           {category}
@@ -279,7 +297,14 @@ export function MessageChannelPanel({
           </div>
         ) : inquiries.length > 0 ? (
           <div className="divide-y divide-[#E1E4EA]">
-            {inquiries.map((inquiry) => (
+            {inquiries.map((inquiry) => {
+              const workflowLabel = resolveInquiryWorkflowLabel({
+                matchedWorkflow: inquiry.matchedWorkflow,
+                category: inquiry.category,
+                text: `${inquiry.title} ${inquiry.preview} ${inquiry.summary ?? ""}`,
+              });
+
+              return (
               <button
                 key={inquiry.threadId}
                 type="button"
@@ -295,6 +320,7 @@ export function MessageChannelPanel({
                     <p className="truncate text-[14px] font-medium text-[#0E121B]">
                       {inquiry.title}
                     </p>
+                    <WorkflowLabel label={workflowLabel} />
                     {inquiry.hasSuggestion ? (
                       <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#335cff]/20 bg-[#F0F4FF] px-2 py-0.5 text-[10px] font-medium text-[#335cff]">
                         <Sparkles className="h-3 w-3" />
@@ -361,7 +387,8 @@ export function MessageChannelPanel({
                   {formatDateTime(inquiry.lastMessageAt)}
                 </span>
               </button>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="p-8">
@@ -391,6 +418,8 @@ function MessageInquiryDetail({
   const [draftReply, setDraftReply] = useState("");
   const [craftsmanDrafts, setCraftsmanDrafts] = useState<CraftsmanEmailDraft[]>([]);
   const [executing, setExecuting] = useState(false);
+  const [executingActionId, setExecutingActionId] = useState<string | null>(null);
+  const [quickActions, setQuickActions] = useState<InquiryQuickAction[]>([]);
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -406,6 +435,7 @@ function MessageInquiryDetail({
         setCraftsmanDrafts(
           (data.inquiry?.craftsmanDrafts as CraftsmanEmailDraft[] | undefined) ?? []
         );
+        setQuickActions((data.quickActions as InquiryQuickAction[] | undefined) ?? []);
       }
     } finally {
       setLoading(false);
@@ -456,8 +486,14 @@ function MessageInquiryDetail({
     );
   }
 
-  async function handleExecute() {
-    if (!canSend) {
+  async function handleExecute(options?: {
+    actionIds?: string[];
+    craftsmanDraftIds?: string[];
+    sendCustomerReply?: boolean;
+    successLabel?: string;
+    onComplete?: () => void;
+  }) {
+    if (!canSend && !options?.actionIds?.length) {
       toast.error("Bitte mindestens einen Entwurf ausfüllen.");
       return;
     }
@@ -472,6 +508,9 @@ function MessageInquiryDetail({
           body: JSON.stringify({
             draftReply: draftReply.trim(),
             craftsmanDrafts,
+            actionIds: options?.actionIds,
+            craftsmanDraftIds: options?.craftsmanDraftIds,
+            sendCustomerReply: options?.sendCustomerReply,
           }),
         }
       );
@@ -485,7 +524,7 @@ function MessageInquiryDetail({
 
       const errorNotes = (data.errors as string[] | undefined)?.filter(Boolean);
       const sentCraftsmanEmails = data.sentCraftsmanEmails as number | undefined;
-      toast.success("Anfrage umgesetzt", {
+      toast.success(options?.successLabel ?? "Anfrage umgesetzt", {
         description:
           errorNotes && errorNotes.length > 0
             ? errorNotes.join(" · ")
@@ -500,11 +539,59 @@ function MessageInquiryDetail({
                   .join(" · ") || "Aktionen ausgeführt."
               : "Aktionen ausgeführt.",
       });
-      onBack();
+
+      if (options?.onComplete) {
+        options.onComplete();
+      } else {
+        onBack();
+      }
     } catch {
       toast.error("Netzwerkfehler beim Umsetzen.");
     } finally {
       setExecuting(false);
+      setExecutingActionId(null);
+    }
+  }
+
+  async function handleQuickAction(action: InquiryQuickAction) {
+    if (action.disabled || action.kind === "info") return;
+
+    setExecutingActionId(action.id);
+
+    if (action.kind === "send_customer_reply") {
+      await handleExecute({
+        sendCustomerReply: true,
+        craftsmanDraftIds: [],
+        actionIds: [],
+        successLabel: "Antwort gesendet",
+        onComplete: () => void loadDetail(),
+      });
+      return;
+    }
+
+    if (action.kind === "send_craftsman_email" && action.craftsmanDraftId) {
+      await handleExecute({
+        sendCustomerReply: false,
+        craftsmanDraftIds: [action.craftsmanDraftId],
+        actionIds: [],
+        successLabel: "Handwerker-E-Mail gesendet",
+        onComplete: () => void loadDetail(),
+      });
+      return;
+    }
+
+    if (action.kind === "run_action" && action.actionId) {
+      await handleExecute({
+        sendCustomerReply: false,
+        actionIds: [action.actionId],
+        successLabel: "Aktion ausgeführt",
+        onComplete: () => void loadDetail(),
+      });
+      return;
+    }
+
+    if (action.kind === "execute_all") {
+      await handleExecute();
     }
   }
 
@@ -529,11 +616,20 @@ function MessageInquiryDetail({
           {inquiry?.summary ? (
             <p className="truncate text-[12px] text-[#99A0AE]">{inquiry.summary}</p>
           ) : null}
-          <MetaChips
-            category={inquiry?.category}
-            urgency={inquiry?.urgency}
-            confidence={inquiry?.confidence}
-          />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <WorkflowLabel
+              label={resolveInquiryWorkflowLabel({
+                matchedWorkflow: inquiry?.matchedWorkflow,
+                category: inquiry?.category,
+                text: messages.map((message) => message.body).join(" "),
+              })}
+            />
+            <MetaChips
+              category={inquiry?.category}
+              urgency={inquiry?.urgency}
+              confidence={inquiry?.confidence}
+            />
+          </div>
         </div>
       </div>
 
@@ -670,31 +766,66 @@ function MessageInquiryDetail({
                 </p>
                 <ul className="mt-2 space-y-2">
                   {inquiry.suggestedActions.map((action) => (
-                    <ActionSuggestionRow key={action.id} action={action} />
+                    <ActionSuggestionRow
+                      key={action.id}
+                      action={action}
+                      onRun={
+                        action.disabledReason
+                          ? undefined
+                          : () =>
+                              void handleQuickAction({
+                                id: `run-action-${action.id}`,
+                                label: action.label,
+                                kind: "run_action",
+                                actionId: action.id,
+                                integration: action.integration,
+                              })
+                      }
+                      running={executingActionId === `run-action-${action.id}`}
+                    />
                   ))}
                 </ul>
               </div>
             ) : null}
 
-            <button
-              type="button"
-              disabled={executing || !canSend}
-              onClick={() => void handleExecute()}
-              className={cn(landingBtnPrimary, "w-full justify-center sm:w-auto")}
-            >
-              {executing ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Wird umgesetzt…
-                </>
-              ) : hasSuggestion && pendingCraftsmanDrafts.length > 0 ? (
-                "Alles senden & umsetzen"
-              ) : hasSuggestion ? (
-                "Senden & umsetzen"
-              ) : (
-                "Antwort senden"
-              )}
-            </button>
+            {hasSuggestion && quickActions.length > 0 ? (
+              <div>
+                <p className="text-[12px] font-medium uppercase tracking-wide text-[#99A0AE]">
+                  Aktionen
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {quickActions.map((action) => (
+                    <QuickActionButton
+                      key={action.id}
+                      action={action}
+                      executing={executing}
+                      running={executingActionId === action.id}
+                      onClick={() => void handleQuickAction(action)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={executing || !canSend}
+                onClick={() => void handleExecute()}
+                className={cn(landingBtnPrimary, "w-full justify-center sm:w-auto")}
+              >
+                {executing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Wird umgesetzt…
+                  </>
+                ) : hasSuggestion && pendingCraftsmanDrafts.length > 0 ? (
+                  "Alles senden & umsetzen"
+                ) : hasSuggestion ? (
+                  "Senden & umsetzen"
+                ) : (
+                  "Antwort senden"
+                )}
+              </button>
+            )}
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
@@ -817,27 +948,121 @@ function MatchedCustomerRow({ customer }: { customer: MatchedCustomer }) {
   );
 }
 
-function ActionSuggestionRow({ action }: { action: MessageSuggestedAction }) {
+function ActionSuggestionRow({
+  action,
+  onRun,
+  running,
+}: {
+  action: MessageSuggestedAction;
+  onRun?: () => void;
+  running?: boolean;
+}) {
+  const integrationLabel =
+    action.integration === "calendar"
+      ? "Kalendereintrag"
+      : action.integration === "craftsman_gmail"
+        ? "Handwerker per E-Mail"
+        : action.type === "schedule_repair"
+          ? "Reparatur koordinieren"
+          : action.type === "book_appointment"
+            ? "Kalendereintrag anlegen"
+            : action.type === "cancel_appointment"
+              ? "Termin stornieren"
+              : action.type === "reschedule_appointment"
+                ? "Termin verschieben"
+                : action.type === "contact_craftsman"
+                  ? "Handwerker informieren"
+                  : "Information";
+
   return (
     <li className="flex items-start gap-2 rounded-md border border-[#E1E4EA] bg-white px-3 py-2.5">
       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#335cff]" />
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-[13px] font-medium text-[#0E121B]">{action.label}</p>
         <p className="text-[11px] text-[#99A0AE]">
-          {action.type === "contact_craftsman"
-            ? "Wird in der Antwort erwähnt"
-            : action.type === "schedule_repair"
-              ? "Reparatur koordinieren"
-              : action.type === "book_appointment"
-              ? "Kalendereintrag anlegen"
-              : action.type === "cancel_appointment"
-                ? "Termin stornieren"
-                : action.type === "reschedule_appointment"
-                  ? "Termin verschieben"
-                  : "Information"}
+          {action.disabledReason ?? integrationLabel}
         </p>
       </div>
+      {onRun ? (
+        <button
+          type="button"
+          onClick={onRun}
+          disabled={running}
+          className={cn(
+            landingBtnSecondary,
+            "shrink-0 px-2.5 py-1 text-[12px]"
+          )}
+        >
+          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Ausführen"}
+        </button>
+      ) : null}
     </li>
+  );
+}
+
+function QuickActionIcon({
+  integration,
+}: {
+  integration?: InquiryQuickAction["integration"];
+}) {
+  switch (integration) {
+    case "gmail":
+    case "craftsman_gmail":
+      return <Mail className="h-3.5 w-3.5" />;
+    case "whatsapp":
+      return <MessageCircle className="h-3.5 w-3.5" />;
+    case "calendar":
+      return <Calendar className="h-3.5 w-3.5" />;
+    default:
+      return <Wrench className="h-3.5 w-3.5" />;
+  }
+}
+
+function QuickActionButton({
+  action,
+  executing,
+  running,
+  onClick,
+}: {
+  action: InquiryQuickAction;
+  executing: boolean;
+  running: boolean;
+  onClick: () => void;
+}) {
+  if (action.kind === "info") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#335cff]/20 bg-[#F0F4FF] px-3 py-1.5 text-[12px] text-[#335cff]">
+        <Sparkles className="h-3.5 w-3.5" />
+        {action.label}
+      </span>
+    );
+  }
+
+  const isPrimary = action.primary;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={executing || action.disabled}
+      title={action.disabledReason ?? action.description}
+      className={cn(
+        isPrimary ? landingBtnPrimary : landingBtnSecondary,
+        "inline-flex items-center gap-2 px-3 py-2 text-[13px]",
+        action.disabled && "cursor-not-allowed opacity-50"
+      )}
+    >
+      {running ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <QuickActionIcon integration={action.integration} />
+      )}
+      <span className="text-left">
+        <span className="block font-medium">{action.label}</span>
+        {action.description ? (
+          <span className="block text-[11px] opacity-80">{action.description}</span>
+        ) : null}
+      </span>
+    </button>
   );
 }
 

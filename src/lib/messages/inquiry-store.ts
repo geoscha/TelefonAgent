@@ -25,6 +25,8 @@ function rowToInquiry(row: any): MessageInquiry {
   const context = (row.context ?? {}) as {
     contextSummary?: string;
     dossiers?: CustomerDossier[];
+    matchedWorkflow?: MessageInquiry["matchedWorkflow"];
+    workflowSlots?: Record<string, string>;
   };
   return {
     id: row.id,
@@ -43,6 +45,8 @@ function rowToInquiry(row: any): MessageInquiry {
     suggestedActions: (row.suggested_actions ?? []) as MessageSuggestedAction[],
     matchedCustomers: (row.matched_customers ?? []) as MatchedCustomer[],
     dossiers: (context.dossiers ?? []) as CustomerDossier[],
+    matchedWorkflow: context.matchedWorkflow ?? undefined,
+    workflowSlots: context.workflowSlots ?? undefined,
     status: row.status,
     resolvedAt: row.resolved_at ?? undefined,
     analyzedAt: row.analyzed_at ?? undefined,
@@ -73,6 +77,8 @@ function inquiryToRow(
     context: {
       contextSummary: inquiry.contextSummary ?? null,
       dossiers: inquiry.dossiers ?? [],
+      matchedWorkflow: inquiry.matchedWorkflow ?? null,
+      workflowSlots: inquiry.workflowSlots ?? null,
     },
     status: inquiry.status,
     resolved_at: inquiry.resolvedAt ?? null,
@@ -223,6 +229,8 @@ export async function listOpenThreadListItems(input: {
       suggestedActions: inquiry?.suggestedActions ?? [],
       matchedCustomers: inquiry?.matchedCustomers ?? [],
       dossiers: inquiry?.dossiers ?? [],
+      matchedWorkflow: inquiry?.matchedWorkflow,
+      workflowSlots: inquiry?.workflowSlots,
       status: inquiry?.status ?? "open",
       resolvedAt: inquiry?.resolvedAt,
       analyzedAt: inquiry?.analyzedAt,

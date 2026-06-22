@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { landingInputClass } from "@/components/landing/landing-buttons";
 import type { GovernanceWorkflowInput } from "@/lib/governance/types";
 import { cn } from "@/lib/utils";
+import { WorkflowDefinitionPanel } from "@/components/admin/governance/WorkflowDefinitionPanel";
 
 function TextArea({
   value,
@@ -355,6 +356,10 @@ export function GovernanceWorkflowEditor({
           }
         />
       </div>
+
+      {!isNew && draft.id ? (
+        <WorkflowDefinitionPanel workflowId={draft.id} />
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={handleSave} disabled={saving}>

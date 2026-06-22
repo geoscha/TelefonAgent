@@ -1,5 +1,5 @@
 export interface CostSlice {
-  key: "twilio" | "elevenlabs" | "openai";
+  key: string;
   label: string;
   amountChf: number;
   sharePct: number;
@@ -31,6 +31,7 @@ interface BriefingInput {
   twilioCostChf: number;
   elevenLabsCostChf: number;
   openAiCostChf: number;
+  infrastructureCostChf: number;
   unusedNumbers: number;
   totalNumbers: number;
   unusedNumberCostChf: number;
@@ -55,7 +56,8 @@ export function buildExecutiveBriefing(input: BriefingInput): ExecutiveBriefing 
     costChf,
     input.twilioCostChf,
     input.elevenLabsCostChf,
-    input.openAiCostChf
+    input.openAiCostChf,
+    input.infrastructureCostChf
   );
 
   const alerts = buildAlerts(input, costSlices, marginPct, profitChf);
@@ -84,7 +86,8 @@ function buildCostSlices(
   total: number,
   twilio: number,
   elevenLabs: number,
-  openAi: number
+  openAi: number,
+  infrastructure: number
 ): CostSlice[] {
   const base = Math.max(total, 0.01);
   const slices: CostSlice[] = [
@@ -97,6 +100,16 @@ function buildCostSlices(
     },
     { key: "openai", label: "OpenAI", amountChf: openAi, sharePct: (openAi / base) * 100 },
   ];
+
+  if (infrastructure > 0) {
+    slices.push({
+      key: "infrastructure",
+      label: "Cloud & Infrastruktur",
+      amountChf: infrastructure,
+      sharePct: (infrastructure / base) * 100,
+    });
+  }
+
   return slices.sort((a, b) => b.amountChf - a.amountChf);
 }
 
@@ -144,7 +157,9 @@ function buildAlerts(
           ? "Ungenutzte Nummern freigeben"
           : top.key === "elevenlabs"
             ? "Gesprächsdauer und Minutenpreis prüfen"
-            : "Enrichment-Nutzung optimieren",
+            : top.key === "infrastructure"
+              ? "Cloud-Kosten in Vercel-Env pflegen"
+              : "Enrichment-Nutzung optimieren",
     });
   }
 

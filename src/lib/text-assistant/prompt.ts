@@ -13,8 +13,12 @@ import {
 } from "@/lib/integrations/website/store";
 import { getCraftsmenKnowledgeForUser } from "@/lib/customers/craftsmen-kb";
 import type { StoredAgent } from "@/lib/onboarding-types";
+import { isWorkflowEngineEnabledForUser } from "@/lib/workflow-engine/flags";
+import { buildUnifiedAgentPrompt } from "@/lib/workflow-engine/prompt-builder";
+import { resolveWorkflowSession } from "@/lib/workflow-engine/session";
+import type { TextChannelKind } from "@/lib/text-assistant/prompt-types";
 
-export type TextChannelKind = "chat" | "email" | "whatsapp" | "sms";
+export type { TextChannelKind } from "@/lib/text-assistant/prompt-types";
 
 const TEXT_CHANNEL_BLOCK = `# Kanal (schriftlich)
 - Du antwortest per **E-Mail, WhatsApp oder Chat** — nicht am Telefon.
@@ -23,11 +27,6 @@ const TEXT_CHANNEL_BLOCK = `# Kanal (schriftlich)
 - Bei WhatsApp darfst du etwas knapper formulieren, aber immer professionell (Sie-Form).
 - Du hast dieselben Informationen, Termin-Tools und Regeln wie der Telefon-Assistent.`;
 
-/**
- * Real current date/time for the written assistant. The phone agent uses the
- * ElevenLabs `{{system__time}}` placeholder; OpenAI can't resolve that, so we
- * inject the actual Europe/Zurich timestamp to anchor relative-date handling.
- */
 function buildDateContextBlock(): string {
   const now = new Intl.DateTimeFormat("de-CH", {
     timeZone: "Europe/Zurich",
@@ -66,6 +65,7 @@ function buildWebsiteKnowledgeBlock(
 ${integration.knowledgeText.trim()}`;
 }
 
+/** Legacy path — kept for callers that pass governance block directly. */
 export function buildTextAssistantSystemPrompt(
   agent: StoredAgent,
   channel?: TextChannelKind,
@@ -99,9 +99,14 @@ export function buildTextAssistantSystemPrompt(
 export async function buildTextAssistantSystemPromptAsync(
   agent: StoredAgent,
   channel?: TextChannelKind,
-  userId?: string
+  userId?: string,
+  options?: {
+    userMessage?: string;
+    sourceRef?: string;
+    category?: import("@/lib/messages/inquiry-types").MessageInquiryCategory | null;
+    llmSlug?: string | null;
+  }
 ): Promise<string> {
-  const governanceBlock = await getGovernancePromptBlock("message", userId);
   const websiteIntegration = userId
     ? await getWebsiteIntegrationForUser(userId)
     : await getWebsiteIntegration().catch(() => null);
@@ -113,6 +118,36 @@ export async function buildTextAssistantSystemPromptAsync(
     craftsmenKnowledge.text
   );
 
+  const engineEnabled = userId
+    ? await isWorkflowEngineEnabledForUser(userId)
+    : false;
+
+  if (engineEnabled && options?.userMessage?.trim()) {
+    const session = await resolveWorkflowSession({
+      userId,
+      channel: "message",
+      text: options.userMessage,
+      sourceRef: options.sourceRef,
+      agentId: agent.id,
+      category: options.category,
+      llmSlug: options.llmSlug,
+    });
+
+    if (session.engineEnabled && session.definition) {
+      return buildUnifiedAgentPrompt({
+        agent,
+        channel: "message",
+        userId,
+        activeWorkflow: session.definition,
+        execution: session.execution ?? undefined,
+        websiteKnowledgeBlock,
+        craftsmenKnowledgeBlock,
+        compiledWorkflowBlock: session.compiledMessageBlock,
+      });
+    }
+  }
+
+  const governanceBlock = await getGovernancePromptBlock("message", userId);
   return buildTextAssistantSystemPrompt(
     agent,
     channel,

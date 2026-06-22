@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { InfrastructureCostConfig } from "@/lib/admin/finance-vendor-types";
+
 export interface FinanceConfig {
   /** Monthly cost per phone number in the pool (Twilio + ElevenLabs DID). */
   numberMonthlyChf: number;
@@ -7,6 +9,7 @@ export interface FinanceConfig {
   elevenLabsPerMinuteChf: number;
   /** Optional fixed monthly ElevenLabs platform fee (workspace minimum). */
   elevenLabsPlatformMonthlyChf: number;
+  infrastructure: InfrastructureCostConfig;
 }
 
 export function getFinanceConfig(): FinanceConfig {
@@ -17,6 +20,14 @@ export function getFinanceConfig(): FinanceConfig {
       "FINANCE_ELEVENLABS_PLATFORM_MONTHLY_CHF",
       0
     ),
+    infrastructure: {
+      vercelMonthlyChf: parseEnvChf("FINANCE_VERCEL_MONTHLY_CHF", 0),
+      supabaseMonthlyChf: parseEnvChf("FINANCE_SUPABASE_MONTHLY_CHF", 0),
+      azureMonthlyChf: parseEnvChf("FINANCE_AZURE_MONTHLY_CHF", 0),
+      gcpMonthlyChf: parseEnvChf("FINANCE_GCP_MONTHLY_CHF", 0),
+      cloudflareMonthlyChf: parseEnvChf("FINANCE_CLOUDFLARE_MONTHLY_CHF", 0),
+      otherMonthlyChf: parseEnvChf("FINANCE_OTHER_INFRA_MONTHLY_CHF", 0),
+    },
   };
 }
 

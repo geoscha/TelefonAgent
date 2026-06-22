@@ -8,6 +8,7 @@ import {
 } from "@/lib/governance/store";
 import type { GovernanceWorkflowInput } from "@/lib/governance/types";
 import { validateWorkflow } from "@/lib/governance/validate";
+import { syncDefinitionFromGovernance } from "@/lib/workflow-engine/store";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,7 @@ export async function PATCH(
 
   try {
     const workflow = await updateGovernanceWorkflow(params.id, body);
+    await syncDefinitionFromGovernance(workflow);
     return NextResponse.json({ ok: true, workflow });
   } catch (error) {
     const message =

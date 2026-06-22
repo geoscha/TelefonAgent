@@ -21,6 +21,14 @@ export type MessageActionType =
   | "schedule_repair"
   | "info_only";
 
+export type MessageActionIntegration =
+  | "gmail"
+  | "whatsapp"
+  | "calendar"
+  | "craftsman_gmail"
+  | "sms"
+  | "none";
+
 export type MessageActionStatus = "pending" | "done" | "skipped" | "failed";
 
 export interface MessageActionStep {
@@ -41,6 +49,48 @@ export interface MessageSuggestedAction {
   /** Tool calls to run when the user confirms (empty for info-only actions). */
   steps?: MessageActionStep[];
   resultMessage?: string;
+  integration?: MessageActionIntegration;
+  disabledReason?: string;
+}
+
+export interface MatchedInquiryWorkflow {
+  slug: string;
+  name: string;
+  description?: string;
+}
+
+export interface InquiryCapabilities {
+  customerReply: {
+    gmail: boolean;
+    whatsapp: boolean;
+    channel: MessageChannelType;
+    preferred: "gmail" | "whatsapp" | "none";
+  };
+  craftsmanEmail: boolean;
+  calendar: boolean;
+  websiteKnowledge: boolean;
+  sms: boolean;
+}
+
+export type InquiryQuickActionKind =
+  | "send_customer_reply"
+  | "send_craftsman_email"
+  | "run_action"
+  | "execute_all"
+  | "save_draft"
+  | "info";
+
+export interface InquiryQuickAction {
+  id: string;
+  label: string;
+  description?: string;
+  kind: InquiryQuickActionKind;
+  actionId?: string;
+  craftsmanDraftId?: string;
+  integration?: MessageActionIntegration;
+  primary?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 export type CraftsmanDraftStatus = "pending" | "sent" | "failed" | "skipped";
@@ -118,6 +168,10 @@ export interface MessageInquiry {
   matchedCustomers: MatchedCustomer[];
   /** Rich context assembled from calendar + past threads (per customer). */
   dossiers?: CustomerDossier[];
+  /** Admin governance workflow matched to this inquiry. */
+  matchedWorkflow?: MatchedInquiryWorkflow;
+  /** Extracted workflow slots (e.g. inquiry_topic, damage_type). */
+  workflowSlots?: Record<string, string>;
   status: MessageInquiryStatus;
   resolvedAt?: string;
   analyzedAt?: string;

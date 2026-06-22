@@ -64,7 +64,11 @@ export async function runTextAssistantTurn(input: {
   const systemPrompt = await buildTextAssistantSystemPromptAsync(
     input.agent,
     input.channel,
-    input.userId
+    input.userId,
+    {
+      userMessage: input.userMessage,
+      sourceRef: input.userId ? `chat:${input.agent.id}:${input.userId}` : undefined,
+    }
   );
   const openAiMessages: OpenAiMessage[] = [
     {

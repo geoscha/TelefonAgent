@@ -162,14 +162,23 @@ export async function sendThreadReply(input: {
   return sendReply(input.inquiry, input.messages, input.draftReply);
 }
 
+
 export async function executeMessageInquiry(input: {
   inquiry: MessageInquiry;
   messages: InboundMessage[];
   draftReply: string;
   craftsmanDrafts?: CraftsmanEmailDraft[];
+  actionIds?: string[];
+  craftsmanDraftIds?: string[];
+  sendCustomerReply?: boolean;
 }): Promise<ExecuteInquiryResult> {
   const { inquiry, messages, draftReply } = input;
   const craftsmanDrafts = input.craftsmanDrafts ?? inquiry.craftsmanDrafts ?? [];
+  const sendCustomerReply = input.sendCustomerReply !== false;
+  const actionIds = input.actionIds?.length ? new Set(input.actionIds) : null;
+  const craftsmanDraftIds = input.craftsmanDraftIds?.length
+    ? new Set(input.craftsmanDraftIds)
+    : null;
   const agentId = inquiry.agentId?.trim();
   if (!agentId) {
     throw new Error("Kein KI-Assistent zugeordnet.");
@@ -187,10 +196,15 @@ export async function executeMessageInquiry(input: {
       draft.status !== "sent" &&
       draft.recipientEmail?.trim() &&
       draft.body?.trim() &&
-      draft.subject?.trim()
+      draft.subject?.trim() &&
+      (!craftsmanDraftIds || craftsmanDraftIds.has(draft.id))
   );
 
   for (const action of inquiry.suggestedActions) {
+    if (actionIds && !actionIds.has(action.id)) {
+      updatedActions.push(action);
+      continue;
+    }
     if (action.type === "contact_craftsman") {
       updatedActions.push({ ...action, status: "pending" });
       continue;
@@ -251,7 +265,7 @@ export async function executeMessageInquiry(input: {
   }
 
   let sent = false;
-  if (draftReply.trim()) {
+  if (sendCustomerReply && draftReply.trim()) {
     try {
       sent = await sendReply(inquiry, messages, draftReply);
     } catch (error) {

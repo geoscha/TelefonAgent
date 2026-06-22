@@ -9,10 +9,13 @@ import {
 } from "@/lib/governance/store";
 import type { CompiledGovernance, GovernancePreview } from "@/lib/governance/types";
 import { canPublish, validateForPublish } from "@/lib/governance/validate";
-import {
-  primeGovernanceCache,
-} from "@/lib/governance/runtime";
+import { primeGovernanceCache } from "@/lib/governance/runtime";
 import { resyncAllVoiceAgentsAfterGovernancePublish } from "@/lib/governance/resync-agents";
+import {
+  ensureWorkflowDefinitions,
+  seedRechtsauskunftTestCases,
+  syncDefinitionFromGovernance,
+} from "@/lib/workflow-engine/store";
 
 export async function previewGovernancePublish(): Promise<GovernancePreview> {
   const { config } = await getGovernanceDraft();
@@ -46,6 +49,12 @@ export async function publishGovernance(notes?: string): Promise<{
   });
 
   primeGovernanceCache(compiled);
+
+  await ensureWorkflowDefinitions();
+  for (const workflow of workflows) {
+    await syncDefinitionFromGovernance(workflow);
+  }
+  await seedRechtsauskunftTestCases();
 
   void resyncAllVoiceAgentsAfterGovernancePublish()
     .then((stats) => {
