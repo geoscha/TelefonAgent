@@ -1,12 +1,12 @@
 import "server-only";
 
-import type { MessageInquiry, MessageSuggestedAction } from "@/lib/messages/inquiry-types";
 import {
   getActiveExecutionForSource,
   updateWorkflowExecution,
   completeWorkflowExecution,
 } from "@/lib/workflow-engine/case-store";
 import { isWorkflowEngineEnabledForUser } from "@/lib/workflow-engine/flags";
+import type { MessageInquiry, MessageSuggestedAction } from "@/lib/messages/inquiry-types";
 import {
   buildMissingSlotsPrompt,
   slotLabelMap,
@@ -25,7 +25,7 @@ export const DISPATCH_CAPABLE_WORKFLOW_SLUGS = new Set([
   "schadensfall-meldung",
 ]);
 
-/** Minimum router confidence before dispatch-capable workflows may dispatch. */
+/** Minimum router confidence before dispatch-capable workflows may dispatch. Calibrated via DISPATCH_CONFIDENCE_EVAL (router-scoring.ts). Must stay above ROUTER_FALLBACK_CONFIDENCE (0.4) and below minimum pattern-match confidence (0.66). */
 export const DISPATCH_CONFIDENCE_FLOOR = 0.55;
 
 const DISPATCH_ACTION_TYPES = new Set<MessageSuggestedAction["type"]>([

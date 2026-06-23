@@ -11,6 +11,7 @@ import {
   getPublishedWorkflowDefinition,
   listWorkflowDefinitions,
 } from "@/lib/workflow-engine/store";
+import { routerConfidenceFromScore } from "@/lib/workflow-engine/router-scoring";
 import type { RouterResult, WorkflowDefinition } from "@/lib/workflow-engine/types";
 
 const FALLBACK_SLUG = "allgemeine-auskunft";
@@ -148,7 +149,7 @@ export async function classifyWorkflowIntent(input: {
   }
 
   if (best && best.score >= 2) {
-    const confidence = Math.min(0.95, 0.5 + best.score * 0.08);
+    const confidence = routerConfidenceFromScore(best.score);
     return {
       slug: best.definition.slug,
       confidence,
