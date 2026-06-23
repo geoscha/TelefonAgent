@@ -5,6 +5,12 @@ import { hasAnyCustomerAccess } from "@/lib/elevenlabs/prompt";
 import { getGovernancePromptBlock } from "@/lib/governance/runtime";
 import { getWebsiteIntegration } from "@/lib/integrations/website/store";
 import {
+  applyWorkflowEngineEnforcement,
+  resolveMailWorkflowSession,
+} from "@/lib/messages/inquiry-workflow-engine";
+import { buildWorkflowEngineMessageBlocks } from "@/lib/workflow-engine/prompt-builder";
+import type { WorkflowSessionContext } from "@/lib/workflow-engine/session";
+import {
   enrichSuggestedActions,
   resolveInquiryCapabilities,
 } from "@/lib/messages/inquiry-capabilities";
@@ -68,6 +74,7 @@ export interface InquiryAnalysisResult {
   dossiers: CustomerDossier[];
   matchedWorkflow?: MatchedInquiryWorkflow;
   workflowSlots?: Record<string, string>;
+  workflowRouterConfidence?: number;
 }
 
 /** Broad pre-filter — full thread text, not only the latest message. */
@@ -466,20 +473,45 @@ async function finalizeCraftsmanDrafts(
 
 async function finalizeWorkflowAndActions(
   result: InquiryAnalysisResult & { _llmWorkflowSlug?: string },
-  input: InquiryAnalysisInput
+  input: InquiryAnalysisInput,
+  workflowSession?: WorkflowSessionContext | null
 ): Promise<InquiryAnalysisResult> {
   const { _llmWorkflowSlug, ...rest } = result;
   if (!rest.actionable) return rest;
 
-  const workflows = await listEnabledGovernanceWorkflows(input.userId);
-  const matchedWorkflow = await resolveInquiryWorkflowAsync({
-    category: rest.category,
-    urgency: rest.urgency,
-    threadText: threadFullText(input.messages),
-    workflows,
-    llmWorkflowSlug: _llmWorkflowSlug,
-    userId: input.userId,
-  });
+  let processed = rest;
+
+  if (
+    workflowSession?.definition &&
+    workflowSession.execution &&
+    input.userId
+  ) {
+    const enforced = await applyWorkflowEngineEnforcement({
+      result: processed,
+      session: workflowSession,
+      userId: input.userId,
+    });
+    processed = {
+      ...processed,
+      draftReply: enforced.draftReply,
+      suggestedActions: enforced.suggestedActions,
+      craftsmanDrafts: enforced.craftsmanDrafts,
+      workflowSlots: enforced.workflowSlots,
+      matchedWorkflow: enforced.matchedWorkflow,
+      workflowRouterConfidence: enforced.workflowRouterConfidence,
+    };
+  } else {
+    const workflows = await listEnabledGovernanceWorkflows(input.userId);
+    const matchedWorkflow = await resolveInquiryWorkflowAsync({
+      category: processed.category,
+      urgency: processed.urgency,
+      threadText: threadFullText(input.messages),
+      workflows,
+      llmWorkflowSlug: _llmWorkflowSlug,
+      userId: input.userId,
+    });
+    processed = { ...processed, matchedWorkflow };
+  }
 
   const capabilities = await resolveInquiryCapabilities({
     channelType: input.channelType,
@@ -487,9 +519,8 @@ async function finalizeWorkflowAndActions(
   });
 
   return {
-    ...rest,
-    matchedWorkflow,
-    suggestedActions: enrichSuggestedActions(rest.suggestedActions, capabilities),
+    ...processed,
+    suggestedActions: enrichSuggestedActions(processed.suggestedActions, capabilities),
   };
 }
 
@@ -498,6 +529,22 @@ function buildWebsiteKnowledgeBlock(
 ): string {
   if (!knowledgeText?.trim()) return "";
   return `\n\nWISSENSDATENBANK (Betreiber-Website / FAQ):\n${knowledgeText.trim()}\n\nNutze diese Fakten für allgemeine Auskünfte. Wenn etwas nicht hier steht, nicht erfinden.`;
+}
+
+function buildWorkflowInstructionsBlock(
+  workflowSession: WorkflowSessionContext | null
+): string {
+  if (workflowSession?.definition) {
+    return `Workflow (bereits zugeordnet):
+- matched_workflow_slug: ${workflowSession.definition.slug} (read-only — exakt so in submit_analysis übergeben)
+- workflow_slots: Fülle die Pflichtfelder des aktiven Workflows (siehe oben). Nur extrahieren, was im Verlauf steht — fehlende Felder im draft_reply erfragen.
+- Solange Pflichtfelder fehlen: KEINE Handwerker-Dispatch-Aktionen (contact_craftsman/schedule_repair) und keine craftsman_drafts vorschlagen.`;
+  }
+
+  return `Workflow-Zuordnung:
+- matched_workflow_slug=schadensfall-meldung bei Schaden/Defekt/Notfall/Reparatur
+- matched_workflow_slug=allgemeine-auskunft bei allgemeinen Informationsfragen (Öffnungszeiten, Leistungen, Kontakt, Nebenkosten, Hausordnung)
+- workflow_slots: relevante Felder aus dem passenden Workflow füllen (z. B. inquiry_topic, damage_type)`;
 }
 
 async function runAgentLoop(
@@ -517,10 +564,21 @@ async function runAgentLoop(
     ? formatMatchedCustomersForPrompt(matchedCustomers)
     : "";
 
-  const governanceBlock = await getGovernancePromptBlock(
-    "message",
-    input.userId
-  );
+  const workflowSession = await resolveMailWorkflowSession({
+    userId: input.userId,
+    threadId: input.threadId,
+    threadText: threadFullText(input.messages),
+    agentId: input.agent.id,
+  });
+  const governanceBlock = workflowSession?.definition
+    ? await buildWorkflowEngineMessageBlocks({
+        userId: input.userId,
+        definition: workflowSession.definition,
+        execution: workflowSession.execution,
+        compiledWorkflowBlock: workflowSession.compiledMessageBlock,
+      })
+    : await getGovernancePromptBlock("message", input.userId);
+  const workflowInstructions = buildWorkflowInstructionsBlock(workflowSession);
   const websiteIntegration = input.userId
     ? await getWebsiteIntegration()
     : null;
@@ -542,10 +600,7 @@ Vorgehen:
 2. Prüfe nötige Fakten mit Tools (nur wenn relevant).
 3. Rufe danach GENAU EINMAL submit_analysis auf.
 
-Workflow-Zuordnung:
-- matched_workflow_slug=schadensfall-meldung bei Schaden/Defekt/Notfall/Reparatur
-- matched_workflow_slug=allgemeine-auskunft bei allgemeinen Informationsfragen (Öffnungszeiten, Leistungen, Kontakt, Nebenkosten, Hausordnung)
-- workflow_slots: relevante Felder aus dem passenden Workflow füllen (z. B. inquiry_topic, damage_type)
+${workflowInstructions}
 
 Klassifizierung:
 - actionable=true bei: Schadenmeldung, Terminanfrage/-änderung, Vertrags-/Mietanliegen mit Handlungsbedarf, Ablauf-/Informationsfragen (z. B. «Wie reiche ich Fotos ein?»), allgemeine Auskünfte aus der Wissensdatenbank, oder wenn ein bekannter Mieter ein konkretes Anliegen hat.
@@ -612,12 +667,16 @@ Regeln für die Antwort (draft_reply):
       } catch {
         args = {};
       }
+      if (workflowSession?.definition?.slug) {
+        args.matched_workflow_slug = workflowSession.definition.slug;
+      }
       return finalizeWorkflowAndActions(
         await finalizeCraftsmanDrafts(
           resultFromSubmit(args, matchedCustomers, dossiers),
           input
         ),
-        input
+        input,
+        workflowSession
       );
     }
 

@@ -12,7 +12,9 @@
     "migrate:elevenlabs-flash": "npx tsx scripts/migrate-elevenlabs-flash.ts",
     "migrate:elevenlabs-agent-config": "npx tsx scripts/migrate-elevenlabs-flash.ts",
     "debug:apple-calendar": "node --env-file=.env.local scripts/debug-apple-calendar.mjs",
-    "debug:apple-calendar:book": "node --env-file=.env.local scripts/debug-apple-calendar.mjs --book"
+    "debug:apple-calendar:book": "node --env-file=.env.local scripts/debug-apple-calendar.mjs --book",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@elevenlabs/client": "^1.12.0",
@@ -52,6 +54,7 @@
     "eslint-config-next": "14.2.35",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.9"
   }
 }

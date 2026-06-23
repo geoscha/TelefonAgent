@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
       history,
       userMessage,
       channel: body.channel ?? "chat",
+      userId,
     });
 
     return NextResponse.json({

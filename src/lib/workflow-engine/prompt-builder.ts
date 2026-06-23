@@ -21,6 +21,7 @@ import type {
   PromptBuildInput,
   WorkflowDefinition,
   WorkflowEngineChannel,
+  WorkflowExecution,
 } from "@/lib/workflow-engine/types";
 
 const TEXT_CHANNEL_BLOCK = `# Kanal (schriftlich)
@@ -93,6 +94,27 @@ function buildSingleWorkflowBlock(
     : `# Aktiver Workflow\n${definition.messageInstructions}\n\n${definition.businessRules}`;
 }
 
+/** Governance + active workflow + slot state — without agent/chat channel wrappers. */
+export async function buildWorkflowEngineMessageBlocks(input: {
+  userId?: string;
+  definition: WorkflowDefinition;
+  execution?: WorkflowExecution | null;
+  compiledWorkflowBlock?: string;
+}): Promise<string> {
+  const parts = [
+    await buildGlobalGovernanceBlock("message", input.userId, false),
+    buildSingleWorkflowBlock(
+      input.definition,
+      "message",
+      input.compiledWorkflowBlock
+    ),
+    input.execution
+      ? buildExecutionContextBlock(input.definition, input.execution)
+      : "",
+  ];
+  return parts.filter(Boolean).join("\n\n");
+}
+
 function channelAdapter(
   channel: WorkflowEngineChannel,
   channelNote?: string
@@ -128,14 +150,23 @@ export async function buildUnifiedAgentPrompt(
   const parts: string[] = [buildAgentCapabilityBlocks(agent)];
 
   if (useEngine && activeWorkflow) {
-    parts.push(
-      await buildGlobalGovernanceBlock(channel, userId, false)
-    );
-    parts.push(
-      buildSingleWorkflowBlock(activeWorkflow, channel, compiledWorkflowBlock)
-    );
-    if (execution) {
-      parts.push(buildExecutionContextBlock(activeWorkflow, execution));
+    if (channel === "message") {
+      parts.push(
+        await buildWorkflowEngineMessageBlocks({
+          userId,
+          definition: activeWorkflow,
+          execution,
+          compiledWorkflowBlock,
+        })
+      );
+    } else {
+      parts.push(await buildGlobalGovernanceBlock(channel, userId, false));
+      parts.push(
+        buildSingleWorkflowBlock(activeWorkflow, channel, compiledWorkflowBlock)
+      );
+      if (execution) {
+        parts.push(buildExecutionContextBlock(activeWorkflow, execution));
+      }
     }
   } else {
     parts.push(

@@ -10,6 +10,10 @@ import type {
 import { saveChannelMessage } from "@/lib/messages/store";
 import type { InboundMessage } from "@/lib/messages/types";
 import { runTextAssistantAppointmentTool } from "@/lib/text-assistant/appointment-tool";
+import {
+  attachWorkflowCaseOnExecute,
+  isInquiryDispatchReadyAsync,
+} from "@/lib/messages/inquiry-workflow-engine";
 
 export interface ExecuteInquiryResult {
   inquiry: MessageInquiry;
@@ -171,6 +175,7 @@ export async function executeMessageInquiry(input: {
   actionIds?: string[];
   craftsmanDraftIds?: string[];
   sendCustomerReply?: boolean;
+  userId?: string;
 }): Promise<ExecuteInquiryResult> {
   const { inquiry, messages, draftReply } = input;
   const craftsmanDrafts = input.craftsmanDrafts ?? inquiry.craftsmanDrafts ?? [];
@@ -200,13 +205,32 @@ export async function executeMessageInquiry(input: {
       (!craftsmanDraftIds || craftsmanDraftIds.has(draft.id))
   );
 
+  let dispatchReady = true;
+  if (pendingCraftsmanDrafts.length > 0) {
+    dispatchReady = await isInquiryDispatchReadyAsync(inquiry);
+    if (!dispatchReady) {
+      errors.push(
+        "Handwerker-Dispatch ist erst möglich, wenn alle Workflow-Pflichtfelder erfasst sind."
+      );
+    }
+  }
+
   for (const action of inquiry.suggestedActions) {
     if (actionIds && !actionIds.has(action.id)) {
       updatedActions.push(action);
       continue;
     }
     if (action.type === "contact_craftsman") {
-      updatedActions.push({ ...action, status: "pending" });
+      if (!dispatchReady && pendingCraftsmanDrafts.length > 0) {
+        updatedActions.push({
+          ...action,
+          status: "skipped",
+          resultMessage:
+            "Workflow-Pflichtfelder unvollständig — Handwerker-Dispatch blockiert.",
+        });
+      } else {
+        updatedActions.push({ ...action, status: "pending" });
+      }
       continue;
     }
     if (action.type === "info_only" || !action.steps?.length) {
@@ -224,7 +248,7 @@ export async function executeMessageInquiry(input: {
 
   let sentCraftsmanEmails = 0;
   let updatedCraftsmanDrafts = craftsmanDrafts;
-  if (pendingCraftsmanDrafts.length > 0) {
+  if (pendingCraftsmanDrafts.length > 0 && dispatchReady) {
     const craftsmanResult = await sendCraftsmanEmails(craftsmanDrafts);
     updatedCraftsmanDrafts = craftsmanResult.drafts;
     sentCraftsmanEmails = craftsmanResult.sent;
@@ -275,11 +299,28 @@ export async function executeMessageInquiry(input: {
     }
   }
 
+  const committed =
+    sent || sentCraftsmanEmails > 0 || executedActions > 0;
+  let workflowCaseId = inquiry.workflowCaseId;
+  if (input.userId && committed && !workflowCaseId) {
+    try {
+      workflowCaseId = await attachWorkflowCaseOnExecute({
+        userId: input.userId,
+        threadId: inquiry.threadId,
+        inquiry,
+        committed: true,
+      });
+    } catch (error) {
+      console.error("[inquiry-execute] workflow case:", error);
+    }
+  }
+
   const resolved: MessageInquiry = {
     ...inquiry,
     draftReply,
     craftsmanDrafts: updatedCraftsmanDrafts,
     suggestedActions: updatedActions,
+    workflowCaseId,
     status:
       errors.length > 0 && executedActions === 0 && !sent && sentCraftsmanEmails === 0
         ? "open"

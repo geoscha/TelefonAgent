@@ -44,7 +44,7 @@ export async function POST(
   }
 
   try {
-    await requireUserId();
+    const userId = await requireUserId();
     const messages = await listThreadMessages(threadId);
     if (messages.length === 0) {
       return NextResponse.json(
@@ -90,6 +90,7 @@ export async function POST(
         actionIds: body.actionIds,
         craftsmanDraftIds: body.craftsmanDraftIds,
         sendCustomerReply: body.sendCustomerReply,
+        userId,
       });
 
       const saved = await upsertInquiry({
@@ -97,6 +98,7 @@ export async function POST(
         draftReply: draftReply || result.inquiry.draftReply,
         craftsmanDrafts: result.inquiry.craftsmanDrafts ?? [],
         matchedCustomers: result.inquiry.matchedCustomers ?? [],
+        workflowCaseId: result.inquiry.workflowCaseId,
       });
 
       return NextResponse.json({

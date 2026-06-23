@@ -172,6 +172,10 @@ export interface MessageInquiry {
   matchedWorkflow?: MatchedInquiryWorkflow;
   /** Extracted workflow slots (e.g. inquiry_topic, damage_type). */
   workflowSlots?: Record<string, string>;
+  /** Set when inquiry is executed and a workflow case is committed. */
+  workflowCaseId?: string;
+  /** Router confidence from workflow session (for dispatch floor at execute). */
+  workflowRouterConfidence?: number;
   status: MessageInquiryStatus;
   resolvedAt?: string;
   analyzedAt?: string;

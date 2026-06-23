@@ -27,6 +27,7 @@ function rowToInquiry(row: any): MessageInquiry {
     dossiers?: CustomerDossier[];
     matchedWorkflow?: MessageInquiry["matchedWorkflow"];
     workflowSlots?: Record<string, string>;
+    workflowRouterConfidence?: number;
   };
   return {
     id: row.id,
@@ -47,6 +48,8 @@ function rowToInquiry(row: any): MessageInquiry {
     dossiers: (context.dossiers ?? []) as CustomerDossier[],
     matchedWorkflow: context.matchedWorkflow ?? undefined,
     workflowSlots: context.workflowSlots ?? undefined,
+    workflowCaseId: row.workflow_case_id ?? undefined,
+    workflowRouterConfidence: context.workflowRouterConfidence ?? undefined,
     status: row.status,
     resolvedAt: row.resolved_at ?? undefined,
     analyzedAt: row.analyzed_at ?? undefined,
@@ -79,10 +82,12 @@ function inquiryToRow(
       dossiers: inquiry.dossiers ?? [],
       matchedWorkflow: inquiry.matchedWorkflow ?? null,
       workflowSlots: inquiry.workflowSlots ?? null,
+      workflowRouterConfidence: inquiry.workflowRouterConfidence ?? null,
     },
     status: inquiry.status,
     resolved_at: inquiry.resolvedAt ?? null,
     analyzed_at: inquiry.analyzedAt ?? null,
+    workflow_case_id: inquiry.workflowCaseId ?? null,
   };
 }
 
@@ -231,6 +236,8 @@ export async function listOpenThreadListItems(input: {
       dossiers: inquiry?.dossiers ?? [],
       matchedWorkflow: inquiry?.matchedWorkflow,
       workflowSlots: inquiry?.workflowSlots,
+      workflowCaseId: inquiry?.workflowCaseId,
+      workflowRouterConfidence: inquiry?.workflowRouterConfidence,
       status: inquiry?.status ?? "open",
       resolvedAt: inquiry?.resolvedAt,
       analyzedAt: inquiry?.analyzedAt,
